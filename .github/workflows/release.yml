@@ -1,0 +1,90 @@
+name: release
+
+# Tags are the trigger, and `npm run release` is what creates them. Nothing publishes
+# from a branch push — a release is always something you tagged on purpose.
+on:
+  push:
+    tags: ['v*']
+  # Lets you re-run a failed platform without cutting a new tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build (e.g. v0.2.0)
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  # Required for GITHUB_TOKEN to create the Release and upload assets.
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      # One platform failing must not cancel the others: a green Linux build is still
+      # worth publishing while a Windows runner issue is investigated.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS
+          - os: windows-latest
+            name: Windows
+          - os: ubuntu-latest
+            name: Linux
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` runs the postinstall that rebuilds better-sqlite3 against Electron's
+      # ABI. It needs a C++ toolchain, which all three GitHub runners ship by default.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # electron-builder only packages what is already on disk — it does not invoke
+      # the bundler. Without this step it would ship a stale or empty out/ directory.
+      - name: Build bundles
+        run: npm run build
+
+      - name: Package and publish
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # There is no signing identity in CI yet. Left on, electron-builder would
+          # hunt the keychain for one and fail the macOS build rather than producing
+          # an unsigned artifact. See README › Signing for what this costs to fix.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # Kept even on failure so a partially-built matrix leg is still inspectable.
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dayly-${{ matrix.name }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+            release/*.yml
+            release/*.blockmap

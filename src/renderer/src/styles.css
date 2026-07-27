@@ -1,0 +1,352 @@
+@import "tailwindcss";
+
+/*
+ * Dark mode is driven by the `theme` preference, not by the media query alone, so
+ * the variant keys off a class that `applyTheme` stamps on <html>. `:where()` keeps
+ * the selector at zero specificity, which is what Tailwind's own variants assume.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Semantic tokens are mapped `inline` on purpose: the utility then emits
+ * `var(--dayly-*)` directly instead of a second indirection resolved at :root, so a
+ * theme flip works no matter which element carries the `dark` class.
+ */
+@theme inline {
+  --color-surface: var(--dayly-surface);
+  --color-raised: var(--dayly-raised);
+  --color-sunken: var(--dayly-sunken);
+  --color-hover: var(--dayly-hover);
+
+  --color-border: var(--dayly-border);
+  --color-border-strong: var(--dayly-border-strong);
+
+  --color-fg: var(--dayly-fg);
+  --color-fg-muted: var(--dayly-fg-muted);
+  --color-fg-faint: var(--dayly-fg-faint);
+
+  --color-accent: var(--dayly-accent);
+  --color-accent-hover: var(--dayly-accent-hover);
+  --color-accent-fg: var(--dayly-accent-fg);
+  --color-accent-soft: var(--dayly-accent-soft);
+
+  --color-work: var(--dayly-work);
+  --color-work-soft: var(--dayly-work-soft);
+  --color-break: var(--dayly-break);
+  --color-break-soft: var(--dayly-break-soft);
+
+  --color-danger: var(--dayly-danger);
+  --color-danger-soft: var(--dayly-danger-soft);
+
+  /* Extra steps the spec's screens rely on between fg-muted and fg-faint. */
+  --color-fg-dim: var(--dayly-fg-dim);
+  --color-fg-ghost: var(--dayly-fg-ghost);
+
+  /* Secondary button — a bordered fill, distinct from the neutral primary. */
+  --color-btn2: var(--dayly-btn2);
+  --color-btn2-border: var(--dayly-btn2-border);
+  --color-btn2-hover: var(--dayly-btn2-hover);
+
+  /* Framed windows and the history calendar. */
+  --color-titlebar: var(--dayly-titlebar);
+  --color-detail: var(--dayly-detail);
+  --color-cell: var(--dayly-cell);
+  --color-cell-weekend: var(--dayly-cell-weekend);
+  --color-cell-border: var(--dayly-cell-border);
+  --color-cell-border-active: var(--dayly-cell-border-active);
+  --color-track: var(--dayly-track);
+
+  --radius-window: 0.625rem; /* 10px — panel and framed windows */
+  --radius-mini: 0.8125rem; /* 13px — mini window on macOS */
+  --radius-control: 0.4375rem; /* 7px — buttons */
+  --radius-chip: 0.25rem; /* 4px */
+  --shadow-panel: var(--dayly-shadow);
+
+  /*
+   * Motion is deliberately small and uniform. A tool pressed fifty times a day must
+   * not bounce, so there is no scale transform anywhere and no easing overshoot.
+   */
+  --ease-out-ui: cubic-bezier(0, 0, 0.2, 1);
+}
+
+/*
+ * Light is the base declaration; the media query covers the window's very first
+ * paint, before React has mounted and `applyTheme` has run. It is guarded by
+ * `:not(.light)` so an explicit light preference is never overridden by the OS.
+ */
+/*
+ * Values are the literal hexes from docs/DESIGN.md rather than a generated ramp —
+ * the spec was designed as specific colours, and re-deriving them in oklch would
+ * drift the greys.
+ *
+ * Note what `accent` is and is not. The primary button is a NEUTRAL fill (the
+ * foreground colour, with an inverted label), because the design reserves the green
+ * exclusively for the running state. Green lives in `work`, never in `accent`.
+ */
+:root {
+  color-scheme: light;
+
+  --dayly-surface: #f2f2ef;
+  --dayly-raised: #ffffff;
+  --dayly-sunken: #f7f7f5;
+  --dayly-hover: #ececea;
+
+  --dayly-border: #e0e0dc;
+  --dayly-border-strong: #d8d8d4;
+
+  --dayly-fg: #1c1c1e;
+  --dayly-fg-muted: #6b6b70;
+  --dayly-fg-faint: #98989e;
+  --dayly-fg-dim: #8e8e94;
+  --dayly-fg-ghost: #c2c2c6;
+
+  --dayly-accent: #1c1c1e;
+  --dayly-accent-hover: #33333a;
+  --dayly-accent-fg: #ffffff;
+  --dayly-accent-soft: #ececea;
+
+  --dayly-work: #2f8a72;
+  --dayly-work-soft: rgb(47 138 114 / 0.14);
+  --dayly-break: #8c6a2a;
+  --dayly-break-soft: rgb(140 106 42 / 0.14);
+
+  --dayly-danger: #c0392b;
+  --dayly-danger-soft: rgb(192 57 43 / 0.12);
+
+  --dayly-btn2: #f7f7f5;
+  --dayly-btn2-border: #d8d8d4;
+  --dayly-btn2-hover: #ececea;
+
+  --dayly-titlebar: #ececea;
+  --dayly-detail: #f7f7f5;
+  --dayly-cell: #ffffff;
+  --dayly-cell-weekend: #f7f7f5;
+  --dayly-cell-border: #e6e6e2;
+  --dayly-cell-border-active: #b5b5ba;
+  --dayly-track: #ececea;
+
+  --dayly-shadow: 0 10px 30px rgb(0 0 0 / 0.13);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    color-scheme: dark;
+
+    --dayly-surface: #141416;
+    --dayly-raised: #232326;
+    --dayly-sunken: #18181b;
+    --dayly-hover: #2e2e33;
+
+    --dayly-border: #35353a;
+    --dayly-border-strong: #47474e;
+
+    --dayly-fg: #ebebef;
+    --dayly-fg-muted: #a0a0a8;
+    --dayly-fg-faint: #6e6e76;
+    --dayly-fg-dim: #8b8b93;
+    --dayly-fg-ghost: #4a4a52;
+
+    --dayly-accent: #ebebef;
+    --dayly-accent-hover: #ffffff;
+    --dayly-accent-fg: #18181a;
+    --dayly-accent-soft: #2e2e33;
+
+    --dayly-work: #4fbfa0;
+    --dayly-work-soft: rgb(79 191 160 / 0.16);
+    --dayly-break: #c79a54;
+    --dayly-break-soft: rgb(199 154 84 / 0.16);
+
+    --dayly-danger: #e05c53;
+    --dayly-danger-soft: rgb(224 92 83 / 0.16);
+
+    --dayly-btn2: #33333a;
+    --dayly-btn2-border: #47474e;
+    --dayly-btn2-hover: #3c3c44;
+
+    --dayly-titlebar: #26262a;
+    --dayly-detail: #18181b;
+    --dayly-cell: #1c1c20;
+    --dayly-cell-weekend: #17171a;
+    --dayly-cell-border: #26262b;
+    --dayly-cell-border-active: #57575e;
+    --dayly-track: #2b2b30;
+
+    --dayly-shadow: 0 18px 44px rgb(0 0 0 / 0.5);
+  }
+}
+
+:root.light {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+
+  --dayly-surface: #141416;
+  --dayly-raised: #232326;
+  --dayly-sunken: #18181b;
+  --dayly-hover: #2e2e33;
+
+  --dayly-border: #35353a;
+  --dayly-border-strong: #47474e;
+
+  --dayly-fg: #ebebef;
+  --dayly-fg-muted: #a0a0a8;
+  --dayly-fg-faint: #6e6e76;
+  --dayly-fg-dim: #8b8b93;
+  --dayly-fg-ghost: #4a4a52;
+
+  --dayly-accent: #ebebef;
+  --dayly-accent-hover: #ffffff;
+  --dayly-accent-fg: #18181a;
+  --dayly-accent-soft: #2e2e33;
+
+  --dayly-work: #4fbfa0;
+  --dayly-work-soft: rgb(79 191 160 / 0.16);
+  --dayly-break: #c79a54;
+  --dayly-break-soft: rgb(199 154 84 / 0.16);
+
+  --dayly-danger: #e05c53;
+  --dayly-danger-soft: rgb(224 92 83 / 0.16);
+
+  --dayly-btn2: #33333a;
+  --dayly-btn2-border: #47474e;
+  --dayly-btn2-hover: #3c3c44;
+
+  --dayly-titlebar: #26262a;
+  --dayly-detail: #18181b;
+  --dayly-cell: #1c1c20;
+  --dayly-cell-weekend: #17171a;
+  --dayly-cell-border: #26262b;
+  --dayly-cell-border-active: #57575e;
+  --dayly-track: #2b2b30;
+
+  --dayly-shadow: 0 18px 44px rgb(0 0 0 / 0.5);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--dayly-surface);
+    color: var(--dayly-fg);
+    /*
+     * One declaration covers all three platforms: SF Pro on macOS, Segoe UI Variable
+     * on Windows, Cantarell/Ubuntu on Linux. The spec treats the system face as the
+     * only correct choice — a bundled webfont would read as foreign on every desktop.
+     */
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
+      Cantarell, Ubuntu, system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    /* Frameless windows drag only where a region explicitly opts in. */
+    -webkit-app-region: no-drag;
+    /* Rubber-banding exposes the transparent window behind the page. */
+    overscroll-behavior: none;
+    cursor: default;
+  }
+
+  /*
+   * This is desktop chrome, not a document: selecting the UI text or dragging a
+   * label out of the window both read as glitches. Real text inputs opt back in.
+   */
+  body,
+  button,
+  label {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable='true'] {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: auto;
+  }
+
+  a,
+  img,
+  svg {
+    -webkit-user-drag: none;
+  }
+
+  /*
+   * The spec asks for the platform focus ring, unstyled. `accent` is now a neutral
+   * near-white, which would be invisible against a light surface, so the ring keys off
+   * the strong border instead — still obvious, still not a brand colour.
+   */
+  :focus-visible {
+    outline: 2px solid var(--dayly-border-strong);
+    outline-offset: 2px;
+  }
+
+  /*
+   * Anything that ticks or stacks in a column is tabular, so a digit change never
+   * reflows the row. Applied broadly because nearly every number in this app is one
+   * of the two.
+   */
+  :where(button, span, div, td, th, input, output) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: var(--dayly-accent-soft);
+    color: var(--dayly-fg);
+  }
+
+  /* Overlay-style scrollbars — the panel is 340px wide and cannot spare 15px. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dayly-border-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--dayly-border-strong);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--dayly-fg-faint);
+  }
+}
+
+/*
+ * The mini window is a transparent BrowserWindow, so the page itself must paint
+ * nothing outside its own rounded card — otherwise the corners show a square. The
+ * `:has()` rules reach the document background from wherever the class is mounted.
+ */
+:root:has(.mini-root),
+:root:has(.mini-root) body,
+.mini-root {
+  background-color: transparent;
+}
+
+/* Frameless-window drag regions. `app-no-drag` is required on anything clickable
+   inside a draggable surface, or the click is swallowed by the window move. */
+@utility app-drag {
+  -webkit-app-region: drag;
+}
+
+@utility app-no-drag {
+  -webkit-app-region: no-drag;
+}

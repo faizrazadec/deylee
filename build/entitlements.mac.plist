@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Hardened-runtime entitlements for Dayly.
+
+    Only what Chromium's JavaScript engine cannot start without: V8 writes machine
+    code into pages it then executes, which the hardened runtime blocks by default.
+
+    Nothing else is granted on purpose. Dayly opens no sockets, so it asks for no
+    network entitlement; it reads no camera, microphone, contacts or calendar; and
+    the only files it touches outside its own userData folder are the ones the user
+    chooses in a save dialog, which needs no entitlement.
+  -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+</dict>
+</plist>

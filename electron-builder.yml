@@ -1,0 +1,133 @@
+# Packaging configuration for Dayly.
+#
+# Dayly stores nothing off-device and sends no telemetry. The single exception is the
+# update check: `publish` at the bottom points electron-builder at GitHub Releases so
+# it emits the `latest*.yml` manifests electron-updater polls. That check is a user
+# preference (Settings › Updates) and downloads never start without consent.
+
+appId: me.faizraza.dayly
+productName: Dayly
+copyright: Copyright © 2026 Faiz Raza
+
+directories:
+  buildResources: build
+  output: release
+
+# An allow-list of what actually runs: the electron-vite bundles plus the manifest
+# Electron reads `main` and the app name from. Production dependencies are collected
+# separately — electron-builder applies only the *negative* patterns from `files`
+# when it walks node_modules — so better-sqlite3 still ships without being listed.
+files:
+  - out/**/*
+  - package.json
+
+# Tray artwork is read from disk at runtime rather than bundled, so it has to live
+# outside the asar. `trayResourcePath()` resolves to `process.resourcesPath/tray/…`,
+# so the contents of resources/ are copied to the root of the resources directory —
+# `to: resources` would nest them at `process.resourcesPath/resources/tray` and every
+# packaged build would show a blank tray icon.
+extraResources:
+  - from: resources
+    to: .
+
+asar: true
+# A native addon cannot be dlopen'd from inside an asar archive, so better-sqlite3's
+# compiled binary is unpacked next to it.
+asarUnpack:
+  - '**/*.node'
+  - node_modules/better-sqlite3/**
+
+# better-sqlite3 must be built against Electron's V8 ABI, not the host Node's.
+npmRebuild: true
+
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.png
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  gatekeeperAssess: false
+  extendInfo:
+    # A genuine menu-bar app: no dock tile, no Cmd-Tab entry, no main menu. Pairs
+    # with `app.dock.hide()` in MacPlatform — the plist key is what keeps the icon
+    # from flashing into the dock during launch, before any JavaScript runs.
+    LSUIElement: true
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+    - target: portable
+      arch:
+        - x64
+        - arm64
+
+nsis:
+  # A per-user install with a visible wizard: no admin prompt, and the user picks
+  # the directory. Dayly writes only to its own userData folder, so machine-wide
+  # installation would buy nothing.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Dayly
+
+linux:
+  icon: build/icon.png
+  category: Utility
+  synopsis: Local-only time tracker that lives in your tray
+  description: >-
+    Dayly tracks working hours from the system tray. Everything stays on this
+    machine in a single SQLite file: no account, no cloud, no telemetry.
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  desktop:
+    entry:
+      # Matches the WM_CLASS Electron reports, so the shell groups the running app
+      # with its launcher icon instead of showing a second, generic entry.
+      StartupWMClass: Dayly
+
+deb:
+  # `depends` replaces electron-builder's defaults rather than extending them, so
+  # the stock Electron runtime dependencies are repeated here alongside libgtk-3-0
+  # and libnotify4, which the tray and desktop notifications need.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    - xdg-utils
+  # The stock recommend, libappindicator3-1, is gone from current Debian and Ubuntu;
+  # its Ayatana successor is what actually provides a StatusNotifierItem host. It is
+  # a recommend, not a depend, because Dayly falls back to the mini-window without it.
+  recommends:
+    - libayatana-appindicator3-1
+
+# `--publish always` in CI uploads the artifacts *and* the latest.yml / latest-mac.yml /
+# latest-linux.yml manifests. Those manifests are the whole update feed — without them
+# electron-updater has nothing to compare against and no client ever updates.
+#
+# Auto-update reaches Linux (AppImage) and Windows (NSIS) only. macOS is signature-gated
+# by Squirrel.Mac and .deb has no updater at all; on those the app links to the Releases
+# page instead. See UpdateService for the gate.
+publish:
+  - provider: github
+    owner: faizrazadec
+    repo: dayly
