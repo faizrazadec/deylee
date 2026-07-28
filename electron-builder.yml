@@ -17,9 +17,13 @@ directories:
 # Electron reads `main` and the app name from. Production dependencies are collected
 # separately — electron-builder applies only the *negative* patterns from `files`
 # when it walks node_modules — so better-sqlite3 still ships without being listed.
+#
+# LICENSE is not code, but MIT asks for the notice to travel with "all copies or
+# substantial portions of the Software", and a downloaded .dmg or .exe is a copy.
 files:
   - out/**/*
   - package.json
+  - LICENSE
 
 # Tray artwork is read from disk at runtime rather than bundled, so it has to live
 # outside the asar. `trayResourcePath()` resolves to `process.resourcesPath/tray/…`,
@@ -63,6 +67,14 @@ mac:
     # from flashing into the dock during launch, before any JavaScript runs.
     LSUIElement: true
 
+dmg:
+  # Shown when the .dmg is mounted, before the drag-to-Applications window. Named
+  # explicitly rather than left to electron-builder's `license_en.txt` convention,
+  # so there is one licence text in the repo and no second copy to drift from it.
+  # The path resolves against the project root, and an explicit path is passed to
+  # the DMG as-is — only the convention files are rewritten in place to add a BOM.
+  license: LICENSE
+
 win:
   icon: build/icon.png
   target:
@@ -84,6 +96,10 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: Dayly
+  # The same root LICENSE the DMG shows, as the wizard's licence page. A file with
+  # no extension is fine here: only `.html` is special-cased, and everything else is
+  # handed to NSIS as plain text.
+  license: LICENSE
 
 linux:
   icon: build/icon.png
