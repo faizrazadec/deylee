@@ -23,6 +23,8 @@ export class WindowsPlatform implements Platform {
    * hand from the Releases page — it never sees an in-place update.
    */
   readonly supportsAutoUpdate = true;
+
+  readonly trayMenuMode = 'popup' as const;
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
 
   private readonly images = new Map<TrayIconState, NativeImage>();

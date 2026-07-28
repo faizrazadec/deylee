@@ -42,6 +42,19 @@ export interface Platform {
   /** Where a user is sent when Dayly cannot update itself. Same page everywhere. */
   readonly releasesUrl: string;
 
+  /**
+   * How the tray menu is presented.
+   *
+   * `'attached'` — the menu is bound to the icon with `setContextMenu`. Linux tray
+   * hosts (StatusNotifierItem) support nothing else: `click` / `right-click` do not
+   * fire reliably and `popUpContextMenu` is a no-op, so the menu *is* the interaction.
+   *
+   * `'popup'` — the menu is held and shown explicitly on right-click. Required on
+   * macOS and Windows, because an attached menu opens on **left** click too, which
+   * would put the menu on top of the panel that the same click just opened.
+   */
+  readonly trayMenuMode: 'attached' | 'popup';
+
   /** dock.hide(), app user model id, GTK hints — called once, before windows exist. */
   configureApp(): void;
 

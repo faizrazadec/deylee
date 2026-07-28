@@ -42,6 +42,13 @@ export class LinuxPlatform implements Platform {
     typeof process.env.APPIMAGE === 'string' && process.env.APPIMAGE.length > 0;
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
 
+  /**
+   * StatusNotifierItem exposes a menu and little else — click events are swallowed by
+   * the host shell and `popUpContextMenu` does nothing. So the menu stays attached, and
+   * "Open Dayly" in it is how the panel is reached on Linux.
+   */
+  readonly trayMenuMode = 'attached' as const;
+
   private readonly images = new Map<TrayIconState, NativeImage>();
 
   configureApp(): void {

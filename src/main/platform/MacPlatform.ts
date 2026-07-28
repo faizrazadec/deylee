@@ -26,6 +26,8 @@ export class MacPlatform implements Platform {
    * page is the honest version.
    */
   readonly supportsAutoUpdate = false;
+
+  readonly trayMenuMode = 'popup' as const;
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
 
   /** One image serves every state, so it is read from disk once. */

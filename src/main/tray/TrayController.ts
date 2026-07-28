@@ -79,13 +79,13 @@ export class TrayController {
     }
     this.tray = tray;
 
-    tray.on('click', () => {
-      this.onTogglePanel(tray.getBounds());
-    });
+    if (this.platform.trayMenuMode === 'popup') {
+      // Left opens the panel, right opens the menu — and the two never collide,
+      // because the menu is popped up explicitly rather than attached to the icon.
+      tray.on('click', () => {
+        this.onTogglePanel(tray.getBounds());
+      });
 
-    if (this.platform.os !== 'darwin') {
-      // macOS opens the menu from the icon itself; Windows and Linux expect the
-      // right button to do it.
       tray.on('right-click', () => {
         if (this.menu === null) return;
         tray.popUpContextMenu(this.menu);
@@ -197,7 +197,13 @@ export class TrayController {
 
     this.menu = Menu.buildFromTemplate(template);
     this.menuState = state;
-    tray.setContextMenu(this.menu);
+
+    // Only Linux attaches the menu. Attaching it on macOS or Windows would make a
+    // LEFT click open the menu as well as firing 'click', so the menu would appear
+    // on top of the panel that same click just opened.
+    if (this.platform.trayMenuMode === 'attached') {
+      tray.setContextMenu(this.menu);
+    }
   }
 
   /**
