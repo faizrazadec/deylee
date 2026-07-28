@@ -1,10 +1,12 @@
-import { app, nativeImage, shell } from 'electron';
-import type { BrowserWindow, BrowserWindowConstructorOptions, NativeImage, Tray } from 'electron';
+import { app, nativeImage, shell, Tray } from 'electron';
+import type { BrowserWindow, BrowserWindowConstructorOptions, NativeImage } from 'electron';
 import { execFile } from 'node:child_process';
 import { access, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { OsKind, TimerState } from '@shared/types';
 import type { Platform, TrayView } from './Platform';
+import type { TrayHost, TrayHostCallbacks } from './TrayHost';
+import { ElectronTrayHost } from './TrayHost';
 import { formatTrayTooltip, linuxTrayIconPath, trayIconStateFor } from './trayIcons';
 import type { TrayIconState } from './trayIcons';
 
@@ -42,12 +44,8 @@ export class LinuxPlatform implements Platform {
     typeof process.env.APPIMAGE === 'string' && process.env.APPIMAGE.length > 0;
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
 
-  /**
-   * StatusNotifierItem exposes a menu and little else — click events are swallowed by
-   * the host shell and `popUpContextMenu` does nothing. So the menu stays attached, and
-   * "Open Dayly" in it is how the panel is reached on Linux.
-   */
-  readonly trayMenuMode = 'attached' as const;
+  /** No Linux shell highlights an indicator, and none exposes a way to ask. */
+  readonly supportsTrayHighlight = false;
 
   private readonly images = new Map<TrayIconState, NativeImage>();
 
@@ -93,9 +91,24 @@ export class LinuxPlatform implements Platform {
     return linuxTrayIconPath(state);
   }
 
-  applyTray(tray: Tray, view: TrayView): void {
-    tray.setImage(this.stateImage(view.state));
-    tray.setToolTip(formatTrayTooltip(view));
+  createTrayHost(callbacks: TrayHostCallbacks): TrayHost | null {
+    let tray: Tray;
+    try {
+      tray = new Tray(this.stateImage('IDLE'));
+    } catch (error: unknown) {
+      // A desktop can advertise a StatusNotifierItem host and still refuse the icon.
+      // Reporting null puts it down the same path as "no tray at all".
+      console.error('[dayly] the tray icon could not be created', error);
+      return null;
+    }
+    // Attached: StatusNotifierItem swallows click events and `popUpContextMenu` is a
+    // no-op, so the menu is the whole interaction on Linux.
+    return new ElectronTrayHost(tray, { mode: 'attached', supportsTitle: false, callbacks });
+  }
+
+  applyTray(host: TrayHost, view: TrayView): void {
+    host.setImage(linuxTrayIconPath(view.state), false);
+    host.setToolTip(formatTrayTooltip(view));
   }
 
   miniWindowOptions(): Partial<BrowserWindowConstructorOptions> {

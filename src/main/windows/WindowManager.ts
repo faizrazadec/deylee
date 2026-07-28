@@ -89,11 +89,20 @@ export class WindowManager {
   private readonly platform: Platform;
   private readonly prefs: PreferencesStore;
   private readonly windows = new Map<WindowKind, BrowserWindow>();
+  private panelVisibility: ((visible: boolean) => void) | null = null;
   private miniMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(deps: { platform: Platform; prefs: PreferencesStore }) {
     this.platform = deps.platform;
     this.prefs = deps.prefs;
+  }
+
+  /**
+   * Registers the listener that tracks whether the panel is on screen. macOS uses it
+   * to hold the menu-bar selection highlight for exactly as long as the panel is up.
+   */
+  onPanelVisibility(listener: (visible: boolean) => void): void {
+    this.panelVisibility = listener;
   }
 
   get(kind: WindowKind): BrowserWindow | null {
@@ -201,6 +210,12 @@ export class WindowManager {
         if (win.webContents.isDevToolsFocused()) return;
         win.hide();
       });
+      // Driven by the window's own events rather than by the toggle call, so a
+      // dismiss-on-blur clears the tray highlight just as reliably as an explicit
+      // close does.
+      win.on('show', () => this.panelVisibility?.(true));
+      win.on('hide', () => this.panelVisibility?.(false));
+      win.on('closed', () => this.panelVisibility?.(false));
       // A sane default until a tray click supplies real anchor bounds.
       this.positionPanel(win, null);
     }

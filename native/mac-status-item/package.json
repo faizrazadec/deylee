@@ -1,0 +1,12 @@
+{
+  "name": "@dayly/mac-status-item",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Owns an NSStatusItem directly, so its highlight can be held while the panel is open.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "gypfile": true,
+  "dependencies": {
+    "node-addon-api": "^8.9.0"
+  }
+}

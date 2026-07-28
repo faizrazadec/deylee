@@ -582,6 +582,12 @@ async function bootstrap(): Promise<void> {
     onQuit: requestQuit,
   });
 
+  // Holds the macOS menu-bar highlight for as long as the panel is up. Electron's Tray
+  // cannot do this, which is why the macOS platform owns its own NSStatusItem.
+  windows.onPanelVisibility((visible) => {
+    tray.setPanelOpen(visible);
+  });
+
   const rt: Runtime = {
     platform,
     prefs,

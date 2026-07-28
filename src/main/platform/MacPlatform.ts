@@ -1,8 +1,11 @@
-import { app, nativeImage, shell } from 'electron';
-import type { BrowserWindow, BrowserWindowConstructorOptions, NativeImage, Tray } from 'electron';
+import { app, nativeImage, shell, Tray } from 'electron';
+import type { BrowserWindow, BrowserWindowConstructorOptions, NativeImage } from 'electron';
 import { formatHM } from '@shared/time';
 import type { OsKind, TimerState } from '@shared/types';
 import type { Platform, TrayView } from './Platform';
+import type { TrayHost, TrayHostCallbacks } from './TrayHost';
+import { ElectronTrayHost } from './TrayHost';
+import { MacStatusItemHost } from './MacStatusItemHost';
 import { formatTrayTooltip, macTrayIconPath } from './trayIcons';
 
 /**
@@ -27,8 +30,18 @@ export class MacPlatform implements Platform {
    */
   readonly supportsAutoUpdate = false;
 
-  readonly trayMenuMode = 'popup' as const;
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
+
+  /**
+   * Only true once the native status item has actually loaded. A checkout built
+   * without the Command Line Tools falls back to Electron's Tray, which cannot hold
+   * the highlight — and the UI must not claim a capability the fallback lacks.
+   */
+  get supportsTrayHighlight(): boolean {
+    return this.usingNativeItem;
+  }
+
+  private usingNativeItem = false;
 
   /** One image serves every state, so it is read from disk once. */
   private template: NativeImage | null = null;
@@ -47,14 +60,30 @@ export class MacPlatform implements Platform {
     return macTrayIconPath();
   }
 
-  applyTray(tray: Tray, view: TrayView): void {
-    tray.setImage(this.templateImage());
+  /**
+   * Prefers the natively-owned status item, purely so the selection highlight can be
+   * held while the panel is open — Electron's Tray lost that in v7. Falls back to the
+   * Tray when the addon is not present, which costs the highlight and nothing else.
+   */
+  createTrayHost(callbacks: TrayHostCallbacks): TrayHost | null {
+    const native = MacStatusItemHost.load(callbacks);
+    if (native !== null) {
+      this.usingNativeItem = true;
+      return native;
+    }
+    this.usingNativeItem = false;
+    const tray = new Tray(this.templateImage());
+    return new ElectronTrayHost(tray, { mode: 'popup', supportsTitle: true, callbacks });
+  }
+
+  applyTray(host: TrayHost, view: TrayView): void {
+    host.setImage(macTrayIconPath(), true);
 
     // Only a live session gets a title: an idle menu bar stays quiet, and the
     // paused total is frozen rather than hidden so the user still sees the day.
     const showsTotal = view.state === 'RUNNING' || view.state === 'PAUSED';
-    tray.setTitle(showsTotal ? formatHM(view.workedMs) : '');
-    tray.setToolTip(formatTrayTooltip(view));
+    host.setTitle(showsTotal ? formatHM(view.workedMs) : '');
+    host.setToolTip(formatTrayTooltip(view));
   }
 
   miniWindowOptions(): Partial<BrowserWindowConstructorOptions> {

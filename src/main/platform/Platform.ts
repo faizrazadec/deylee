@@ -8,8 +8,9 @@
  * window manager and the tray controller, which are otherwise identical everywhere.
  */
 
-import type { BrowserWindow, BrowserWindowConstructorOptions, Tray } from 'electron';
+import type { BrowserWindow, BrowserWindowConstructorOptions } from 'electron';
 import type { OsKind, TimerState } from '@shared/types';
+import type { TrayHost, TrayHostCallbacks } from './TrayHost';
 import { LinuxPlatform } from './LinuxPlatform';
 import { MacPlatform } from './MacPlatform';
 import { WindowsPlatform } from './WindowsPlatform';
@@ -43,17 +44,10 @@ export interface Platform {
   readonly releasesUrl: string;
 
   /**
-   * How the tray menu is presented.
-   *
-   * `'attached'` — the menu is bound to the icon with `setContextMenu`. Linux tray
-   * hosts (StatusNotifierItem) support nothing else: `click` / `right-click` do not
-   * fire reliably and `popUpContextMenu` is a no-op, so the menu *is* the interaction.
-   *
-   * `'popup'` — the menu is held and shown explicitly on right-click. Required on
-   * macOS and Windows, because an attached menu opens on **left** click too, which
-   * would put the menu on top of the panel that the same click just opened.
+   * True when the menu-bar item can hold a selection highlight while the panel is
+   * open. Only the macOS host can, and only when its native addon loaded.
    */
-  readonly trayMenuMode: 'attached' | 'popup';
+  readonly supportsTrayHighlight: boolean;
 
   /** dock.hide(), app user model id, GTK hints — called once, before windows exist. */
   configureApp(): void;
@@ -64,8 +58,18 @@ export interface Platform {
   /** Absolute path to the tray image for a state. */
   trayImagePath(state: TimerState): string;
 
+  /**
+   * Builds the menu-bar / tray surface, or returns null when one cannot be created.
+   *
+   * The implementation differs by more than styling: macOS owns an `NSStatusItem`
+   * outright so the highlight can be held, while Windows and Linux use Electron's
+   * `Tray`. `TrayController` is written against the returned interface and does not
+   * know which it got.
+   */
+  createTrayHost(callbacks: TrayHostCallbacks): TrayHost | null;
+
   /** Applies image + title + tooltip for the current view. */
-  applyTray(tray: Tray, view: TrayView): void;
+  applyTray(host: TrayHost, view: TrayView): void;
 
   /** Per-OS additions to the mini-window's constructor options. */
   miniWindowOptions(): Partial<BrowserWindowConstructorOptions>;

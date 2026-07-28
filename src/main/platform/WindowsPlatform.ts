@@ -1,7 +1,9 @@
-import { app, nativeImage, shell } from 'electron';
-import type { BrowserWindow, BrowserWindowConstructorOptions, NativeImage, Tray } from 'electron';
+import { app, nativeImage, shell, Tray } from 'electron';
+import type { BrowserWindow, BrowserWindowConstructorOptions, NativeImage } from 'electron';
 import type { OsKind, TimerState } from '@shared/types';
 import type { Platform, TrayView } from './Platform';
+import type { TrayHost, TrayHostCallbacks } from './TrayHost';
+import { ElectronTrayHost } from './TrayHost';
 import { formatTrayTooltip, trayIconStateFor, windowsTrayIconPath } from './trayIcons';
 import type { TrayIconState } from './trayIcons';
 
@@ -24,8 +26,10 @@ export class WindowsPlatform implements Platform {
    */
   readonly supportsAutoUpdate = true;
 
-  readonly trayMenuMode = 'popup' as const;
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
+
+  /** The notification area has no selected state to hold. */
+  readonly supportsTrayHighlight = false;
 
   private readonly images = new Map<TrayIconState, NativeImage>();
 
@@ -43,9 +47,16 @@ export class WindowsPlatform implements Platform {
     return windowsTrayIconPath(state);
   }
 
-  applyTray(tray: Tray, view: TrayView): void {
-    tray.setImage(this.stateImage(view.state));
-    tray.setToolTip(formatTrayTooltip(view));
+  createTrayHost(callbacks: TrayHostCallbacks): TrayHost | null {
+    const tray = new Tray(this.stateImage('IDLE'));
+    // Popup, not attached: an attached menu opens on left click too, which would put
+    // the menu on top of the panel that same click just opened.
+    return new ElectronTrayHost(tray, { mode: 'popup', supportsTitle: false, callbacks });
+  }
+
+  applyTray(host: TrayHost, view: TrayView): void {
+    host.setImage(windowsTrayIconPath(view.state), false);
+    host.setToolTip(formatTrayTooltip(view));
   }
 
   miniWindowOptions(): Partial<BrowserWindowConstructorOptions> {

@@ -36,6 +36,11 @@ asar: true
 asarUnpack:
   - '**/*.node'
   - node_modules/better-sqlite3/**
+  # The macOS status-item addon. It is what holds the menu-bar selection highlight,
+  # which Electron's own Tray cannot do; without it the app still runs, just without
+  # the highlight. Listed explicitly as well as via '**/*.node' so the whole package —
+  # its index.js loader, not only the binary — lands outside the asar.
+  - node_modules/@dayly/mac-status-item/**
 
 # better-sqlite3 must be built against Electron's V8 ABI, not the host Node's.
 npmRebuild: true
