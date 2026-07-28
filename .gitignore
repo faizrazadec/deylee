@@ -18,6 +18,14 @@ build/Debug/
 prebuilds/
 *.node
 
+# node-gyp writes Makefiles, config.gypi and gyp-mac-tool next to each addon's
+# binding.gyp — one level above the Release/ and Debug/ rules above, so those do not
+# catch them. Generated per machine: config.gypi embeds the building user's absolute
+# paths and Node version, which would break every CI runner and leak local paths into
+# public history. Anchored to native/ so the tracked top-level build/ — icon.png and
+# the mac entitlements, both packaging inputs — stays committed.
+native/*/build/
+
 # Test / coverage
 coverage/
 .nyc_output/
