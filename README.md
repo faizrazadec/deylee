@@ -321,4 +321,4 @@ above for the sleep, lock and idle prompts that decide what a gap becomes.
 
 ## Licence
 
-MIT © Muhammad Faiz Raza
+MIT © Muhammad Faiz Raza — see [LICENSE](LICENSE).
