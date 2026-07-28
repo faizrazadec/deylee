@@ -88,6 +88,12 @@ export class Repository {
   findDay(date: DateKey): Day | null;
   getOrCreateDay(date: DateKey, targetMinutes: number, now: EpochMs): Day;
   setDayEnded(dayId: number, endedAt: EpochMs | null): Day;
+  /**
+   * Re-stamp an existing day's target. `getOrCreateDay` only ever stamps at creation,
+   * so this is the one path by which a changed preference reaches a day already under
+   * way; callers pass only the day in progress, never a past one.
+   */
+  setDayTarget(dayId: number, targetMinutes: number): Day;
 
   listSegments(dayId: number): Segment[];              // ordered by started_at
   getDayDetail(date: DateKey, now?: EpochMs): DayDetail | null;
@@ -150,6 +156,12 @@ Backed by `electron-store` (`new Store({ name: 'preferences', defaults })`). Val
 rejected. `showMiniWindow`'s default comes from `platformDefaults` (on for Windows/Linux,
 off for macOS).
 
+`launchAtLogin` is the one preference the store does **not** own outright: the system lets
+the user change it too (macOS System Settings, the autostart file, the Run key), so startup
+reconciles the stored value against `platform.isLoginItemEnabled()` and the **OS wins**.
+Without that the toggle would go on claiming "on" after the user switched Dayly off in
+System Settings, and the stale preference would silently re-register it on the next launch.
+
 ---
 
 ## 3. Platform abstraction — `src/main/platform/`
@@ -208,7 +220,10 @@ export function createPlatform(): Platform;
   changes and the title keeps showing the frozen total.
 - `configureMiniWindow` → `setAlwaysOnTop(true, 'floating')`,
   `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })`.
-- `setLoginItemEnabled` → `app.setLoginItemSettings({ openAtLogin, openAsHidden: true })`.
+- `setLoginItemEnabled` → `app.setLoginItemSettings({ openAtLogin })`. No `openAsHidden`:
+  it is deprecated and ignored from macOS 13 on, where registration goes through
+  `SMAppService`, and a login launch is silent anyway because `configureApp` hides the
+  dock and no window opens at startup.
 - `revealInFileManager` → `shell.showItemInFolder`.
 
 ### `WindowsPlatform.ts`
@@ -269,6 +284,13 @@ export class TimerService {
 
   /** Splits the open segment if it has run past local midnight. Idempotent. */
   rollOverMidnight(now?: EpochMs): TimerSnapshot;
+
+  /**
+   * Re-stamps the day in progress from `dailyTargetHours`, returning the dates that
+   * changed (empty when the row does not exist yet or already matches). Emits nothing:
+   * the caller announces the change it already knows about.
+   */
+  syncTodayTarget(): DateKey[];
 
   onSnapshot(listener: (snapshot: TimerSnapshot) => void): () => void;
   /** Emits the current snapshot to listeners. */
@@ -467,12 +489,22 @@ export function registerIpcHandlers(deps: {
   resolveIdle: (promptId: string, choice: IdleChoice) => TimerSnapshot;
   resolveWake: (promptId: string, choice: WakeChoice) => TimerSnapshot;
   platformInfo: () => PlatformInfo;
+  /** Applies the OS login item. Rejects when the OS refuses; the caller must not persist then. */
+  setLoginItemEnabled: (enabled: boolean) => Promise<void>;
 }): void;
 ```
 
 One `ipcMain.handle` per `INVOKE` channel, each returning exactly the type declared on
 `DaylyApi`. Handlers **validate every argument** — they are the trust boundary — and
 never throw across the bridge: failures become `{ ok: false, code, message }`.
+
+`prefs:set` is the single deliberate exception, because its contract has nowhere to put a
+failure: every value it could fall back to is a set of preferences the renderer assigns to
+state and reports as saved, so a write that did not happen **rejects** instead. Reads stay
+asymmetric — `prefs:get-all` still falls back to the defaults, since a window handed
+nothing cannot render at all. A read that lies is a wrong screen; a write that lies is lost
+data. `launchAtLogin` is written OS-first: `setLoginItemEnabled` is awaited and the
+preference is stored only if the OS accepted it.
 
 Segment mutations use `validateSegment` from `@domain/overlap` against the day's other
 segments, apply `splitAtMidnight` when an edit stretches across a boundary, run in a

@@ -27,6 +27,7 @@ import { Button } from '@renderer/components/Button';
 import { Modal } from '@renderer/components/Modal';
 import { ProgressBar } from '@renderer/components/ProgressBar';
 import { TimerDisplay } from '@renderer/components/TimerDisplay';
+import { usePrefs } from '@renderer/hooks/usePrefs';
 import { useSnapshot } from '@renderer/hooks/useSnapshot';
 import { useUpdates } from '@renderer/hooks/useUpdates';
 import { api, cn } from '@renderer/lib/api';
@@ -76,6 +77,10 @@ function fireAndForget(promise: Promise<unknown>): void {
 export function PanelApp() {
   const { snapshot, live, tick } = useSnapshot();
   const updates = useUpdates();
+
+  // No preference is shown here, but `usePrefs` is what stamps the resolved theme on
+  // <html>; without it an explicit light/dark choice would never reach this window.
+  usePrefs();
 
   const [queue, setQueue] = useState<QueuedPrompt[]>([]);
   const [resolving, setResolving] = useState(false);

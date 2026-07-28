@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { EVENT } from '@shared/ipc';
+import type { HistoryInvalidated } from '@shared/ipc';
 import { formatCompact } from '@shared/time';
 import type {
   EpochMs,
@@ -364,16 +365,87 @@ function syncHeartbeat(rt: Runtime, shouldRun: boolean): void {
 function handlePrefsChange(rt: Runtime, prefs: Preferences): void {
   rt.windows.broadcast<Preferences>(EVENT.prefsChanged, prefs);
   rt.windows.syncMiniWindow(prefs.showMiniWindow);
-  applyLaunchAtLogin(rt.platform, prefs.launchAtLogin);
+  // The IPC write path applies the login item *before* it persists anything, so that a
+  // refused registration can be reported instead of confirmed. This stays as the safety
+  // net for a change that arrives another way — `prefs.reset()` is reachable over IPC.
+  void applyLaunchAtLogin(rt.platform, prefs.launchAtLogin);
+  syncTodayTarget(rt);
 }
 
-/** Writing a login item touches the OS, so it only happens when the value moves. */
-function applyLaunchAtLogin(platform: Platform, enabled: boolean): void {
+/**
+ * Writing a login item touches the OS, so it only happens when the value moves — and
+ * the value is recorded only once the OS has accepted it. Remembering a write that
+ * failed as applied would mean never retrying it.
+ */
+async function applyLaunchAtLogin(platform: Platform, enabled: boolean): Promise<void> {
   if (launchAtLoginApplied === enabled) return;
-  launchAtLoginApplied = enabled;
-  platform.setLoginItemEnabled(enabled).catch((error: unknown) => {
+  try {
+    await platform.setLoginItemEnabled(enabled);
+    launchAtLoginApplied = enabled;
+  } catch (error) {
     console.error('[dayly] could not update the login item:', error);
-  });
+  }
+}
+
+/**
+ * Reconciles the stored preference against the OS at startup.
+ *
+ * The login item is one of the few settings the *system* also lets the user change —
+ * macOS System Settings, the autostart file, the Run key — which makes the OS, not the
+ * store, the truth. Without this the toggle would go on claiming "on" after the user
+ * switched Dayly off in System Settings, and the stale preference would silently
+ * re-register it on the next launch, overriding the choice they made there.
+ */
+async function reconcileLaunchAtLogin(rt: Runtime): Promise<void> {
+  const stored = rt.prefs.get('launchAtLogin');
+  let actual: boolean;
+  try {
+    actual = await rt.platform.isLoginItemEnabled();
+  } catch (error) {
+    // With no answer from the OS there is nothing to reconcile against, and guessing in
+    // either direction is worse than leaving the preference exactly as the user left it.
+    console.error('[dayly] could not read the login item:', error);
+    return;
+  }
+
+  // Recorded before the write below, so the change listener it triggers sees the value
+  // as already applied rather than writing it to the OS a second time.
+  launchAtLoginApplied = actual;
+  if (actual !== stored) {
+    rt.prefs.set('launchAtLogin', actual);
+    return;
+  }
+  if (!actual) return;
+
+  // Both sides agree it is on, but Linux names the executable by path in the autostart
+  // entry, and an AppImage the user has moved since leaves an entry pointing at nothing.
+  // An entry that is supposed to exist is therefore rewritten rather than trusted; macOS
+  // and Windows see the state already matches and do nothing.
+  try {
+    await rt.platform.setLoginItemEnabled(true);
+  } catch (error) {
+    console.error('[dayly] could not refresh the login item:', error);
+  }
+}
+
+/**
+ * Re-stamps the day in progress when the daily target changes.
+ *
+ * Past days keep the target they were actually tracked against — changing the target
+ * must never rewrite history — but the day on screen has to follow the number the user
+ * just set, or the panel's progress bar and today's cell in History go on answering to
+ * the old one until midnight.
+ */
+function syncTodayTarget(rt: Runtime): void {
+  try {
+    const changed = rt.timer.syncTodayTarget();
+    if (changed.length === 0) return;
+    rt.windows.broadcast<HistoryInvalidated>(EVENT.historyInvalidated, { dates: [...changed] });
+    // Carries the new target to the panel and the tray in the same breath.
+    rt.timer.emit();
+  } catch (error) {
+    console.error('[dayly] could not apply the new daily target:', error);
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -549,9 +621,15 @@ async function bootstrap(): Promise<void> {
     resolveIdle: (promptId, choice) => applyIdleChoice(rt, promptId, choice),
     resolveWake: (promptId, choice) => applyWakeChoice(rt, promptId, choice),
     platformInfo: () => describePlatform(rt),
+    // The write path applies the login item before it persists the preference, so a
+    // rejection here is what stops a refused registration being reported as saved.
+    setLoginItemEnabled: async (enabled) => {
+      await platform.setLoginItemEnabled(enabled);
+      launchAtLoginApplied = enabled;
+    },
   });
 
-  applyLaunchAtLogin(platform, prefs.get('launchAtLogin'));
+  await reconcileLaunchAtLogin(rt);
   windows.syncMiniWindow(prefs.get('showMiniWindow'));
 
   idle.start();

@@ -81,17 +81,27 @@ export class MacPlatform implements Platform {
   }
 
   async setLoginItemEnabled(enabled: boolean): Promise<void> {
-    // Writing the login item is a privileged call that macOS refuses for an unsigned
-    // binary — which is every `npm run dev` run. Applying the preference on startup
-    // would then log a scary "Operation not permitted" on every launch for a setting
-    // that is already correct, so only write when the state actually has to change.
+    // Registration goes through SMAppService, so every write is a privileged change to
+    // a system-owned database. Re-registering a login item that is already registered
+    // buys nothing, which is what makes applying the preference on every startup free.
     if (app.getLoginItemSettings().openAtLogin === enabled) return;
-    // `openAsHidden` keeps a login launch from stealing the screen — the tray icon
-    // appearing is the whole of the startup UI.
-    app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: true });
+    // Nothing here has to suppress the startup UI: `configureApp` makes Dayly an
+    // accessory app and no window opens at launch, so a login launch is already silent.
+    // `openAsHidden` would not help even if it were passed — it is deprecated and
+    // ignored from macOS 13 on, where SMAppService owns the registration.
+    //
+    // A failed write rejects out of this method on purpose; the caller reports it
+    // rather than leaving a preference the OS never stored looking saved.
+    app.setLoginItemSettings({ openAtLogin: enabled });
   }
 
   async isLoginItemEnabled(): Promise<boolean> {
+    // The same settings object also carries the SMAppService `status`, one of
+    // `not-registered`, `enabled`, `requires-approval` or `not-found`. `openAtLogin` is
+    // false for `requires-approval` — the state macOS leaves behind when the user turns
+    // Dayly off in System Settings > General > Login Items — so reporting `openAtLogin`
+    // verbatim reports what will actually happen at the next login, which is the answer
+    // callers want.
     return app.getLoginItemSettings().openAtLogin;
   }
 

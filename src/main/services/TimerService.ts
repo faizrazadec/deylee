@@ -21,7 +21,7 @@ import type { IdlePlan, RecoveryPlan, WakePlan } from '@domain/recovery';
 import type { Repository } from '@main/db/repository';
 import type { PreferencesStore } from '@main/store/preferences';
 import { dateKeyOf } from '@shared/time';
-import type { EpochMs, SegmentType, TimerSnapshot, TimerState } from '@shared/types';
+import type { DateKey, EpochMs, SegmentType, TimerSnapshot, TimerState } from '@shared/types';
 
 export interface TimerServiceDeps {
   repo: Repository;
@@ -78,8 +78,9 @@ export class TimerService {
       firstStartAt: totals.firstStartAt,
       lastEndAt: totals.lastEndAt,
       // The day row's stamped target wins so that the panel and the History window
-      // never disagree about whether a day met its goal; a changed preference applies
-      // from the next day on.
+      // never disagree about whether a day met its goal. Past days therefore keep the
+      // target they were actually run against; the day in progress is kept current by
+      // `syncTodayTarget`.
       targetMinutes: day === null ? this.currentTargetMinutes() : day.targetMinutes,
       asOf: now,
     };
@@ -245,6 +246,40 @@ export class TimerService {
       this.openAt(split.reopened.type, boundary, targetMinutes, now);
     });
     return this.emit();
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Preferences                                                             */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Re-stamps the current day's target from the preference. Returns the dates that
+   * changed.
+   *
+   * Only the day in progress is touched: a target is stamped onto a day row at
+   * creation so that History reports every past day against the goal it was actually
+   * run against, and changing the preference must not rewrite that record.
+   *
+   * Deliberately silent — it neither emits a snapshot nor broadcasts anything, because
+   * the caller is already announcing the preference change and would otherwise send
+   * two updates for one edit. The returned dates are what it needs to do that.
+   */
+  syncTodayTarget(): DateKey[] {
+    // The service's own clock, not `Date.now`, so a test that fakes the clock sees the
+    // same day here as everywhere else.
+    const date = dateKeyOf(this.clock());
+    const day = this.repo.findDay(date);
+    // No row yet: nothing is stamped, and whoever creates it will stamp the preference
+    // as it stands then.
+    if (day === null) return [];
+
+    const targetMinutes = this.currentTargetMinutes();
+    // The preference can be re-saved unchanged, and a write plus a redraw for an
+    // identical value is pure churn.
+    if (day.targetMinutes === targetMinutes) return [];
+
+    this.repo.setDayTarget(day.id, targetMinutes);
+    return [date];
   }
 
   /* ---------------------------------------------------------------------- */

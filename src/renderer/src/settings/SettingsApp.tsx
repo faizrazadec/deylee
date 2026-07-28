@@ -179,12 +179,30 @@ export function SettingsApp() {
   // guessed one — the version is the whole point of the line.
   const versionLabel = updates.info === null ? 'Version' : `Version ${updates.info.currentVersion}`;
 
-  // A build that cannot install its own updates still benefits from checking, so the
-  // toggle above stays live and only the ending changes: a page instead of a restart.
-  const versionDescription =
-    updates.info !== null && !updates.info.canAutoUpdate
-      ? 'This build can’t install updates itself. Dayly will still tell you when a new version exists and take you to the download.'
-      : undefined;
+  // `null` means `getInfo` has not answered yet; assume the ordinary case until it does,
+  // the same way the platform probe above does. Claiming a build is incapable on the
+  // strength of an unanswered question would be its own kind of lying.
+  const canAutoUpdate = updates.info === null || updates.info.canAutoUpdate;
+
+  // The gate in UpdateService is all-or-nothing: where a self-update cannot work there is
+  // also no feed to ask, so the check is never scheduled and this toggle would be a
+  // switch wired to nothing. It is disabled rather than left to look meaningful.
+  const updateCheckDescription = canAutoUpdate
+    ? 'Dayly’s only network request. Nothing is downloaded without asking.'
+    : 'This build has no update feed, so there is nothing to check on a schedule. Dayly makes no network request either way.';
+
+  // Nothing ever checks on such a build, so the notification this line used to promise
+  // was never coming; the Releases page is the only place a new version shows up.
+  const versionDescription = canAutoUpdate
+    ? undefined
+    : 'This build can’t install updates or check for them, so Dayly won’t tell you when a new version exists — look on the Releases page.';
+
+  // The section header makes the same claim as the toggle and has to fall the same way:
+  // a build with no feed performs no version check, so promising one here would put the
+  // lie back two lines above the place it was just removed from.
+  const updatesSectionDescription = canAutoUpdate
+    ? 'A version check against the project’s public releases page. No account, no telemetry, no payload.'
+    : 'This build has no update feed, so Dayly never checks. New versions live on the project’s public releases page.';
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-surface text-fg antialiased">
@@ -368,15 +386,13 @@ export function SettingsApp() {
               </div>
             </SettingsSection>
 
-            <SettingsSection
-              title="Updates"
-              description="A version check against the project’s public releases page. No account, no telemetry, no payload."
-            >
+            <SettingsSection title="Updates" description={updatesSectionDescription}>
               <Toggle
                 checked={prefs.updateCheckEnabled}
                 onChange={(next) => write('updateCheckEnabled', next)}
                 label="Check for updates automatically"
-                description="Dayly’s only network request. Nothing is downloaded without asking."
+                description={updateCheckDescription}
+                disabled={!canAutoUpdate}
               />
 
               <SettingsRow

@@ -5,10 +5,14 @@
  * as the page it happens to be running, so nothing reaches the repository before it has
  * been narrowed here — shapes, finite numbers, date keys and enum membership.
  *
- * Handlers also never throw. An `invoke` rejection surfaces in the renderer as an
- * opaque Error with no code, which the UI cannot act on, so failures are returned as
+ * Handlers also all but never throw. An `invoke` rejection surfaces in the renderer as
+ * an opaque Error with no code, which the UI cannot act on, so failures are returned as
  * values instead: `MutationResult` where the contract has one, and an unsurprising
  * fallback everywhere else.
+ *
+ * `prefs:set` is the one deliberate exception, explained where it is registered: its
+ * contract carries no failure case, so the only fallback it could return is a set of
+ * preferences that reads as a successful save.
  */
 
 import { BrowserWindow, app, dialog, ipcMain } from 'electron';
@@ -69,6 +73,8 @@ export interface IpcHandlerDeps {
   resolveIdle: (promptId: string, choice: IdleChoice) => TimerSnapshot;
   resolveWake: (promptId: string, choice: WakeChoice) => TimerSnapshot;
   platformInfo: () => PlatformInfo;
+  /** Applies the OS login item. Rejects when the OS refuses; the caller must not persist then. */
+  setLoginItemEnabled: (enabled: boolean) => Promise<void>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -252,6 +258,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     resolveIdle,
     resolveWake,
     platformInfo,
+    setLoginItemEnabled,
   } = deps;
 
   /** Runs `fn`, falling back to a safe value if the database or store misbehaves. */
@@ -641,10 +648,23 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   /**
    * Writes one preference, rejecting unknown keys and values of the wrong type. The
    * store still clamps ranges; this only guarantees it is handed the right shape.
+   *
+   * `null` means the request was refused and nothing was written. It is async only
+   * because `launchAtLogin` has work to do outside the store before it may be stored.
    */
-  function writePreference(key: string, value: unknown): Preferences | null {
+  async function writePreference(key: string, value: unknown): Promise<Preferences | null> {
     switch (key) {
-      case 'launchAtLogin':
+      case 'launchAtLogin': {
+        if (typeof value !== 'boolean') return null;
+        // The OS goes first and is awaited. A refused registration — an unwritable
+        // autostart directory, a denied `SMAppService` — used to be applied after the
+        // reply had already been sent, so the store kept a `true` describing a login
+        // item that does not exist and the user was told it had saved. Letting this
+        // reject leaves the preference untouched, which is the honest answer.
+        await setLoginItemEnabled(value);
+        return prefs.set(key, value);
+      }
+
       case 'showMiniWindow':
       case 'idleDetectionEnabled':
       case 'autoPauseOnSleep':
@@ -686,21 +706,46 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     guard(
       INVOKE.prefsGetAll,
       () => prefs.getAll(),
+      // Deliberately asymmetric with `prefs:set` below, and the asymmetry is the point.
+      // A window handed nothing cannot render at all, so a failed *read* falls back to
+      // the compiled-in defaults and the app stays usable. A failed *write* must not:
+      // defaults returned from a write are indistinguishable from a saved value, so the
+      // window would confirm settings the user never chose and quietly drop the ones
+      // they did. A read that lies is a wrong screen; a write that lies is lost data.
       () => DEFAULT_PREFERENCES,
     ),
   );
 
-  ipcMain.handle(INVOKE.prefsSet, (_event, payload: unknown): Preferences =>
-    guard(
-      INVOKE.prefsSet,
-      () => {
-        if (!isRecord(payload) || typeof payload.key !== 'string') return prefs.getAll();
-        // An unknown key or a mistyped value leaves the stored preferences untouched.
-        return writePreference(payload.key, payload.value) ?? prefs.getAll();
-      },
-      () => DEFAULT_PREFERENCES,
-    ),
-  );
+  /**
+   * The one channel in this file that is allowed to reject.
+   *
+   * There is no `MutationResult` here to carry a failure, and every value this could
+   * fall back to — the defaults, or the preferences as they still stand — is a set of
+   * preferences the renderer would assign to state and report as saved. So a write that
+   * did not happen throws, which is the only signal the contract has left. The UI is
+   * already waiting for it: `usePrefs.setPref` assigns state on success only, so the
+   * control snaps back to its real value, and `SettingsApp.write` flashes "Could not
+   * save" instead of "Saved".
+   */
+  ipcMain.handle(INVOKE.prefsSet, async (_event, payload: unknown): Promise<Preferences> => {
+    try {
+      if (!isRecord(payload) || typeof payload.key !== 'string') {
+        throw new Error('A preference write must name the preference to write.');
+      }
+      const next = await writePreference(payload.key, payload.value);
+      if (next === null) {
+        // An unknown key or a mistyped value left the stored preferences untouched, so
+        // saying so is the only truthful reply.
+        throw new Error(`Could not save "${payload.key}": unknown preference, or wrong type.`);
+      }
+      return next;
+    } catch (error) {
+      // Logged as well as rethrown: the renderer only ever sees an opaque Error, so the
+      // reason for the refusal would otherwise exist nowhere.
+      logFailure(INVOKE.prefsSet, error);
+      throw error;
+    }
+  });
 
   ipcMain.handle(INVOKE.prefsReset, (): Preferences =>
     guard(

@@ -171,6 +171,10 @@ function prepareStatements(db: Database.Database) {
       'UPDATE days SET ended_at = ? WHERE id = ?',
     ),
 
+    // Re-stamping a target is deliberately by id rather than by date: only the day in
+    // progress is ever passed here, so a changed preference cannot rewrite history.
+    updateDayTarget: db.prepare<[number, number]>('UPDATE days SET target_minutes = ? WHERE id = ?'),
+
     segmentsByDay: db.prepare<[number], SegmentRow>(
       `SELECT ${SEGMENT_COLUMNS} FROM segments WHERE day_id = ? ORDER BY started_at ASC, id ASC`,
     ),
@@ -278,6 +282,20 @@ export class Repository {
   /** `null` clears the flag — the user pressed Start again after End Day. */
   setDayEnded(dayId: number, endedAt: EpochMs | null): Day {
     this.stmt.updateDayEnded.run(endedAt, dayId);
+    const row = this.stmt.dayById.get(dayId);
+    if (row === undefined) throw new Error(`Day ${dayId} does not exist.`);
+    return toDay(row);
+  }
+
+  /**
+   * Re-stamps the target of an existing day. `getOrCreateDay` only ever stamps at
+   * creation, so this is the one path by which a changed preference reaches a day that
+   * has already started — and the caller is responsible for passing only that day.
+   */
+  setDayTarget(dayId: number, targetMinutes: number): Day {
+    // Same normalisation as `getOrCreateDay`: the column has INTEGER affinity, so a
+    // fractional target would be stored as REAL and read back as a float.
+    this.stmt.updateDayTarget.run(Math.round(targetMinutes), dayId);
     const row = this.stmt.dayById.get(dayId);
     if (row === undefined) throw new Error(`Day ${dayId} does not exist.`);
     return toDay(row);
