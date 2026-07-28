@@ -2,7 +2,7 @@
   "name": "dayly",
   "version": "0.1.0",
   "description": "A local-only, cross-platform desktop time tracker that lives in your tray.",
-  "author": "Faiz Raza",
+  "author": "Muhammad Faiz Raza",
   "license": "MIT",
   "private": true,
   "main": "./out/main/index.js",
