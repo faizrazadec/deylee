@@ -42,6 +42,13 @@ const DEV_REASON = 'Updates are only checked in an installed build.';
 
 const UNSIGNED_REASON = 'Automatic updates need a signed build — check the Releases page.';
 
+/**
+ * The Store build is the one shut gate that is not a shortcoming, so it must not borrow
+ * `UNSIGNED_REASON`: that build *is* signed, and sending its users to the Releases page
+ * would send them away from the copy that actually updates itself.
+ */
+const STORE_REASON = 'The Microsoft Store keeps Dayly up to date.';
+
 const NO_FEED_REASON = 'This build has no update feed — check the Releases page.';
 
 /** Transport failures are the common case and deserve plain language, not an errno. */
@@ -163,6 +170,9 @@ export class UpdateService {
 
   /** Why the gate is shut, in words meant for the Settings pane. */
   private gateReason(): string {
+    // Checked before `isPackaged` because a Store build is packaged too, and the reason
+    // it cannot self-update is the packaging, not a missing signature.
+    if (process.windowsStore) return STORE_REASON;
     return app.isPackaged ? UNSIGNED_REASON : DEV_REASON;
   }
 

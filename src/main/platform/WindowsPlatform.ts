@@ -23,8 +23,14 @@ export class WindowsPlatform implements Platform {
    * NSIS installs an unsigned package without complaint, so differential updates work
    * end to end. SmartScreen only ever appears on the *first* install, downloaded by
    * hand from the Releases page — it never sees an in-place update.
+   *
+   * An MSIX build is the exception, and `process.windowsStore` is Electron's own signal
+   * for it. A packaged app cannot rewrite its own install: the package is immutable and
+   * the Store owns servicing. Left true, the updater would find a GitHub release newer
+   * than the Store's copy and offer an update that can never install — so the gate in
+   * `UpdateService` shuts here instead, and nothing is ever downloaded.
    */
-  readonly supportsAutoUpdate = true;
+  readonly supportsAutoUpdate = !process.windowsStore;
 
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
 
