@@ -87,6 +87,32 @@ win:
         - x64
         - arm64
 
+# The Microsoft Store build. Deliberately not in `win.target`: an appx can only be
+# assembled by `makeappx.exe` from the Windows SDK, so adding it there would break
+# `npm run dist:win` on every non-Windows machine. It is built on demand instead —
+# `npx electron-builder --win appx` on Windows or the CI Windows runner.
+#
+# The Store signs the package itself, so no certificate is needed here. That is the
+# whole reason this route is cheaper than the NSIS one, which needs a paid OV/EV
+# certificate to get past SmartScreen.
+appx:
+  # These three must match the reservation in Partner Center byte-for-byte; a mismatch
+  # is rejected at upload, not at build time. From Product → Product identity.
+  identityName: MuhammadFaizRaza.Dayly-TimeTracker
+  publisher: CN=A99F7A34-BB95-40D5-ADFD-6BD317696A8D
+  publisherDisplayName: Muhammad Faiz Raza
+  # The reserved name, which is why it differs from `productName` above: plain "Dayly"
+  # was already taken in the Store by an unrelated diary app. Every other target keeps
+  # the short name.
+  displayName: Dayly - Time Tracker
+  applicationId: DaylyTimeTracker
+  # Dayly is a menu-bar app with no live tile to show; a transparent backplate keeps the
+  # icon from sitting on a coloured square in the Start menu.
+  backgroundColor: transparent
+  showNameOnTiles: false
+  languages:
+    - en-US
+
 nsis:
   # A per-user install with a visible wizard: no admin prompt, and the user picks
   # the directory. Dayly writes only to its own userData folder, so machine-wide
