@@ -126,7 +126,16 @@ export class LinuxPlatform implements Platform {
       '/org/freedesktop/DBus',
       'org.freedesktop.DBus.ListNames',
     ]);
-    return viaDbusSend !== null && hasStatusNotifierWatcher(viaDbusSend);
+    if (viaDbusSend !== null) return hasStatusNotifierWatcher(viaDbusSend);
+
+    // Neither probe could run at all — the ordinary case inside a snap, where neither
+    // binary is part of the confined runtime. That is *unknown*, not "no tray", and
+    // the two wrong answers are not equally cheap. Answering "no" hides the tray
+    // permanently on a desktop that has a perfectly good StatusNotifierItem host, and
+    // nothing ever re-checks. Answering "yes" costs nothing when it is wrong, because
+    // `createTrayHost` already catches a tray that refuses to be created and reports
+    // null, which lands on the same fallback. So assume it is there.
+    return true;
   }
 
   trayImagePath(state: TimerState): string {
