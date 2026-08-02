@@ -50,12 +50,26 @@ export class LinuxPlatform implements Platform {
   private readonly images = new Map<TrayIconState, NativeImage>();
 
   configureApp(): void {
-    // Deliberately empty. `setAppUserModelId` is Windows-only; GTK switches such as
-    // `--gtk-version` have to be appended before `whenReady`, which has already
-    // resolved by the time this runs; and `app.setName` must never be called here
-    // because `app.getPath('userData')` is derived from it and the database has not
-    // been opened yet. The autostart entry is named after the app name for the same
+    // `setAppUserModelId` is Windows-only; GTK switches such as `--gtk-version` have
+    // to be appended before `whenReady`, which has already resolved by the time this
+    // runs; and `app.setName` must never be called here because
+    // `app.getPath('userData')` is derived from it and the database has not been
+    // opened yet. The autostart entry is named after the app name for the same
     // reason — that is how GNOME and Wayland match a window to its .desktop file.
+    //
+    // Redirecting userData, however, is exactly what has to happen here and nowhere
+    // else: it must land before the store and the database are opened, and bootstrap
+    // calls this first.
+    const common = process.env.SNAP_USER_COMMON;
+    if (common !== undefined && common.length > 0) {
+      // Inside a snap, Electron resolves userData under $SNAP_USER_DATA, which snapd
+      // keeps *per revision* and rolls back with `snap revert`. A user recovering from
+      // a bad update would silently lose every tracked hour. $SNAP_USER_COMMON is the
+      // revision-independent directory snapd provides for precisely this, and moving
+      // the root moves the database, the preferences and the backups together rather
+      // than leaving them in three different places.
+      app.setPath('userData', join(common, 'dayly'));
+    }
   }
 
   async detectTrayAvailable(): Promise<boolean> {
