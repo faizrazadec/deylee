@@ -173,6 +173,12 @@ snapcraft:
     # Strict confinement is the whole game here: classic confinement is the single
     # biggest trigger for manual store review, and Dayly does not need it. Its database
     # lives under the snap's own user directory, which needs no interface at all.
+    # The registered snap name is `dayly` — snap names allow only lowercase letters,
+    # digits and hyphens, so the Store's "Dayly - Time Tracker" cannot be one. `title`
+    # is the name users actually see in the store and the desktop, and it carries the
+    # spaces and capitals the name cannot, so Dayly reads the same on every platform
+    # while still installing as `snap install dayly`.
+    title: Dayly - Time Tracker
     confinement: strict
     grade: stable
     # Build inside an LXD container rather than on the host.
