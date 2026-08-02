@@ -132,6 +132,13 @@ linux:
   # electron-builder installs each NxN.png here into hicolor/NxN/apps/, and a lone
   # oversized icon is invisible to AppStream, which only reads conventional sizes.
   icon: build/icons
+  # Matches the registered snap name, and by extension the Microsoft Store listing.
+  # This is the *only* lever on the snap's name — electron-builder derives it as
+  # `executableName.toLowerCase()` and exposes no snap-specific override — so it also
+  # renames the binary and the .desktop file in the .deb and the AppImage. The
+  # autostart entry LinuxPlatform writes is named to match; the two must agree or
+  # "Launch at login" writes a file nothing ever reads.
+  executableName: dayly-time-tracker
   category: Utility
   synopsis: Local-only time tracker that lives in your tray
   description: >-

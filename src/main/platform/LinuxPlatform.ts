@@ -19,7 +19,20 @@ const WATCHER_NAMES = [
   'org.freedesktop.StatusNotifierWatcher',
 ] as const;
 
-const AUTOSTART_FILE_NAME = 'dayly.desktop';
+/**
+ * Must match `linux.executableName` in electron-builder.yml, because that is what the
+ * snap declares in its `autostart:` entry — snapd only honours the file it was told to
+ * look for, so a mismatch here writes an autostart entry nothing ever reads.
+ */
+const AUTOSTART_FILE_NAME = 'dayly-time-tracker.desktop';
+
+/**
+ * What the entry was called before the executable was renamed to match the registered
+ * snap name. Anyone who enabled "Launch at login" on an earlier .deb or AppImage still
+ * has this file, and it would go on starting Dayly at login while the toggle read
+ * "off" — so it is cleaned up alongside the current one rather than left orphaned.
+ */
+const LEGACY_AUTOSTART_FILE_NAME = 'dayly.desktop';
 
 /**
  * True when an environment variable is both present and non-empty.
@@ -183,8 +196,11 @@ export class LinuxPlatform implements Platform {
   async setLoginItemEnabled(enabled: boolean): Promise<void> {
     // `app.setLoginItemSettings` is macOS/Windows only, so autostart is an XDG file.
     const file = autostartFilePath();
+    // Removed on both paths, not only when disabling: leaving it behind while writing
+    // the current entry would start Dayly twice at login.
+    // `force` swallows ENOENT, so a machine that never had the old name is not an error.
+    await rm(autostartFilePath(LEGACY_AUTOSTART_FILE_NAME), { force: true });
     if (!enabled) {
-      // `force` swallows ENOENT, so disabling twice is not an error.
       await rm(file, { force: true });
       return;
     }
@@ -193,12 +209,18 @@ export class LinuxPlatform implements Platform {
   }
 
   async isLoginItemEnabled(): Promise<boolean> {
-    try {
-      await access(autostartFilePath());
-      return true;
-    } catch {
-      return false;
+    // The legacy name counts as enabled: an upgraded install still has that file and
+    // it still launches Dayly, so reporting "off" would show a toggle contradicting
+    // what the session actually does. Writing the preference again migrates it.
+    for (const name of [AUTOSTART_FILE_NAME, LEGACY_AUTOSTART_FILE_NAME]) {
+      try {
+        await access(autostartFilePath(name));
+        return true;
+      } catch {
+        // Try the next candidate.
+      }
     }
+    return false;
   }
 
   async revealInFileManager(target: string): Promise<void> {
@@ -260,9 +282,9 @@ function probe(command: string, args: readonly string[]): Promise<string | null>
   });
 }
 
-function autostartFilePath(): string {
+function autostartFilePath(name: string = AUTOSTART_FILE_NAME): string {
   // The XDG autostart directory; every mainstream desktop reads it at login.
-  return join(app.getPath('home'), '.config', 'autostart', AUTOSTART_FILE_NAME);
+  return join(app.getPath('home'), '.config', 'autostart', name);
 }
 
 /**
