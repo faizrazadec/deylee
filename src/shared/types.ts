@@ -206,6 +206,13 @@ export interface PlatformInfo {
    * Settings toggle is disabled rather than left offering something that cannot happen.
    */
   supportsLockDetection: boolean;
+  /**
+   * False where the session cannot report idleness at all — a confined GNOME app,
+   * where Chromium asked for an idle watch, was refused, and now answers 0 forever.
+   * Zero looks exactly like a user at the keyboard, so without this the idle settings
+   * would go on offering a prompt that can never appear.
+   */
+  supportsIdleDetection: boolean;
 }
 
 /* -------------------------------------------------------------------------- */

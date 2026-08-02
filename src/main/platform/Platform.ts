@@ -36,6 +36,7 @@ export interface Platform {
    * all, and a toggle offering it there is a switch wired to nothing.
    */
   readonly supportsLockDetection: boolean;
+
   readonly miniWindowDefaultOn: boolean;
   /** How often the tray label/tooltip is refreshed. mac 1000ms, win/linux 30000ms. */
   readonly trayRefreshIntervalMs: number;
@@ -77,6 +78,27 @@ export interface Platform {
 
   /** Probes whether a tray host actually exists (always true on mac/windows). */
   detectTrayAvailable(): Promise<boolean>;
+  /**
+   * How long the machine has gone without input, in milliseconds, or null when this
+   * session cannot say.
+   *
+   * A method rather than a plain read of `powerMonitor.getSystemIdleTime()` because on
+   * Linux that number cannot be trusted: Chromium asks Mutter for an idle *watch*
+   * first, a confined app is refused, and Chromium then latches "not available" and
+   * answers 0 for the rest of the process's life. Zero is indistinguishable from a user
+   * who is right there, so idle detection dies silently rather than loudly.
+   */
+  readIdleMs(): Promise<number | null>;
+
+  /**
+   * Whether this session can report idleness at all, answered once at startup.
+   *
+   * Separate from `readIdleMs` because the failure it detects is invisible in a single
+   * reading: a latched Chromium answers 0, which is exactly what a user sitting at the
+   * keyboard looks like. Without this the idle settings would offer a feature that
+   * silently never fires.
+   */
+  probeIdleAvailable(): Promise<boolean>;
 
   /** Absolute path to the tray image for a state. */
   trayImagePath(state: TimerState): string;

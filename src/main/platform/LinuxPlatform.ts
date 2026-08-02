@@ -1,8 +1,9 @@
-import { app, nativeImage, shell, Tray } from 'electron';
+import { app, nativeImage, powerMonitor, shell, Tray } from 'electron';
 import type { BrowserWindow, BrowserWindowConstructorOptions, NativeImage } from 'electron';
 import { execFile } from 'node:child_process';
 import { access, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { MS_PER_SECOND } from '@shared/time';
 import type { OsKind, TimerState } from '@shared/types';
 import type { Platform, TrayView } from './Platform';
 import type { TrayHost, TrayHostCallbacks } from './TrayHost';
@@ -33,6 +34,22 @@ const AUTOSTART_FILE_NAME = 'dayly-time-tracker.desktop';
  * "off" — so it is cleaned up alongside the current one rather than left orphaned.
  */
 const LEGACY_AUTOSTART_FILE_NAME = 'dayly.desktop';
+
+/**
+ * Mutter's idle monitor. `GetIdletime` on this object is the one member snapd's
+ * `desktop` interface permits — `AddIdleWatch`, which Chromium reaches for first, is
+ * refused.
+ */
+const MUTTER_IDLE_NAME = 'org.gnome.Mutter.IdleMonitor';
+const MUTTER_IDLE_PATH = '/org/gnome/Mutter/IdleMonitor/Core';
+
+/** Reply shape: `(uint64 2672423,)`. */
+function parseGdbusUint64(reply: string): number | null {
+  const match = /\(uint64\s+(\d+),?\)/.exec(reply);
+  if (match === null) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
 
 /**
  * True when an environment variable is both present and non-empty.
@@ -238,11 +255,73 @@ export class LinuxPlatform implements Platform {
     return false;
   }
 
+  /**
+   * Asked once, at startup, because the answer cannot be read off a single sample:
+   * a Chromium that has given up answers 0, and so does a user at the keyboard.
+   *
+   * Mutter answering is proof enough. Where it does not, Chromium's own reading is
+   * trustworthy — KWin and X11 reach it through channels AppArmor does not mediate —
+   * with one exception: a confined app on GNOME, which is precisely where Chromium
+   * asked for an idle watch, was refused, and latched.
+   */
+  async probeIdleAvailable(): Promise<boolean> {
+    const fromMutter = await this.readMutterIdleMs();
+    if (fromMutter !== null) return true;
+
+    const desktop = process.env.XDG_CURRENT_DESKTOP ?? '';
+    return !(envSet('SNAP') && /gnome/i.test(desktop));
+  }
+
   async revealInFileManager(target: string): Promise<void> {
     // `showItemInFolder` needs a file manager that implements the FileManager1 DBus
     // interface and silently does nothing on several desktops, so open the
     // containing directory instead — that always resolves to *something*.
     await shell.openPath(dirname(target));
+  }
+
+  /**
+   * Mutter first, Chromium second.
+   *
+   * Chromium's own answer is worthless under confinement and worse than useless: it
+   * opens with `AddIdleWatch`, which no snap interface grants, and on refusal latches
+   * `kNotAvailable` permanently and returns 0 from then on. Zero reads as "the user is
+   * right here", so idle detection stops firing without a single error.
+   *
+   * `GetIdletime` on the same object *is* granted — by the `desktop` interface, which
+   * auto-connects — so asking Mutter directly gets a true answer where Chromium cannot.
+   * Verified inside this app's own confinement, where `GetIdletime` returns a real
+   * figure and `AddIdleWatch` is refused by AppArmor in the same session.
+   *
+   * gdbus rather than a D-Bus client library: the tray probe already shells out this
+   * way, it ships inside the snap, and the alternative was a dependency whose current
+   * API was three days old. Once per poll, and the poll is every fifteen seconds.
+   */
+  async readIdleMs(): Promise<number | null> {
+    const fromMutter = await this.readMutterIdleMs();
+    if (fromMutter !== null) return fromMutter;
+
+    // Not GNOME, or gdbus is absent. KWin and X11 answer Chromium through channels
+    // that are not D-Bus mediated, so its number is trustworthy there.
+    const chromium = powerMonitor.getSystemIdleTime() * MS_PER_SECOND;
+    // A session that only ever answers 0 is the latched case above, not a user glued
+    // to the keyboard — but they are indistinguishable from one sample, so this stays
+    // honest and reports it. `probeIdleAvailable` is what tells them the difference.
+    return chromium;
+  }
+
+  /** `GetIdletime` from Mutter, or null when it cannot answer. */
+  private async readMutterIdleMs(): Promise<number | null> {
+    const reply = await probe('gdbus', [
+      'call',
+      '--session',
+      '--dest',
+      MUTTER_IDLE_NAME,
+      '--object-path',
+      MUTTER_IDLE_PATH,
+      '--method',
+      `${MUTTER_IDLE_NAME}.GetIdletime`,
+    ]);
+    return reply === null ? null : parseGdbusUint64(reply);
   }
 
   /** Cached so a state change does not re-read the PNG from disk every refresh. */

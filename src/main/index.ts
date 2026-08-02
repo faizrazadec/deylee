@@ -92,6 +92,8 @@ let heartbeatRunning = false;
 let launchAtLoginApplied: boolean | null = null;
 let trayAvailable = true;
 let trayFallbackActive = false;
+/** Answered once at startup; assume yes until then. */
+let idleAvailable = true;
 
 /* -------------------------------------------------------------------------- */
 /* 6. Session hardening                                                        */
@@ -518,6 +520,7 @@ function describePlatform(rt: Runtime): PlatformInfo {
     miniWindowDefaultOn: rt.platform.miniWindowDefaultOn,
     trayFallbackActive,
     supportsLockDetection: rt.platform.supportsLockDetection,
+    supportsIdleDetection: idleAvailable,
   };
 }
 
@@ -563,7 +566,20 @@ async function bootstrap(): Promise<void> {
       windows.broadcast<UpdateStatus>(EVENT.updateStatus, status);
     },
   });
-  const idle = new IdleMonitor({ prefs, onIdleDetected: announceIdlePrompt });
+  // Asked once: the answer cannot change without a new session, and the poll must not
+  // pay for it every fifteen seconds.
+  idleAvailable = await platform.probeIdleAvailable().catch(() => true);
+  if (!idleAvailable) {
+    console.warn('[dayly] this session cannot report idle time; idle detection is off');
+  }
+
+  const idle = new IdleMonitor({
+    prefs,
+    // Through the platform, because how idle time is read is a per-OS fact and on Linux
+    // the obvious source answers 0 forever under confinement.
+    readIdleMs: () => platform.readIdleMs(),
+    onIdleDetected: announceIdlePrompt,
+  });
   const power = new PowerMonitorService({ prefs, onAway: handleAway, onBack: handleBack });
   const reminder = new ReminderService({
     prefs,

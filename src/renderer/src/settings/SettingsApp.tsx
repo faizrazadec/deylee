@@ -172,6 +172,7 @@ export function SettingsApp() {
   // frame on the platforms that do have it. Claiming absence on an unanswered question
   // is its own kind of lying.
   const supportsLockDetection = platform === null || platform.supportsLockDetection;
+  const supportsIdleDetection = platform === null || platform.supportsIdleDetection;
 
   const miniWindowDescription = trayFallbackActive
     ? 'This desktop has no system tray, so the mini window is Dayly’s only always-visible surface. It cannot be turned off here.'
@@ -279,10 +280,15 @@ export function SettingsApp() {
               />
 
               <Toggle
-                checked={prefs.idleDetectionEnabled}
+                checked={prefs.idleDetectionEnabled && supportsIdleDetection}
                 onChange={(next) => write('idleDetectionEnabled', next)}
                 label="Detect when you step away"
-                description="While the timer runs, Dayly watches how long the machine has been untouched and asks whether to keep the time."
+                description={
+                  supportsIdleDetection
+                    ? 'While the timer runs, Dayly watches how long the machine has been untouched and asks whether to keep the time.'
+                    : 'Not available in this build: the desktop will not tell a sandboxed app how long the machine has been untouched, so Dayly would never notice you had gone.'
+                }
+                disabled={!supportsIdleDetection}
               />
 
               <NumberField
@@ -290,14 +296,16 @@ export function SettingsApp() {
                 onChange={(next) => write('idleThresholdMinutes', next)}
                 label="Ask after"
                 description={
-                  prefs.idleDetectionEnabled
-                    ? 'How long the machine must sit untouched before Dayly asks.'
-                    : 'Turn on “Detect when you step away” to change this.'
+                  !supportsIdleDetection
+                    ? 'Unavailable while Dayly cannot read the idle time.'
+                    : prefs.idleDetectionEnabled
+                      ? 'How long the machine must sit untouched before Dayly asks.'
+                      : 'Turn on “Detect when you step away” to change this.'
                 }
                 min={1}
                 max={240}
                 suffix="minutes"
-                disabled={!prefs.idleDetectionEnabled}
+                disabled={!prefs.idleDetectionEnabled || !supportsIdleDetection}
               />
 
               <Toggle

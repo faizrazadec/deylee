@@ -1,5 +1,6 @@
-import { app, nativeImage, shell, Tray } from 'electron';
+import { app, nativeImage, powerMonitor, shell, Tray } from 'electron';
 import type { BrowserWindow, BrowserWindowConstructorOptions, NativeImage } from 'electron';
+import { MS_PER_SECOND } from '@shared/time';
 import type { OsKind, TimerState } from '@shared/types';
 import type { Platform, TrayView } from './Platform';
 import type { TrayHost, TrayHostCallbacks } from './TrayHost';
@@ -106,6 +107,16 @@ export class WindowsPlatform implements Platform {
 
   async isLoginItemEnabled(): Promise<boolean> {
     return app.getLoginItemSettings().openAtLogin;
+  }
+
+  /** Chromium reads the idle time from the OS directly here; no D-Bus in the way. */
+  async readIdleMs(): Promise<number | null> {
+    return powerMonitor.getSystemIdleTime() * MS_PER_SECOND;
+  }
+
+  /** Chromium reads idleness from the OS here; there is nothing to be refused by. */
+  async probeIdleAvailable(): Promise<boolean> {
+    return true;
   }
 
   async revealInFileManager(target: string): Promise<void> {
