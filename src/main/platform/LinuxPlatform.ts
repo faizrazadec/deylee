@@ -125,6 +125,14 @@ export class LinuxPlatform implements Platform {
     // session, or a service start before the session is up.
     if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return false;
 
+    // Ruled out before the bus is asked, because the bus gives the wrong answer here:
+    // the watcher is present and reachable, so every probe below says yes, and the icon
+    // still never appears.
+    if (trayBlockedByConfinement()) {
+      console.warn('[dayly] this snap cannot show a tray icon; using the mini window');
+      return false;
+    }
+
     const viaGdbus = await probe('gdbus', [
       'call',
       '--session',
@@ -251,6 +259,34 @@ export class LinuxPlatform implements Platform {
 
 function hasStatusNotifierWatcher(busNames: string): boolean {
   return WATCHER_NAMES.some((name) => busNames.includes(name));
+}
+
+/**
+ * The first Chromium whose tray a strict snap cannot show.
+ *
+ * Chromium 150 moved the indicator's D-Bus object paths to `/org/chromium/…`, and
+ * snapd's AppArmor templates still name only the old `/StatusNotifierItem` and
+ * `/com/canonical/dbusmenu`. Registration is therefore denied, but asynchronously and
+ * on the far side of the bus: `new Tray()` returns an object quite happily, throws
+ * nothing, and the icon simply never appears. Tracked as snapd LP#2161950.
+ */
+const SNAP_TRAY_BROKEN_FROM_CHROME = 150;
+
+/**
+ * True where the tray is known to be unshowable, so the mini-window fallback can take
+ * over instead of the app running with no visible surface at all.
+ *
+ * This is a deliberate exception to "probe, don't assume": every probe reports a
+ * healthy tray here, because the watcher genuinely is present and reachable. The part
+ * that fails is invisible to us. Version-gated rather than blanket so it lapses on its
+ * own once snapd widens the templates or Chromium moves again, and escapable with
+ * DAYLY_FORCE_TRAY=1 for re-testing without a rebuild.
+ */
+function trayBlockedByConfinement(): boolean {
+  if (!envSet('SNAP')) return false;
+  if (envSet('DAYLY_FORCE_TRAY')) return false;
+  const major = Number.parseInt(process.versions.chrome.split('.')[0] ?? '', 10);
+  return !Number.isNaN(major) && major >= SNAP_TRAY_BROKEN_FROM_CHROME;
 }
 
 /**
