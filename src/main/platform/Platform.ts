@@ -40,6 +40,19 @@ export interface Platform {
    */
   readonly supportsAutoUpdate: boolean;
 
+  /**
+   * Why `supportsAutoUpdate` is false, in words meant for the Settings pane. Null
+   * when updates do work.
+   *
+   * Separate from the flag because "cannot self-update" is not one situation but
+   * several, and they call for opposite advice: an unsigned build should send the
+   * user to the Releases page, while a Store build must not — it updates itself
+   * through the Store, and pointing that user at GitHub would walk them away from the
+   * copy that actually gets fixed. Which case applies is a packaging fact, so it is
+   * answered here rather than inferred by `UpdateService`.
+   */
+  readonly autoUpdateBlockedReason: string | null;
+
   /** Where a user is sent when Dayly cannot update itself. Same page everywhere. */
   readonly releasesUrl: string;
 

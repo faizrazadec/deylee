@@ -30,6 +30,9 @@ export class MacPlatform implements Platform {
    */
   readonly supportsAutoUpdate = false;
 
+  readonly autoUpdateBlockedReason =
+    'Automatic updates need a signed build — check the Releases page.';
+
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
 
   /**

@@ -22,6 +22,17 @@ const WATCHER_NAMES = [
 const AUTOSTART_FILE_NAME = 'dayly.desktop';
 
 /**
+ * True when an environment variable is both present and non-empty.
+ *
+ * The packaging runtimes all announce themselves this way — `$APPIMAGE`, `$SNAP`,
+ * `$FLATPAK_ID` — and an empty string is not an announcement.
+ */
+function envSet(name: string): boolean {
+  const value = process.env[name];
+  return typeof value === 'string' && value.length > 0;
+}
+
+/**
  * Linux: the tray is the one thing that cannot be taken for granted — GNOME ships
  * without a StatusNotifierItem host unless an extension provides one — so the tray
  * is probed before it is created and the mini-window defaults on as a fallback.
@@ -40,8 +51,25 @@ export class LinuxPlatform implements Platform {
    * the Releases page instead. `$APPIMAGE` is the runtime's own signal and the same
    * variable the autostart entry above relies on.
    */
-  readonly supportsAutoUpdate =
-    typeof process.env.APPIMAGE === 'string' && process.env.APPIMAGE.length > 0;
+  readonly supportsAutoUpdate = envSet('APPIMAGE');
+
+  /**
+   * Linux has three shut-gate cases and only one of them is a shortcoming.
+   *
+   * A snap or a Flatpak is updated by its store, on its own schedule, and both are
+   * read-only at runtime — telling those users to visit the Releases page would send
+   * them away from the copy that actually gets fixed. A .deb genuinely has no updater
+   * and the Releases page is the right answer. Null is the AppImage, which updates
+   * itself. `$SNAP` and `$FLATPAK_ID` are the runtimes' own signals.
+   */
+  readonly autoUpdateBlockedReason = envSet('SNAP')
+    ? 'The Snap Store keeps Dayly up to date.'
+    : envSet('FLATPAK_ID')
+      ? 'Flatpak keeps Dayly up to date.'
+      : this.supportsAutoUpdate
+        ? null
+        : 'This build cannot update itself — check the Releases page.';
+
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
 
   /** No Linux shell highlights an indicator, and none exposes a way to ask. */

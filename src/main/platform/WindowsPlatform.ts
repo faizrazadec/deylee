@@ -32,6 +32,16 @@ export class WindowsPlatform implements Platform {
    */
   readonly supportsAutoUpdate = !process.windowsStore;
 
+  /**
+   * Null for NSIS, which updates itself. A Store build is not a shortcoming to
+   * apologise for, so it must not borrow the unsigned-build wording: it *is* signed,
+   * and sending that user to the Releases page would send them away from the copy the
+   * Store keeps current.
+   */
+  readonly autoUpdateBlockedReason = process.windowsStore
+    ? 'The Microsoft Store keeps Dayly up to date.'
+    : null;
+
   readonly releasesUrl = 'https://github.com/faizrazadec/dayly/releases';
 
   /** The notification area has no selected state to hold. */

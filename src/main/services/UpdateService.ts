@@ -40,14 +40,11 @@ export const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 
 const DEV_REASON = 'Updates are only checked in an installed build.';
 
-const UNSIGNED_REASON = 'Automatic updates need a signed build — check the Releases page.';
-
 /**
- * The Store build is the one shut gate that is not a shortcoming, so it must not borrow
- * `UNSIGNED_REASON`: that build *is* signed, and sending its users to the Releases page
- * would send them away from the copy that actually updates itself.
+ * The last-resort wording, used only when a platform reports a shut gate without
+ * saying why. Every platform does say why, so this should be unreachable.
  */
-const STORE_REASON = 'The Microsoft Store keeps Dayly up to date.';
+const UNSIGNED_REASON = 'Automatic updates need a signed build — check the Releases page.';
 
 const NO_FEED_REASON = 'This build has no update feed — check the Releases page.';
 
@@ -168,12 +165,16 @@ export class UpdateService {
     return app.isPackaged && this.platform.supportsAutoUpdate;
   }
 
-  /** Why the gate is shut, in words meant for the Settings pane. */
+  /**
+   * Why the gate is shut, in words meant for the Settings pane.
+   *
+   * Only the unpackaged case is decided here; everything else is a packaging fact and
+   * belongs to the platform, which knows whether this build is a Store copy that
+   * updates itself, a .deb that never will, or an unsigned build.
+   */
   private gateReason(): string {
-    // Checked before `isPackaged` because a Store build is packaged too, and the reason
-    // it cannot self-update is the packaging, not a missing signature.
-    if (process.windowsStore) return STORE_REASON;
-    return app.isPackaged ? UNSIGNED_REASON : DEV_REASON;
+    if (!app.isPackaged) return DEV_REASON;
+    return this.platform.autoUpdateBlockedReason ?? UNSIGNED_REASON;
   }
 
   /* ---------------------------------------------------------------------- */
