@@ -6,6 +6,11 @@ export default defineConfig({
     alias: {
       '@shared': resolve(__dirname, 'src/shared'),
       '@domain': resolve(__dirname, 'src/domain'),
+      // The domain layer is pure and needs nothing else, but a couple of main-process
+      // services carry logic worth testing on its own — the sleep watchdog's
+      // deduplication in particular, which is invisible until it double-counts. Those
+      // tests mock `electron`, so nothing here pulls in a real runtime.
+      '@main': resolve(__dirname, 'src/main'),
     },
   },
   test: {
