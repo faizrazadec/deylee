@@ -158,50 +158,58 @@ linux:
 # Cannot be produced on macOS — electron-builder raises "No snap build environment
 # specified for darwin" — so this is built on a Linux machine or CI runner, where
 # better-sqlite3 is also rebuilt against Electron's ABI.
-snap:
+# `snapcraft`, not the older `snap` key. The key decides the build strategy, not just
+# where the options live: only a `snapcraft` block reaches the core24 builder, which
+# drives `snapcraft pack`. The legacy `snap` key routes to a builder that still calls
+# `snapcraft snap` — a subcommand removed in snapcraft 8, so it fails outright on any
+# current toolchain.
+snapcraft:
   # core24 tracks Ubuntu 24.04. electron-builder's floor for it is Electron 25+, and
   # 28+ recommended; Dayly is on 43, comfortably inside.
   base: core24
-  # Strict confinement is the whole game here: classic confinement is the single
-  # biggest trigger for manual store review, and Dayly does not need it. Its database
-  # lives under the snap's own user directory, which needs no interface at all.
-  confinement: strict
-  grade: stable
-  # `plugs` replaces electron-builder's defaults rather than extending them. Every
-  # entry below auto-connects on a normal distribution and none is super-privileged,
-  # so none of this diverts the upload into a human review queue.
-  plugs:
-    # Both are needed for the tray, not one or the other: `desktop-legacy` carries the
-    # AppArmor rules that let the app own a StatusNotifierItem name and register it,
-    # while `unity7` carries the matching com.canonical.dbusmenu rules. With only one
-    # of the pair the icon has historically appeared but its menu silently died.
-    - desktop
-    - desktop-legacy
-    - unity7
-    - x11
-    - wayland
-    # Exports and backups the user picks in a save dialog.
-    - home
-    - opengl
-    - gsettings
-    - browser-support
-  # Deliberately absent: `network` and `network-bind`, both of which electron-builder
-  # would otherwise include. Dayly opens no sockets and the Store owns updates, so an
-  # unused network permission would be a claim the app cannot justify.
-  #
-  # Also deliberately absent: `personal-files` and `system-files`. Those are
-  # super-privileged, need an approved snap-declaration from Canonical, and are the one
-  # place a young project genuinely would be judged on its age.
-  stagePackages:
-    - default
-    # electron-builder's default list still names libappindicator3-1, which no longer
-    # exists in current Debian or Ubuntu. The Ayatana successor is what actually
-    # provides a StatusNotifierItem host — the same substitution deb.recommends makes.
-    - libayatana-appindicator3-1
-  # Emits the autostart entry into the snap, which is what makes the "Launch at login"
-  # preference work: snapd reads $SNAP_USER_DATA/.config/autostart, exactly where
-  # LinuxPlatform already writes, but only when the snap declares it here.
-  autoStart: true
+  # Options for the selected base are nested under a key named after it — electron-builder
+  # reads `snapcraft[snapcraft.base]`, so anything at the top level here is ignored.
+  core24:
+    # Strict confinement is the whole game here: classic confinement is the single
+    # biggest trigger for manual store review, and Dayly does not need it. Its database
+    # lives under the snap's own user directory, which needs no interface at all.
+    confinement: strict
+    grade: stable
+    # `plugs` replaces electron-builder's defaults rather than extending them. Every
+    # entry below auto-connects on a normal distribution and none is super-privileged,
+    # so none of this diverts the upload into a human review queue.
+    plugs:
+      # Both are needed for the tray, not one or the other: `desktop-legacy` carries the
+      # AppArmor rules that let the app own a StatusNotifierItem name and register it,
+      # while `unity7` carries the matching com.canonical.dbusmenu rules. With only one
+      # of the pair the icon has historically appeared but its menu silently died.
+      - desktop
+      - desktop-legacy
+      - unity7
+      - x11
+      - wayland
+      # Exports and backups the user picks in a save dialog.
+      - home
+      - opengl
+      - gsettings
+      - browser-support
+    # Deliberately absent: `network` and `network-bind`, both of which electron-builder
+    # would otherwise include. Dayly opens no sockets and the Store owns updates, so an
+    # unused network permission would be a claim the app cannot justify.
+    #
+    # Also deliberately absent: `personal-files` and `system-files`. Those are
+    # super-privileged, need an approved snap-declaration from Canonical, and are the one
+    # place a young project genuinely would be judged on its age.
+    stagePackages:
+      - default
+      # electron-builder's default list still names libappindicator3-1, which no longer
+      # exists in current Debian or Ubuntu. The Ayatana successor is what actually
+      # provides a StatusNotifierItem host — the same substitution deb.recommends makes.
+      - libayatana-appindicator3-1
+    # Emits the autostart entry into the snap, which is what makes the "Launch at login"
+    # preference work: snapd reads $SNAP_USER_DATA/.config/autostart, exactly where
+    # LinuxPlatform already writes, but only when the snap declares it here.
+    autoStart: true
 
 deb:
   # dpkg requires a maintainer in `Name <email>` form and electron-builder will not
