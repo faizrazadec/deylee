@@ -88,3 +88,76 @@ jobs:
             release/*.deb
             release/*.yml
             release/*.blockmap
+
+  # The Snap Store build, deliberately a separate job rather than another leg of the
+  # matrix above.
+  #
+  # Two reasons. It needs snapcraft and an initialised LXD, which the other legs do not,
+  # and it publishes to a different place — the Snap Store, not the GitHub Release. And
+  # because `snap` is not in `linux.target`, the matrix job never builds one, so nothing
+  # here duplicates what it does.
+  #
+  # Each architecture is built on its own native runner. That is not a preference:
+  # better-sqlite3 is a native module, and cross-building it was tried and fails
+  # ("node-gyp failed to rebuild better-sqlite3" for x64 on an arm64 host).
+  snap:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: amd64
+          # Free and unlimited on public repositories, generally available since
+          # August 2025. It will NOT run on a private repository.
+          - os: ubuntu-24.04-arm
+            name: arm64
+
+    name: Snap ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # The Snap Store is a separate destination from the GitHub Release. A store outage,
+    # an expired credential or a rejected revision must not mark the whole release
+    # failed when the installers themselves published fine.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build bundles
+        run: npm run build
+
+      - name: Set up snapcraft and LXD
+        run: |
+          sudo snap install snapcraft --classic
+          sudo lxd init --auto
+          sudo usermod -aG lxd "$USER"
+
+      # `sg lxd -c` matters: usermod does not affect the shell already running, so
+      # without it snapcraft cannot reach the LXD socket and the build fails on a
+      # permission error that looks nothing like a group problem.
+      #
+      # `--publish always` hands the finished snap to electron-builder's snapStore
+      # publisher, which runs `snapcraft upload --release <channels>` using
+      # SNAPCRAFT_STORE_CREDENTIALS. Channels come from `snapcraft.core24.publish`.
+      - name: Build and publish snap
+        run: sg lxd -c "npx electron-builder --linux snap --${{ matrix.name == 'amd64' && 'x64' || 'arm64' }} --publish always"
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dayly-snap-${{ matrix.name }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: release/*.snap

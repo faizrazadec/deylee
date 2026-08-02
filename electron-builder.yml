@@ -195,6 +195,19 @@ snapcraft:
     # back to `productName`, so the listing would read "Dayly" and say nothing at all.
     # `linux.synopsis` does not reach the snap; only this does.
     summary: Local-only time tracker that lives in your tray
+    # Where CI publishes. Without this block electron-builder still picks the snapStore
+    # provider, but defaults to `edge` — stated explicitly so the destination is visible
+    # rather than inherited.
+    #
+    # `edge` on purpose: a revision lands there the moment CI uploads it, and nobody
+    # gets it unless they ask for that channel. Promote deliberately once a build has
+    # been run on real hardware:
+    #
+    #   snapcraft promote dayly-time-tracker --from-channel edge --to-channel stable
+    publish:
+      - provider: snapStore
+        channels:
+          - edge
     confinement: strict
     grade: stable
     # Build inside an LXD container rather than on the host.
