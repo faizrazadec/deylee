@@ -151,9 +151,6 @@ linux:
     - target: deb
       arch:
         - x64
-    - target: snap
-      arch:
-        - x64
   desktop:
     entry:
       # Matches the WM_CLASS Electron reports, so the shell groups the running app
@@ -162,9 +159,17 @@ linux:
 
 # The Snap Store build.
 #
-# Cannot be produced on macOS — electron-builder raises "No snap build environment
-# specified for darwin" — so this is built on a Linux machine or CI runner, where
-# better-sqlite3 is also rebuilt against Electron's ABI.
+# Deliberately not in `linux.target`, for the same reason `appx` is not in `win.target`:
+# it needs snapcraft and an initialised LXD, which a bare machine — including a stock
+# GitHub runner — does not have. Listing it there would break `npm run dist:linux`
+# everywhere and fail the Linux leg of a tagged release. It is built on demand instead:
+#
+#   npx electron-builder --linux snap        # on a Linux box with snapcraft + LXD
+#
+# macOS cannot build it at all; electron-builder raises "No snap build environment
+# specified for darwin". The build machine must match the target architecture, because
+# better-sqlite3 is compiled against Electron's ABI for the host — an amd64 snap needs
+# an amd64 builder.
 # `snapcraft`, not the older `snap` key. The key decides the build strategy, not just
 # where the options live: only a `snapcraft` block reaches the core24 builder, which
 # drives `snapcraft pack`. The legacy `snap` key routes to a builder that still calls
