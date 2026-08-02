@@ -175,6 +175,15 @@ snapcraft:
     # lives under the snap's own user directory, which needs no interface at all.
     confinement: strict
     grade: stable
+    # Build inside an LXD container rather than on the host.
+    #
+    # Not a preference: destructive (host) builds are incompatible with the `gnome`
+    # extension, which core24 relies on, and electron-builder responds by silently
+    # dropping every extension. The extension's own GPU wrapper then tries to install
+    # into /snap/command-chain and the build dies. LXD gives snapcraft the root-owned,
+    # isolated filesystem it expects, and keeps whatever happens to be on the build
+    # machine from leaking into the snap.
+    useLXD: true
     # `plugs` replaces electron-builder's defaults rather than extending them. Every
     # entry below auto-connects on a normal distribution and none is super-privileged,
     # so none of this diverts the upload into a human review queue.
