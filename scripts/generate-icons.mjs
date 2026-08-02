@@ -435,31 +435,56 @@ function drawClockGlyph(canvas, colour) {
 }
 
 /**
- * The 1024x1024 app icon. electron-builder derives the `.icns` and `.ico` from
- * this single file, so the size is fixed and the mark has to survive being scaled
- * down to 32px: one bold ring, two thick hands, no fine detail.
+ * App-icon geometry as fractions of the icon's edge, for the same reason `G` above
+ * is: the mark is rasterised at every hicolor size, and pixel constants would make
+ * the 64px render a subtly different drawing rather than the same one, smaller.
+ * The numerators are the original 1024px measurements.
  */
-function drawAppIcon() {
-  const S = 1024;
-  const canvas = new Canvas(S, 4);
+const A = {
+  inset: 32 / 1024,
+  corner: 216 / 1024,
+  highlightX: 230 / 1024,
+  highlightY: 120 / 1024,
+  highlightR: 900 / 1024,
+  ringOuter: 360 / 1024,
+  ringThickness: 64 / 1024,
+  minuteHand: 240 / 1024,
+  hourHand: 168 / 1024,
+  handHalfWidth: 24 / 1024,
+  centreDot: 38 / 1024,
+};
 
-  const inset = 32;
-  const field = roundedRect(inset, inset, S - inset, S - inset, 216);
+/**
+ * The app icon at `size`. electron-builder derives the `.icns` and `.ico` from the
+ * 1024px render, and Linux installs the whole set, so the mark has to survive being
+ * scaled to 16px: one bold ring, two thick hands, no fine detail.
+ */
+function drawAppIcon(size) {
+  const S = size;
+  // Supersample harder when small. The ring is barely over a pixel wide at 16px and
+  // 4x sampling leaves its inner edge visibly stepped.
+  const canvas = new Canvas(S, S <= 64 ? 8 : 4);
+
+  const inset = S * A.inset;
+  const field = roundedRect(inset, inset, S - inset, S - inset, S * A.corner);
   canvas.fill(
     field,
     linearGradient(inset, inset, S - inset, S - inset, INDIGO_LIGHT, INDIGO_DEEP),
   );
   // A soft highlight over the top-left keeps the flat gradient from looking like a
   // printed swatch. Clipped to the field so the corners stay clean.
-  canvas.fill(intersect(field, circle(230, 120, 900)), radialFade(230, 120, 900, WHITE, 54));
+  const hx = S * A.highlightX;
+  const hy = S * A.highlightY;
+  const hr = S * A.highlightR;
+  canvas.fill(intersect(field, circle(hx, hy, hr)), radialFade(hx, hy, hr, WHITE, 54));
 
   const c = S / 2;
-  const outer = 360;
+  const outer = S * A.ringOuter;
   const paint = solid(WHITE);
-  canvas.fill(ring(c, c, outer, outer - 64), paint);
-  canvas.fill(capsule(c, c, c, c - 240, 24), paint);
-  canvas.fill(capsule(c, c, c + 168, c, 24), paint);
-  canvas.fill(circle(c, c, 38), paint);
+  canvas.fill(ring(c, c, outer, outer - S * A.ringThickness), paint);
+  canvas.fill(capsule(c, c, c, c - S * A.minuteHand, S * A.handHalfWidth), paint);
+  canvas.fill(capsule(c, c, c + S * A.hourHand, c, S * A.handHalfWidth), paint);
+  canvas.fill(circle(c, c, S * A.centreDot), paint);
 
   return canvas;
 }
@@ -555,6 +580,17 @@ function trayCanvas(size, state, colour) {
 
 const TRAY_STATES = ['idle', 'running', 'paused'];
 const WIN_ICO_SIZES = [16, 24, 32];
+/** The size electron-builder derives the .icns and .ico from. */
+const APP_ICON_SIZE = 1024;
+/**
+ * The hicolor sizes the Linux app icon is installed at.
+ *
+ * A single oversized PNG is not enough: `appstreamcli compose` only recognises
+ * conventional sizes, so installing nothing but 1024x1024 reads to it as *no icon*
+ * and fails the metadata build outright. These are the sizes desktops and AppStream
+ * actually look for.
+ */
+const LINUX_APP_ICON_SIZES = [16, 32, 48, 64, 128, 256, 512];
 /** 22 is the GNOME/KDE status-icon size; 24 and 32 cover denser panel themes. */
 const LINUX_SIZES = [
   { size: 22, suffix: '' },
@@ -563,9 +599,21 @@ const LINUX_SIZES = [
 ];
 
 function generate() {
-  // App icon.
-  const app = drawAppIcon();
+  // App icon. macOS and Windows derive their icon containers from this one file.
+  const app = drawAppIcon(APP_ICON_SIZE);
   write('build/icon.png', encodePng(app.toRgba(), app.size, app.size), '1024x1024 app icon');
+
+  // Linux takes an icon *set* instead: `linux.icon` points at build/icons/, and
+  // electron-builder installs each NxN.png into hicolor/NxN/apps/. See the note on
+  // LINUX_APP_ICON_SIZES for why one large PNG is not a substitute.
+  for (const size of LINUX_APP_ICON_SIZES) {
+    const canvas = drawAppIcon(size);
+    write(
+      `build/icons/${size}x${size}.png`,
+      encodePng(canvas.toRgba(), size, size),
+      `${size}x${size} app icon`,
+    );
+  }
 
   // macOS menu-bar template icons: black + alpha only, since macOS recolours them
   // for light/dark menu bars and for the highlighted (clicked) state.
@@ -631,7 +679,8 @@ function verify() {
       continue;
     }
 
-    const expectedSize = entry.path === 'build/icon.png' ? 1024 : expectedPngSize(entry.path);
+    const expectedSize =
+      entry.path === 'build/icon.png' ? APP_ICON_SIZE : expectedPngSize(entry.path);
     check(entry, (buf) => {
       const png = decodePng(buf);
       if (png.width !== expectedSize || png.height !== expectedSize) {
@@ -655,6 +704,11 @@ function verify() {
 }
 
 function expectedPngSize(relPath) {
+  // Checked first: "128x128.png" carries no @-suffix and would otherwise fall through
+  // to the 22px tray default and be silently mis-verified.
+  if (relPath.startsWith('build/icons/')) {
+    return Number.parseInt(relPath.slice('build/icons/'.length), 10);
+  }
   if (relPath.includes('/mac/')) return relPath.includes('@2x') ? 32 : 16;
   if (relPath.includes('@24')) return 24;
   if (relPath.includes('@32')) return 32;
