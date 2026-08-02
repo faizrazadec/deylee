@@ -6,6 +6,7 @@
   "license": "MIT",
   "private": true,
   "main": "./out/main/index.js",
+  "desktopName": "dayly-time-tracker.desktop",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/faizrazadec/dayly.git"

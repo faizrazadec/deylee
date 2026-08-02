@@ -151,11 +151,15 @@ linux:
     - target: deb
       arch:
         - x64
-  desktop:
-    entry:
-      # Matches the WM_CLASS Electron reports, so the shell groups the running app
-      # with its launcher icon instead of showing a second, generic entry.
-      StartupWMClass: Dayly
+  # Names the .desktop file after `desktopName` in package.json, which is also what
+  # Electron uses as its Wayland app_id and X11 WM_CLASS. Without the pair the shell has
+  # nothing to match a running window against its launcher entry, so the icon appears
+  # and disappears with the windows and cannot be pinned usefully.
+  #
+  # `StartupWMClass` is deliberately not set by hand any more: electron-builder derives
+  # it from `desktopName`, and an explicit value here would win the merge and reintroduce
+  # exactly the mismatch this is meant to remove.
+  syncDesktopName: true
 
 # The Snap Store build.
 #
