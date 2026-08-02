@@ -27,6 +27,7 @@ import { Button } from '@renderer/components/Button';
 import { Modal } from '@renderer/components/Modal';
 import { ProgressBar } from '@renderer/components/ProgressBar';
 import { TimerDisplay } from '@renderer/components/TimerDisplay';
+import { usePlatformInfo } from '@renderer/hooks/usePlatformInfo';
 import { usePrefs } from '@renderer/hooks/usePrefs';
 import { useSnapshot } from '@renderer/hooks/useSnapshot';
 import { useUpdates } from '@renderer/hooks/useUpdates';
@@ -77,6 +78,15 @@ function fireAndForget(promise: Promise<unknown>): void {
 export function PanelApp() {
   const { snapshot, live, tick } = useSnapshot();
   const updates = useUpdates();
+  const platform = usePlatformInfo();
+
+  /**
+   * Quitting normally lives in the tray menu. Where there is no tray — a desktop with
+   * no StatusNotifierItem host, or a snap, which cannot show one at all — that menu
+   * does not exist and the app has no way to be closed: every window hides rather than
+   * quits, by design, so it would run until it was killed.
+   */
+  const showQuit = platform?.trayFallbackActive === true;
 
   // No preference is shown here, but `usePrefs` is what stamps the resolved theme on
   // <html>; without it an explicit light/dark choice would never reach this window.
@@ -323,6 +333,16 @@ export function PanelApp() {
           >
             Settings
           </Button>
+          {showQuit && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Quit Dayly — with no tray icon there is nowhere else to do this"
+              onClick={() => fireAndForget(api.system.quit())}
+            >
+              Quit
+            </Button>
+          )}
         </div>
       </footer>
 
