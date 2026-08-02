@@ -186,6 +186,10 @@ snapcraft:
     # spaces and capitals the name cannot, so Dayly reads the same on every platform
     # while still installing as `snap install dayly`.
     title: Dayly - Time Tracker
+    # The one-line blurb under the title in the store. Without it electron-builder falls
+    # back to `productName`, so the listing would read "Dayly" and say nothing at all.
+    # `linux.synopsis` does not reach the snap; only this does.
+    summary: Local-only time tracker that lives in your tray
     confinement: strict
     grade: stable
     # Build inside an LXD container rather than on the host.
