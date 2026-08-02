@@ -58,6 +58,13 @@ export class LinuxPlatform implements Platform {
   readonly trayRefreshIntervalMs = 30_000;
 
   /**
+   * Electron implements `lock-screen` / `unlock-screen` for macOS and Windows only.
+   * On Linux they never arrive, whatever the desktop or the packaging, so a
+   * pause-on-lock toggle here would be wired to nothing.
+   */
+  readonly supportsLockDetection = false;
+
+  /**
    * Only an AppImage can replace itself: it is a single file the user owns, which is
    * exactly what `$APPIMAGE` points at. A .deb lives under /usr, belongs to dpkg and
    * needs root to change, so there is no updater for it at all — that build links to

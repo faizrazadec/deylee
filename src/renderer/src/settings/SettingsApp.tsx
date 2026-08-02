@@ -168,6 +168,10 @@ export function SettingsApp() {
   // `null` means the probe has not answered yet; assume the ordinary case until it does.
   const trayFallbackActive = platform?.trayFallbackActive === true;
   const menuBarShowsTime = platform?.supportsTrayTitle === true;
+  // Assume the capability until the probe answers, so the toggle is not disabled for a
+  // frame on the platforms that do have it. Claiming absence on an unanswered question
+  // is its own kind of lying.
+  const supportsLockDetection = platform === null || platform.supportsLockDetection;
 
   const miniWindowDescription = trayFallbackActive
     ? 'This desktop has no system tray, so the mini window is Dayly’s only always-visible surface. It cannot be turned off here.'
@@ -304,10 +308,15 @@ export function SettingsApp() {
               />
 
               <Toggle
-                checked={prefs.autoPauseOnLock}
+                checked={prefs.autoPauseOnLock && supportsLockDetection}
                 onChange={(next) => write('autoPauseOnLock', next)}
                 label="Pause when the screen locks"
-                description="Off by default — a lock during a call or a screensaver is not always a break."
+                description={
+                  supportsLockDetection
+                    ? 'Off by default — a lock during a call or a screensaver is not always a break.'
+                    : 'Not available on Linux: the desktop never tells Dayly the screen locked, so this could only ever look like it was working. Sleep is still detected.'
+                }
+                disabled={!supportsLockDetection}
               />
             </SettingsSection>
 

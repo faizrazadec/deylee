@@ -21,6 +21,9 @@ export class MacPlatform implements Platform {
   /** The title is a live clock; anything slower than 1s visibly stutters. */
   readonly trayRefreshIntervalMs = 1_000;
 
+  /** macOS reports screen lock and unlock to Electron. */
+  readonly supportsLockDetection = true;
+
   /**
    * Squirrel.Mac refuses to install a bundle that is not signed *and* notarised, and
    * Dayly ships neither — there is no Apple Developer ID behind it. A self-update

@@ -517,6 +517,7 @@ function describePlatform(rt: Runtime): PlatformInfo {
     supportsTrayTitle: rt.platform.supportsTrayTitle,
     miniWindowDefaultOn: rt.platform.miniWindowDefaultOn,
     trayFallbackActive,
+    supportsLockDetection: rt.platform.supportsLockDetection,
   };
 }
 

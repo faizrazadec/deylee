@@ -200,6 +200,12 @@ export interface PlatformInfo {
   miniWindowDefaultOn: boolean;
   /** Set when the tray was unavailable and the mini-window was forced on. */
   trayFallbackActive: boolean;
+  /**
+   * False where the OS never tells Electron the screen locked — every Linux build.
+   * "Pause when the screen locks" is not degraded there, it never fires, so the
+   * Settings toggle is disabled rather than left offering something that cannot happen.
+   */
+  supportsLockDetection: boolean;
 }
 
 /* -------------------------------------------------------------------------- */

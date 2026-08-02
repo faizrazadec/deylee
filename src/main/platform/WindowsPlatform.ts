@@ -19,6 +19,9 @@ export class WindowsPlatform implements Platform {
   /** Only the tooltip changes, and nobody watches a tooltip tick. */
   readonly trayRefreshIntervalMs = 30_000;
 
+  /** Windows reports screen lock and unlock to Electron. */
+  readonly supportsLockDetection = true;
+
   /**
    * NSIS installs an unsigned package without complaint, so differential updates work
    * end to end. SmartScreen only ever appears on the *first* install, downloaded by

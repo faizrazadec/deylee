@@ -26,6 +26,16 @@ export interface Platform {
   readonly os: OsKind;
   /** Only macOS can render live text next to the tray icon. */
   readonly supportsTrayTitle: boolean;
+
+  /**
+   * Whether the OS ever emits Electron's `lock-screen` / `unlock-screen` events.
+   *
+   * macOS and Windows do. Linux does not — Electron implements them for those two
+   * platforms only, on any desktop and any packaging. So "pause when the screen
+   * locks" is not a feature that degrades on Linux, it is one that never fires at
+   * all, and a toggle offering it there is a switch wired to nothing.
+   */
+  readonly supportsLockDetection: boolean;
   readonly miniWindowDefaultOn: boolean;
   /** How often the tray label/tooltip is refreshed. mac 1000ms, win/linux 30000ms. */
   readonly trayRefreshIntervalMs: number;
