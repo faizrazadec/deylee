@@ -23,6 +23,10 @@ final class AppModel {
 
     var pendingEndDayConfirm = false
 
+    /// Recovery, idle and wake prompts. Held here rather than in the panel window so a
+    /// question raised while the panel is closed is still waiting when it opens.
+    let prompts: PromptQueue
+
     @ObservationIgnored private let engine: TimerEngine
     @ObservationIgnored private let repo: Repository
     @ObservationIgnored var openHistoryWindow: () -> Void = {}
@@ -32,6 +36,9 @@ final class AppModel {
         self.engine = engine
         self.repo = repo
         self.snapshot = initial
+        self.prompts = PromptQueue(engine: engine, repo: repo)
+        // A queued question outranks a confirmation the user opened themselves.
+        prompts.onPromptShown = { [weak self] in self?.pendingEndDayConfirm = false }
     }
 
     func apply(_ snapshot: TimerSnapshot) {

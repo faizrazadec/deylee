@@ -27,6 +27,7 @@ struct PanelView: View {
                     .strokeBorder(Palette.border, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: Radius.window))
+            .daylyPrompts(model)
         }
     }
 
@@ -50,6 +51,7 @@ struct PanelView: View {
 
     private func mainColumn(live: LiveTotals, now: EpochMs) -> some View {
         VStack(spacing: Space.xl) {
+            if !model.notices.isEmpty { NoticeStack(model: model) }
             hero(live: live)
             targetBlock(live: live)
             actions

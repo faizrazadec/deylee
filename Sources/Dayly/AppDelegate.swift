@@ -15,11 +15,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel?
     private var statusItem: StatusItemController?
     private var miniWindow: MiniWindowController?
+    private var settingsModel: SettingsModel?
+    private var settingsWindow: SettingsWindowController?
+    private var stopWatchingPreferences: PreferencesUnsubscribe?
     private var idleMonitor: IdleMonitor?
     private var powerMonitor: PowerMonitor?
     private var rolloverTimer: Timer?
     private var heartbeatTimer: Timer?
     private var pendingRecovery: PendingRecovery?
+    /// Whether the last away event actually closed a work segment. Only then is there a
+    /// gap the user needs to attribute on the way back.
+    private var autoPausedByPower = false
 
     /// Splits a running segment at local midnight. A timer aimed at midnight would
     /// sleep through it, so the check runs every second instead; the no-work path is
@@ -79,8 +85,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.engine = engine
         self.model = model
 
-        model.openHistoryWindow = { NSLog("[dayly] history window not built yet") }
-        model.openSettingsWindow = { NSLog("[dayly] settings window not built yet") }
+        let settingsModel = SettingsModel(store: prefs)
+        let settingsWindow = SettingsWindowController(model: settingsModel)
+        self.settingsModel = settingsModel
+        self.settingsWindow = settingsWindow
+
+        model.openHistoryWindow = { HistoryWindow.open(repo: repo, engine: engine, prefs: prefs) }
+        model.openSettingsWindow = { settingsWindow.show() }
+
+        // Applied before any window exists: the change listener alone would leave the
+        // first launch on the system appearance regardless of a stored light/dark choice.
+        applyTheme(prefs.value(\.theme))
+        stopWatchingPreferences = prefs.onChange { [weak self] next in
+            Task { @MainActor in self?.preferencesChanged(next, engine: engine) }
+        }
 
         let statusItem = StatusItemController(model: model)
         self.statusItem = statusItem
@@ -105,6 +123,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         reconcileLoginItem(prefs: prefs)
         model.apply(try engine.snapshot())
+
+        // Last, so the queue is handed a fully booted app: the prompt is the first
+        // thing the user sees, and answering it writes through the engine immediately.
+        if let pending = pendingRecovery {
+            pendingRecovery = nil
+            model.prompts.enqueue(recovery: pending)
+            statusItem.showPanel()
+        }
     }
 
     // MARK: - Services
@@ -125,21 +151,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleIdle(idleStartedAt: EpochMs, idleMs: Int64) {
-        guard let repo, let statusItem,
+        guard let repo, let model, let statusItem,
               let open = (try? repo.findOpenSegment()) ?? nil, open.type == .work
         else { return }
+        // The segment is captured in the prompt, so an answer given ten minutes later
+        // still trims the stretch the question was about.
+        model.prompts.enqueue(
+            idle: IdlePrompt(
+                id: UUID(), segmentId: open.id,
+                idleStartedAt: idleStartedAt, idleMs: idleMs
+            )
+        )
         // A prompt the user cannot see is a prompt they cannot answer, so the panel
         // opens with it rather than relying on a notification they may have dismissed.
         statusItem.showPanel()
-        NSLog("[dayly] idle for \(formatCompact(idleMs)) from \(formatClock(idleStartedAt))")
     }
 
     private func startPowerMonitor(engine: TimerEngine, prefs: PreferencesStore) {
         let monitor = PowerMonitor(
             autoPauseOnSleep: { prefs.value(\.autoPauseOnSleep) },
             autoPauseOnLock: { prefs.value(\.autoPauseOnLock) },
-            onAway: { at, _ in
-                try? engine.suspend(at: at)
+            onAway: { [weak self] at, _ in
+                self?.handleAway(engine: engine, at: at)
             },
             onBack: { [weak self] awayAt, backAt, reason in
                 self?.handleWake(awayAt: awayAt, backAt: backAt, reason: reason)
@@ -149,9 +182,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         powerMonitor = monitor
     }
 
+    private func handleAway(engine: TimerEngine, at: EpochMs) {
+        guard let model, let open = model.snapshot.openSegment, open.type == .work else {
+            autoPausedByPower = false
+            return
+        }
+        try? engine.suspend(at: at)
+        // `suspend` refuses to store an empty segment, so whether the work segment
+        // really closed is the only honest signal that there is a gap to ask about.
+        autoPausedByPower = model.snapshot.openSegment == nil
+    }
+
     private func handleWake(awayAt: EpochMs, backAt: EpochMs, reason: WakeReason) {
-        statusItem?.showPanel()
-        NSLog("[dayly] back after \(formatCompact(backAt - awayAt)) (\(reason.rawValue))")
+        // Without a matching auto-pause there is no gap to attribute.
+        guard let model, let statusItem, autoPausedByPower else { return }
+        autoPausedByPower = false
+        model.prompts.enqueue(
+            wake: WakePrompt(
+                id: UUID(), reason: reason,
+                gapStartedAt: awayAt, gapEndedAt: backAt,
+                gapMs: max(0, backAt - awayAt)
+            )
+        )
+        statusItem.showPanel()
     }
 
     private func startRollover(engine: TimerEngine) {
@@ -181,6 +234,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         try? repo?.setAppState(Repository.appStateHeartbeat, String(epochNow()))
     }
 
+    /// Everything a preference change has to move, from one signal.
+    private func preferencesChanged(_ next: Preferences, engine: TimerEngine) {
+        applyTheme(next.theme)
+        // Only the day in progress is re-stamped; past days keep the goal they were
+        // actually run against.
+        _ = try? engine.syncTodayTarget()
+        // The mini controller watches the preference itself, so nothing to do for it
+        // here. The login item only ever follows the OS — never re-registered behind
+        // the user's back, because they may have removed it in System Settings.
+        if let prefs { reconcileLoginItem(prefs: prefs) }
+    }
+
+    private func applyTheme(_ theme: Theme) {
+        NSApp.appearance = switch theme {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+
     /// The OS is the source of truth: the user can remove the login item in System
     /// Settings without Dayly hearing about it, so the preference follows the system
     /// rather than asserting itself over it.
@@ -204,6 +277,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         heartbeatTimer?.invalidate()
         idleMonitor?.stop()
         powerMonitor?.stop()
+        stopWatchingPreferences?()
+        settingsModel?.stopObserving()
         return .terminateNow
     }
 
