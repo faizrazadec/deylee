@@ -31,6 +31,7 @@ export default {
         'deps',
         'docs',
         'ci',
+        'mac',
       ],
     ],
     'subject-case': [2, 'never', ['start-case', 'pascal-case', 'upper-case']],
