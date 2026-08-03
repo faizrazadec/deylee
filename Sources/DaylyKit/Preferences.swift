@@ -239,11 +239,17 @@ public enum PreferenceWriteError: Error, Equatable, Sendable {
 
 // MARK: - Coercion
 
-/// Rounds half away from zero at .5 the way JavaScript's `Math.round` does — towards
-/// positive infinity — so a ported clamp lands on the same integer the Electron build
-/// stored. `Double.rounded()` rounds -2.5 to -3; `Math.round(-2.5)` is -2.
+/// Rounds half towards positive infinity the way JavaScript's `Math.round` does, so a
+/// ported clamp lands on the same integer the Electron build stored.
+/// `Double.rounded()` rounds -2.5 to -3; `Math.round(-2.5)` is -2.
+///
+/// Comparing the fraction against 0.5 rather than computing `floor(value + 0.5)`: the
+/// addition is itself rounded, so `0.49999999999999994 + 0.5` is exactly `1.0` and the
+/// shorter form would round the largest double below a half *up*, where JavaScript
+/// rounds it down.
 fileprivate func preferencesJSRound(_ value: Double) -> Double {
-    (value + 0.5).rounded(.down)
+    let floor = value.rounded(.down)
+    return value - floor >= 0.5 ? floor + 1 : floor
 }
 
 /// The pure value rules, lifted out of the store so every clamp is testable without a
@@ -260,7 +266,9 @@ public enum PreferenceCoercion {
         _ value: PreferenceValue?, min minimum: Double, max maximum: Double, fallback: Double
     ) -> Double {
         guard case .number(let number) = value, number.isFinite else { return fallback }
-        return Swift.min(maximum, Swift.max(minimum, number))
+        // `+ 0` normalises -0.0 to 0.0, which is what `Math.max(0, -0)` yields; without
+        // it a stored `-0` would round-trip back out as `-0` where Electron wrote `0`.
+        return Swift.min(maximum, Swift.max(minimum, number)) + 0
     }
 
     /// As ``numberInRange(_:min:max:fallback:)``, rounded first — the clamp is applied to
@@ -589,8 +597,18 @@ public final class DefaultPreferencesStore: PreferencesStore, @unchecked Sendabl
     private let backend: PreferencesBackend
     private let defaults: Preferences
 
+    /// Guards `listeners`.
     private let lock = NSLock()
-    private var listeners: [Int: @Sendable (Preferences) -> Void] = [:]
+    /// Serialises a whole read-modify-write. Every mutation reads the current set,
+    /// changes one key and writes the complete set back, so two concurrent writers
+    /// sharing one read would each write a full set and the loser's key would vanish —
+    /// while its `set` still returned, and announced, the value it thought it stored.
+    /// The Electron original could not produce that: its main process is one thread.
+    private let writeLock = NSLock()
+    /// Registration order, so listeners are notified in the order they subscribed.
+    /// A dictionary's values have no defined order and Swift seeds its hashing per
+    /// process, so the order would otherwise vary between two runs of the same binary.
+    private var listeners: [(id: Int, callback: @Sendable (Preferences) -> Void)] = []
     private var nextListenerID = 0
 
     /// - Parameters:
@@ -614,22 +632,19 @@ public final class DefaultPreferencesStore: PreferencesStore, @unchecked Sendabl
     public func set<Value>(
         _ keyPath: WritableKeyPath<Preferences, Value>, to value: Value
     ) -> Preferences {
-        let current = getAll()
-        var draft = current
-        draft[keyPath: keyPath] = value
-        // Falling back to `current` rather than the defaults: a rejected value must cost
-        // the user the write, not the setting they already had.
-        return commit(draft.sanitized(fallback: current))
+        // A key-path write cannot fail — only the untrusted `write` path can.
+        try! mutate { draft throws(PreferenceWriteError) in
+            draft[keyPath: keyPath] = value
+        }
     }
 
     @discardableResult
     public func write(
         _ key: PreferenceKey, _ value: PreferenceValue
     ) throws(PreferenceWriteError) -> Preferences {
-        let current = getAll()
-        var draft = current
-        try draft.apply(key, value)
-        return commit(draft.sanitized(fallback: current))
+        try mutate { draft throws(PreferenceWriteError) in
+            try draft.apply(key, value)
+        }
     }
 
     @discardableResult
@@ -644,7 +659,42 @@ public final class DefaultPreferencesStore: PreferencesStore, @unchecked Sendabl
 
     @discardableResult
     public func reset() -> Preferences {
-        commit(defaults.sanitized(fallback: defaults))
+        writeLock.lock()
+        let next = defaults.sanitized(fallback: defaults)
+        backend.save(next.rawValues)
+        writeLock.unlock()
+        notify(next)
+        return next
+    }
+
+    /// Reads, applies `change`, sanitises and writes back — all under one lock, so a
+    /// concurrent writer cannot read the same starting set and overwrite the result.
+    ///
+    /// A `change` that throws writes nothing and notifies nobody: a refused write must
+    /// leave the store exactly as it was.
+    ///
+    /// Listeners are notified after the lock is released, so a listener that writes a
+    /// preference of its own cannot deadlock.
+    private func mutate(
+        _ change: (inout Preferences) throws(PreferenceWriteError) -> Void
+    ) throws(PreferenceWriteError) -> Preferences {
+        writeLock.lock()
+        let current = getAll()
+        var draft = current
+        do throws(PreferenceWriteError) {
+            try change(&draft)
+        } catch {
+            writeLock.unlock()
+            throw error
+        }
+        // Falling back to `current` rather than the defaults: a rejected value must
+        // cost the user the write, not the setting they already had.
+        let next = draft.sanitized(fallback: current)
+        backend.save(next.rawValues)
+        writeLock.unlock()
+
+        notify(next)
+        return next
     }
 
     public func onChange(
@@ -653,28 +703,22 @@ public final class DefaultPreferencesStore: PreferencesStore, @unchecked Sendabl
         lock.lock()
         let id = nextListenerID
         nextListenerID += 1
-        listeners[id] = listener
+        listeners.append((id: id, callback: listener))
         lock.unlock()
 
         return { [weak self] in
             guard let self else { return }
             self.lock.lock()
-            self.listeners[id] = nil
+            self.listeners.removeAll { $0.id == id }
             self.lock.unlock()
         }
-    }
-
-    private func commit(_ next: Preferences) -> Preferences {
-        backend.save(next.rawValues)
-        notify(next)
-        return next
     }
 
     private func notify(_ prefs: Preferences) {
         // Copied before the callbacks run so a listener that unsubscribes itself cannot
         // disturb the iteration, and so no listener is called while the lock is held.
         lock.lock()
-        let current = Array(listeners.values)
+        let current = listeners.map(\.callback)
         lock.unlock()
 
         for listener in current {

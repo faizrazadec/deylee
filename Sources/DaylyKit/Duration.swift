@@ -108,7 +108,7 @@ public func liveTotals(
         if open.type == .work { workedMs += elapsed } else { breakMs += elapsed }
     }
 
-    let targetMs = Int64(max(0, snapshot.targetMinutes)) * MS_PER_MINUTE
+    let targetMs = minutesToMs(max(0, snapshot.targetMinutes))
     return LiveTotals(
         workedMs: workedMs,
         breakMs: breakMs,
@@ -119,16 +119,40 @@ public func liveTotals(
     )
 }
 
-/// Rounds half up, matching JavaScript's `Math.round`, so a target of 0.25 h and one
-/// of 7.5 h land on the same minute the Electron app stored.
+/// Rounds half towards positive infinity, matching JavaScript's `Math.round`, so a
+/// target of 0.25 h and one of 7.5 h land on the same minute the Electron app stored.
+///
+/// Saturates rather than trapping. JavaScript numbers have no overflow, so the
+/// Electron build survives an absurd target on a corrupt store; turning the same
+/// value into a crash would be a regression, and every caller already treats an
+/// out-of-range target as "no useful target".
 public func hoursToMinutes(_ hours: Double) -> Int {
-    Int((hours * 60 + 0.5).rounded(.down))
+    let minutes = hours * 60
+    guard minutes.isFinite else { return minutes < 0 ? Int.min : Int.max }
+    let floor = minutes.rounded(.down)
+    let rounded = minutes - floor >= 0.5 ? floor + 1 : floor
+    if rounded >= Double(Int.max) { return Int.max }
+    if rounded <= Double(Int.min) { return Int.min }
+    return Int(rounded)
 }
 
 public func minutesToMs(_ minutes: Int) -> Int64 {
-    Int64(minutes) * MS_PER_MINUTE
+    saturatingMs(Int64(clamping: minutes), times: MS_PER_MINUTE)
 }
 
 public func hoursToMs(_ hours: Double) -> Int64 {
-    Int64((hours * Double(MS_PER_HOUR)).rounded())
+    let ms = (hours * Double(MS_PER_HOUR)).rounded()
+    guard ms.isFinite else { return ms < 0 ? Int64.min : Int64.max }
+    if ms >= Double(Int64.max) { return Int64.max }
+    if ms <= Double(Int64.min) { return Int64.min }
+    return Int64(ms)
+}
+
+/// Multiplies without trapping. A `target_minutes` value large enough to overflow can
+/// only come from a hand-edited or corrupt database — the Electron build renders it
+/// harmlessly as an unreachable target, so the native app must not die on it.
+func saturatingMs(_ value: Int64, times factor: Int64) -> Int64 {
+    let (product, overflowed) = value.multipliedReportingOverflow(by: factor)
+    if !overflowed { return product }
+    return (value < 0) == (factor < 0) ? Int64.max : Int64.min
 }

@@ -23,7 +23,10 @@ public func summariseRange(_ range: DateRange, days: [DayDetail]) -> RangeSummar
         totalBreakMs += detail.totals.breakMs
         if detail.totals.workedMs > 0 {
             activeDayCount += 1
-            let targetMs = Int64(detail.day.targetMinutes) * MS_PER_MINUTE
+            // Saturating: an absurd target_minutes can only come from a corrupt or
+            // hand-edited file, and the Electron build renders it as an unreachable
+            // target rather than dying on it.
+            let targetMs = minutesToMs(detail.day.targetMinutes)
             // A day with no target set can never "meet" it, however long it was.
             if targetMs > 0 && detail.totals.workedMs >= targetMs { targetMetCount += 1 }
         }
@@ -35,9 +38,13 @@ public func summariseRange(_ range: DateRange, days: [DayDetail]) -> RangeSummar
         totalWorkedMs: totalWorkedMs,
         totalBreakMs: totalBreakMs,
         activeDayCount: activeDayCount,
+        // Floored rather than truncated toward zero, so the value matches what the
+        // Electron build's consumer computed: it divided as a float and floored on the
+        // way to a display string. The two only differ on negative totals, which mean
+        // a corrupt file, but agreeing there costs nothing.
         averageWorkedMsPerActiveDay: activeDayCount == 0
             ? 0
-            : totalWorkedMs / Int64(activeDayCount),
+            : Int64((Double(totalWorkedMs) / Double(activeDayCount)).rounded(.down)),
         targetMetCount: targetMetCount
     )
 }
