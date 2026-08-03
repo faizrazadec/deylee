@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var prefs: PreferencesStore?
     private var model: AppModel?
     private var statusItem: StatusItemController?
+    private var miniWindow: MiniWindowController?
     private var idleMonitor: IdleMonitor?
     private var powerMonitor: PowerMonitor?
     private var rolloverTimer: Timer?
@@ -83,6 +84,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let statusItem = StatusItemController(model: model)
         self.statusItem = statusItem
+
+        // The controller watches `showMiniWindow` itself, so toggling the preference
+        // creates or destroys the window live with no further wiring.
+        miniWindow = MiniWindowController(
+            model: model,
+            prefs: prefs,
+            openPanel: { [weak statusItem] in statusItem?.showPanel() }
+        )
 
         engine.onSnapshot { [weak self] (snapshot: TimerSnapshot) in
             self?.model?.apply(snapshot)
@@ -188,6 +197,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The final heartbeat goes first: everything after it can only lose time that
         // this stamp has already accounted for.
         writeHeartbeat()
+        // A quit inside the 300 ms move debounce would otherwise forget where the
+        // user left the widget.
+        miniWindow?.flushPendingPosition()
         rolloverTimer?.invalidate()
         heartbeatTimer?.invalidate()
         idleMonitor?.stop()

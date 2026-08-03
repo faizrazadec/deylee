@@ -52,12 +52,15 @@ enum ButtonSize {
     case small
     case medium
     case large
+    /// The mini window's icon-only round button: 32 pt square, no label.
+    case circle
 
     var height: CGFloat {
         switch self {
         case .small: 28
         case .medium: 36
         case .large: 44
+        case .circle: 32
         }
     }
 
@@ -66,6 +69,25 @@ enum ButtonSize {
         case .small: Type.small
         case .medium: Type.control
         case .large: Type.controlLarge
+        case .circle: Type.small
+        }
+    }
+
+    /// Square, so the label cannot stretch the circle into a pill.
+    var width: CGFloat? {
+        self == .circle ? height : nil
+    }
+
+    /// Full-round for the circle, the shared control radius for everything else.
+    var cornerRadius: CGFloat {
+        self == .circle ? height / 2 : Radius.control
+    }
+
+    var horizontalPadding: CGFloat {
+        switch self {
+        case .circle: 0
+        case .small: Space.l
+        case .medium, .large: Space.xl
         }
     }
 }
@@ -81,14 +103,14 @@ struct DaylyButtonStyle: ButtonStyle {
             .font(size.font.weight(.medium))
             .foregroundStyle(foreground)
             .frame(maxWidth: fillWidth ? .infinity : nil)
-            .frame(height: size.height)
-            .padding(.horizontal, size == .small ? Space.l : Space.xl)
+            .frame(width: size.width, height: size.height)
+            .padding(.horizontal, size.horizontalPadding)
             .background(
-                RoundedRectangle(cornerRadius: Radius.control)
+                RoundedRectangle(cornerRadius: size.cornerRadius)
                     .fill(background(pressed: configuration.isPressed))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: Radius.control)
+                RoundedRectangle(cornerRadius: size.cornerRadius)
                     .strokeBorder(border, lineWidth: 1)
             )
             // Disabled controls dim rather than change colour, so the layout never shifts.
