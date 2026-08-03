@@ -7,6 +7,15 @@ import SwiftUI
 /// behaviours a popover would take away: it floats over full-screen apps, and showing
 /// it never activates Dayly over whatever the user is actually working in. Closing
 /// hides the window instead of destroying it, so reopening is instant.
+/// A borderless window refuses key status by default, and a panel that cannot become
+/// key never resigns it either — so `windowDidResignKey`, which is the whole
+/// blur-to-hide mechanism, would never fire. The `.nonactivatingPanel` style is what
+/// makes taking key focus safe here: the panel becomes key without Dayly activating
+/// over whatever the user is actually working in.
+private final class KeyablePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
 @MainActor
 final class PanelWindow: NSObject, NSWindowDelegate {
     private let window: NSPanel
@@ -16,8 +25,10 @@ final class PanelWindow: NSObject, NSWindowDelegate {
 
     var isVisible: Bool { window.isVisible }
 
+    private var lastHiddenAt: Date?
+
     init<Content: View>(@ViewBuilder content: () -> Content) {
-        window = NSPanel(
+        window = KeyablePanel(
             contentRect: NSRect(origin: .zero, size: Layout.panelSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -47,11 +58,16 @@ final class PanelWindow: NSObject, NSWindowDelegate {
     /// centred on it and clamped into the screen's work area.
     func show(below statusItemFrame: NSRect?) {
         window.setFrameOrigin(origin(below: statusItemFrame))
-        window.orderFrontRegardless()
+        // Key, not merely ordered front: only a window that holds key status can resign
+        // it, and resigning it is what dismisses the panel when the user works
+        // elsewhere. `.nonactivatingPanel` keeps this from activating the app.
+        window.makeKeyAndOrderFront(nil)
         onVisibilityChange?(true)
     }
 
     func hide() {
+        guard window.isVisible else { return }
+        lastHiddenAt = Date()
         window.orderOut(nil)
         onVisibilityChange?(false)
     }
@@ -59,10 +75,26 @@ final class PanelWindow: NSObject, NSWindowDelegate {
     func toggle(below statusItemFrame: NSRect?) {
         if window.isVisible {
             hide()
-        } else {
+        } else if !hidJustNow {
             show(below: statusItemFrame)
         }
     }
+
+    /// Whether a hide happened in the last instant.
+    ///
+    /// Clicking the status item while the panel is open can make the panel resign key
+    /// — and so hide — before the button's action runs. By the time `toggle` is asked,
+    /// the panel is already gone, and a naive toggle would reopen it: the icon would
+    /// become impossible to dismiss by clicking, which is the one gesture everyone
+    /// tries first. A click arriving this soon after a hide *is* that dismissal.
+    ///
+    /// The window is short enough that a deliberate reopen never lands inside it.
+    private var hidJustNow: Bool {
+        guard let lastHiddenAt else { return false }
+        return Date().timeIntervalSince(lastHiddenAt) < Self.reopenSuppressionInterval
+    }
+
+    private static let reopenSuppressionInterval: TimeInterval = 0.2
 
     private func origin(below statusItemFrame: NSRect?) -> NSPoint {
         let size = Layout.panelSize

@@ -42,7 +42,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.delegate = self
 
         panel.onVisibilityChange = { [weak self] visible in
-            self?.statusItem.button?.isHighlighted = visible
+            self?.setHighlighted(visible)
         }
 
         rebuildMenu(for: model.snapshot.state)
@@ -52,6 +52,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     deinit {
         MainActor.assumeIsolated { refreshTimer?.invalidate() }
+    }
+
+    /// Holds the button lit for exactly as long as the panel is on screen.
+    ///
+    /// Deferred by a turn of the run loop, which is the whole trick. The visibility
+    /// change arrives from inside the button's action, and that action runs *during*
+    /// AppKit's mouse tracking; tracking restores the button's own highlight state when
+    /// it finishes, so anything set synchronously here is overwritten a moment later
+    /// and the user sees a flash rather than a held highlight.
+    private func setHighlighted(_ highlighted: Bool) {
+        DispatchQueue.main.async { [weak self] in
+            self?.statusItem.button?.isHighlighted = highlighted
+        }
     }
 
     // MARK: - Clicks
