@@ -16,7 +16,7 @@ import Foundation
 /// a file from a newer build outright.
 
 /// Bump this in lock-step with a new entry in `migrations`.
-public let CURRENT_SCHEMA_VERSION = 1
+public let CURRENT_SCHEMA_VERSION = 2
 
 /// The database on disk was written by a newer build of Dayly than this one.
 ///
@@ -73,7 +73,106 @@ let migrations: [Migration] = [
             );
             """)
     },
+
+    // What sync needs from the local store.
+    //
+    // The integer primary keys stay exactly where they are: every query, every
+    // foreign key and every `Int64` id in the models keeps working, and a v1 file
+    // opens without rewriting a row. The sync identity is an additional column.
+    //
+    // Nothing here is Electron-compatible, and nothing needs to be — that build is
+    // gone. A v1 file upgrades in place; a v2 file simply will not open in code
+    // that predates this migration, which is what `schema_version` is for.
+    Migration(version: 2) { db in
+        try db.execute("""
+            -- Identity that survives leaving this machine.
+            --
+            -- An AUTOINCREMENT id is unique in one file and meaningless outside it:
+            -- two devices offline at once both mint `41`. UUIDv7 is generated where
+            -- the row is born, sorts by creation time, and cannot collide.
+            ALTER TABLE days     ADD COLUMN uuid TEXT;
+            ALTER TABLE segments ADD COLUMN uuid TEXT;
+
+            -- Tombstones. A row deleted here must still be *sent*, or the delete
+            -- never reaches the phone and the row comes back on its next sync.
+            ALTER TABLE days     ADD COLUMN deleted_at INTEGER;
+            ALTER TABLE segments ADD COLUMN deleted_at INTEGER;
+
+            -- The push queue, kept as a flag rather than an outbox table so a write
+            -- and its enqueue cannot end up in different transactions.
+            --
+            -- Existing rows default to dirty: history that predates sync has never
+            -- been sent, and the first sync should carry all of it up.
+            ALTER TABLE days     ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+            ALTER TABLE segments ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+
+            -- The server's ordering for this row. NULL means never acknowledged.
+            ALTER TABLE days     ADD COLUMN server_seq INTEGER;
+            ALTER TABLE segments ADD COLUMN server_seq INTEGER;
+
+            -- `segments` already tracks updated_at; `days` did not need to until
+            -- last-write-wins started comparing it.
+            ALTER TABLE days ADD COLUMN updated_at INTEGER;
+            UPDATE days SET updated_at = created_at WHERE updated_at IS NULL;
+            """)
+
+        // Seeding each id from the row's own `created_at` rather than from now()
+        // means backfilled ids sort into the order the rows were actually made, so
+        // a lifetime of existing history reaches the server already in sequence.
+        try db.run("UPDATE days     SET uuid = \(uuidV7SQL(millis: "created_at")) WHERE uuid IS NULL")
+        try db.run("UPDATE segments SET uuid = \(uuidV7SQL(millis: "created_at")) WHERE uuid IS NULL")
+
+        try db.execute("""
+            -- Added as indexes rather than column constraints because SQLite cannot
+            -- ALTER TABLE ADD COLUMN ... UNIQUE.
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_days_uuid     ON days(uuid);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_segments_uuid ON segments(uuid);
+
+            -- Partial: the push queue is scanned on every sync and is empty most of
+            -- the time.
+            CREATE INDEX IF NOT EXISTS idx_days_dirty     ON days(dirty)     WHERE dirty = 1;
+            CREATE INDEX IF NOT EXISTS idx_segments_dirty ON segments(dirty) WHERE dirty = 1;
+
+            -- One row, forever. The CHECK is what makes that true rather than a
+            -- convention some future writer forgets.
+            CREATE TABLE IF NOT EXISTS sync_state (
+              id             INTEGER PRIMARY KEY CHECK (id = 1),
+              device_id      TEXT    NOT NULL,
+              user_id        TEXT,
+              cursor         INTEGER NOT NULL DEFAULT 0,
+              last_synced_at INTEGER
+            );
+            """)
+
+        // Identifies this installation for the life of the store. Generated once
+        // here so every later sync has one to send without a first-run special case.
+        try db.run("""
+            INSERT OR IGNORE INTO sync_state (id, device_id, cursor)
+            VALUES (1, \(uuidV7SQL(millis: "(strftime('%s','now') * 1000)")), 0)
+            """)
+    },
 ]
+
+/// A SQL expression yielding a UUIDv7 string, for generating ids set-at-a-time
+/// inside a statement rather than row-by-row through Swift.
+///
+/// Layout is the RFC 9562 one: 48 bits of Unix millisecond timestamp, the version
+/// nibble 7, the variant bits 10, and randomness filling the rest. Because the
+/// timestamp leads, the ids sort chronologically as plain text — which is what lets
+/// the server's pull order and a client's insertion order agree for free.
+///
+/// - Parameter millis: a SQL expression evaluating to epoch milliseconds. A column
+///   name backfills each row from its own timestamp; `strftime` mints a fresh one.
+func uuidV7SQL(millis: String) -> String {
+    """
+    (substr(printf('%012x', \(millis)), 1, 8) || '-' ||
+     substr(printf('%012x', \(millis)), 9, 4) || '-' ||
+     '7' || substr(lower(hex(randomblob(2))), 1, 3) || '-' ||
+     substr('89ab', 1 + (abs(random()) % 4), 1) ||
+     substr(lower(hex(randomblob(2))), 1, 3) || '-' ||
+     lower(hex(randomblob(6))))
+    """
+}
 
 public func runMigrations(_ db: Database) throws {
     // Bootstrapped outside the migration list because reading the current version
