@@ -6,7 +6,8 @@ history in a SQLite file you own.
 
 Native Swift, SwiftUI and AppKit. Dayly used to be an Electron app for macOS, Windows
 and Linux; that build has been removed — it survives in git history alone. The app
-lives in `macos/`, targets macOS only, and is specified in
+is a single Swift package at the root of this repository, targets macOS only, and is
+specified in
 [`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md), which is binding.
 
 ---
@@ -19,7 +20,7 @@ lives in `macos/`, targets macOS only, and is specified in
 - **No network requests at all.** The Electron build made exactly one — a
   preference-gated version check against GitHub Releases. The rewrite has not brought
   even that back yet: there is no update code in the Swift app and no other networking
-  either. Grep `macos/Sources/` for `URLSession` and you will find nothing. If an
+  either. Grep `Sources/` for `URLSession` and you will find nothing. If an
   update check returns it will be the same deal as before — a version comparison
   against a public feed, no identifier, no payload, off by a single preference — but
   today the honest statement is simpler: Dayly opens no sockets.
@@ -59,7 +60,6 @@ SwiftUI and AppKit. Nothing to audit, nothing to bump, nothing that can drift.
 ## Getting started
 
 ```sh
-cd macos
 swift build            # compile DaylyKit and the app
 ./scripts/test.sh      # run the suite — NOT bare `swift test`, see below
 ./scripts/make-app.sh  # assemble dist/Dayly.app (release by default; pass `debug`)
@@ -86,7 +86,7 @@ SwiftPM produces a bare binary, and a menu-bar app needs a bundle — `LSUIEleme
 and the bundle id only apply inside one. `./scripts/make-app.sh` builds, copies
 `Resources/Info.plist`, renders `AppIcon.icns` from the repo's generated icon master,
 and ad-hoc signs the bundle so Gatekeeper and TCC treat it as a stable identity. The
-result is `macos/dist/Dayly.app`.
+result is `dist/Dayly.app`.
 
 ---
 
@@ -115,11 +115,13 @@ have been compiled and launched, not lived with.
 ## Architecture
 
 ```
-macos/
-  Sources/DaylyKit/     platform-free core: models, time maths, SQLite, repository, engine
-  Sources/Dayly/        the app: status item, panel, SwiftUI views, idle/power monitors
-  Tests/DaylyKitTests/  the core's suite (Swift Testing)
-  scripts/              test.sh, make-app.sh
+Package.swift
+Sources/DaylyKit/     platform-free core: models, time maths, SQLite, repository, engine
+Sources/Dayly/        the app: status item, panel, SwiftUI views, idle/power monitors
+Tests/DaylyKitTests/  the core's suite (Swift Testing)
+Resources/            Info.plist and the 1024 px icon master
+scripts/              test.sh, make-app.sh
+docs/                 the binding spec
 ```
 
 - **Two targets, one boundary.** `DaylyKit` is the core — segment and day models,
@@ -213,17 +215,17 @@ folder, start it again.
 
 ## Releasing
 
-Commits are still Conventional Commits, enforced by `commitlint` in a husky hook —
-the types and scopes are in [CLAUDE.md](CLAUDE.md).
+Nothing has been released yet — this repository has no tags and no releases, and the
+first one will be 0.1.0. Commits are Conventional Commits, enforced by a dependency-free
+`.husky/commit-msg` shell script; the types and scopes are in [CLAUDE.md](CLAUDE.md).
 
 Distribution of the native app is unresolved, and it is worth being precise about
 why. The open prerequisite is signing and notarisation with an Apple Developer ID:
 the Electron build shipped unsigned, which is exactly why it could never auto-update
-— Squirrel.Mac refuses to apply an update to an unsigned build — and shipping the
-rewrite unsigned would repeat that mistake. The old release pipeline
-(`.github/workflows/release.yml`) still targets the retired Electron build and does
-not build the Swift app. Until that is settled there is no download to point at;
-build from source as described under *Getting started*.
+and shipping the rewrite unsigned would repeat that mistake. There is no CI pipeline:
+the Electron one was deleted rather than left pointing at a build that no longer
+exists. Until signing is settled there is no download to point at; build from source
+as described under *Getting started*.
 
 ---
 
