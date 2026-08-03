@@ -15,7 +15,15 @@ public enum DataStore {
     /// and renaming it would strand the user's existing history.
     public static let folderName = "dayly"
 
+    /// Overrides the data folder for a development run, so a build under test never
+    /// opens the real history.
+    public static let folderOverrideEnvKey = "DAYLY_DATA_DIR"
+
     public static var folderURL: URL {
+        if let override = ProcessInfo.processInfo.environment[folderOverrideEnvKey],
+           !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appending(path: folderName, directoryHint: .isDirectory)
     }
