@@ -20,7 +20,8 @@ public final class Database {
         case null
     }
 
-    private var handle: OpaquePointer?
+    fileprivate var handle: OpaquePointer?
+    private var savepointDepth = 0
 
     public init(path: String) throws {
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
@@ -73,6 +74,21 @@ public final class Database {
         try query(sql, params, row: map).first
     }
 
+    /// Copy this database to `path` with SQLite's online backup API.
+    ///
+    /// Safe to run while the timer is still writing: in WAL mode the newest commits
+    /// live in the `-wal` sidecar, so a plain file copy of the `.sqlite` alone can
+    /// silently miss them. This produces one consistent file instead.
+    public func backup(to path: String) throws {
+        let destination = try Database(path: path)
+        guard let backup = sqlite3_backup_init(destination.handle, "main", handle, "main") else {
+            throw destination.failure(sqlite3_errcode(destination.handle))
+        }
+        sqlite3_backup_step(backup, -1)
+        let code = sqlite3_backup_finish(backup)
+        guard code == SQLITE_OK else { throw failure(code) }
+    }
+
     public var lastInsertRowID: Int64 {
         sqlite3_last_insert_rowid(handle)
     }
@@ -82,14 +98,30 @@ public final class Database {
     }
 
     /// Everything inside `body` commits atomically, or rolls back if it throws.
+    ///
+    /// Nesting is safe: an inner call is promoted to a SAVEPOINT, so a service may
+    /// wrap a repository method that already wraps itself and only the outermost
+    /// commit reaches the disk. This mirrors better-sqlite3, which the repository
+    /// logic was written against.
+    @discardableResult
     public func transaction<T>(_ body: () throws -> T) throws -> T {
-        try execute("BEGIN IMMEDIATE")
+        let depth = savepointDepth
+        let name = "dayly_sp_\(depth)"
+        try execute(depth == 0 ? "BEGIN IMMEDIATE" : "SAVEPOINT \(name)")
+        savepointDepth = depth + 1
         do {
             let result = try body()
-            try execute("COMMIT")
+            try execute(depth == 0 ? "COMMIT" : "RELEASE \(name)")
+            savepointDepth = depth
             return result
         } catch {
-            try? execute("ROLLBACK")
+            if depth == 0 {
+                try? execute("ROLLBACK")
+            } else {
+                try? execute("ROLLBACK TO \(name)")
+                try? execute("RELEASE \(name)")
+            }
+            savepointDepth = depth
             throw error
         }
     }
@@ -120,7 +152,7 @@ public final class Database {
         return statement
     }
 
-    private func failure(_ code: Int32) -> Failure {
+    fileprivate func failure(_ code: Int32) -> Failure {
         Failure(code: code, message: String(cString: sqlite3_errmsg(handle)))
     }
 }
