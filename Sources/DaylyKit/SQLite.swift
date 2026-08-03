@@ -6,7 +6,7 @@ import SQLite3
 /// dependency-free wrapper beats an ORM. Not Sendable on purpose: the store that
 /// owns a `Database` is responsible for confining it to one executor.
 public final class Database {
-    public struct Failure: Error, CustomStringConvertible {
+    public struct Failure: DaylyError {
         public let code: Int32
         public let message: String
         public var description: String { "sqlite error \(code): \(message)" }

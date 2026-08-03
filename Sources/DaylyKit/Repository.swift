@@ -347,7 +347,7 @@ public final class Repository {
     }
 }
 
-public enum RepositoryError: Error, CustomStringConvertible {
+public enum RepositoryError: DaylyError {
     case dayNotFound(Int64)
     case segmentNotFound(Int64)
 
