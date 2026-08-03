@@ -5,9 +5,9 @@ coffee, end the day — Dayly keeps the running total beside the clock glyph and
 history in a SQLite file you own.
 
 Native Swift, SwiftUI and AppKit. Dayly used to be an Electron app for macOS, Windows
-and Linux; that build is retired and survives under `src/` only as a reference. The
-rewrite lives in `macos/`, targets macOS alone, and is specified in
-[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md).
+and Linux; that build has been removed — it survives in git history alone. The app
+lives in `macos/`, targets macOS only, and is specified in
+[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md), which is binding.
 
 ---
 
@@ -92,19 +92,23 @@ result is `macos/dist/Dayly.app`.
 
 ## What is built, and what is not yet
 
-The rewrite is in progress. The core and the primary surface are done; the secondary
-windows are not.
+Every surface is built. What is missing is everything downstream of shipping it.
 
 | Surface | Status |
 |---|---|
 | `DaylyKit` — models, time maths, SQLite store, repository, timer engine | Complete, with the test suite ported |
-| Menu-bar item — live `H:MM` title, tooltip, context menu | Working |
-| Panel — timer, target progress, today's segments | Working |
-| History window (calendar, roll-ups, manual edits, CSV/JSON export) | Not built — the menu item is a stub |
-| Settings window | Not built — the preference store is complete, but there is no UI, and only the tracking preferences (target, idle, sleep, lock) are acted on so far |
-| Mini window | Not built |
-| Recovery / idle / wake prompt modals, end-day confirmation | Not built — see *The awkward cases* for what happens meanwhile |
-| System notifications | Not built |
+| Menu-bar item — live `H:MM` title, tooltip, context menu | Built |
+| Panel — timer, target progress, today's segments | Built |
+| History window — calendar, roll-ups, manual edits, CSV/JSON export | Built |
+| Settings window | Built |
+| Mini window | Built |
+| Recovery / idle / wake prompt modals, end-day confirmation | Built |
+| System notifications | Not built — every prompt opens the panel instead, which was always the reliable path |
+| Update checking | Not built, and it needs a signed build to be worth anything |
+| Signing, notarisation, distribution | Not started — see *Releasing* |
+
+None of it has been through real use yet. The core is covered by tests; the windows
+have been compiled and launched, not lived with.
 
 ---
 
@@ -141,9 +145,8 @@ macos/
   30 seconds, and once more first thing on a clean quit. On the next launch, an open
   segment that carried less than a second of time is dropped silently rather than
   interrupting you. The three-way choice for anything longer — resume it, close it at
-  the last heartbeat, discard it — is ported and tested in `DaylyKit`, but the prompt
-  is not on screen yet: until it is, the surviving segment simply stays open and keeps
-  counting, which is the resume choice.
+  the last heartbeat, discard it — is asked before anything else on screen, and the
+  question cannot be dismissed without answering it.
 - **Midnight.** A segment that crosses local midnight is split into one piece per
   calendar day, so every stored segment belongs to exactly one day. A 1-second timer
   on the main run loop performs the split even if you never touch the app — a timer
@@ -155,8 +158,7 @@ macos/
 - **Overlaps.** Segments may never overlap. Intervals are half-open (`[start, end)`),
   so pause/resume closing one segment and opening the next at the same instant is the
   normal shape, not a conflict. The validation that rejects a bad manual edit with a
-  readable message naming the colliding segment is ported; it becomes user-visible
-  when the History window's editing arrives.
+  readable message naming the colliding segment names it exactly as it always did.
 - **Sleep and lock.** Sleeping closes the open work segment at the moment it happened
   (locking too, if you opt in — off by default, because a lock during a call is not
   always a break); an open break is left alone, since it already accounts for the
@@ -164,12 +166,13 @@ macos/
   `com.apple.screenIsLocked` distributed notifications — and because none of those is
   guaranteed to arrive, a wall-clock watchdog ticks every 10 seconds and treats a
   tick that lands more than a minute late as a sleep nobody announced. On wake the
-  panel opens; the was-it-a-break prompt is not built yet, so for now the gap stays
-  off the record and the timer waits for you to press Start.
+  panel opens and asks whether the gap was a break; either answer starts work again.
 - **Idle.** While the timer runs, system idle time is read from `CGEventSource` every
   15 seconds and compared against your threshold. Detection is edge-triggered — one
-  absence, one report, re-armed only when you return. The keep-or-drop prompt is not
-  built yet, so for now the panel opens and the idle stretch stays counted.
+  absence, one report, re-armed only when you return. Past the threshold the panel
+  opens and asks whether to keep the idle stretch as work or drop it; dropping ends
+  the segment where you stopped and opens a fresh one now, so the gap is simply absent
+  from the day rather than recorded as anything.
 - **Installing an older build over a newer database.** Migrations run forwards only,
   so an older build cannot understand a file a newer one wrote. Rather than opening
   it anyway, Dayly refuses to start with a dialog saying which schema version the
@@ -196,15 +199,15 @@ drives ordered, transactional, idempotent migrations — and which is also the d
 guard described above.
 
 **Export** is not available yet: it belongs to the History window, which is not
-built. The CSV and JSON formats the Electron build wrote are pinned down in
-[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md); until they return, any SQLite
-browser reads the file directly.
+built to the formats pinned down in
+[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md), so a spreadsheet built on an
+Electron-era export still reads. Any SQLite browser reads the file directly too.
 
 **Backup** exists as an API (`DataStore.backup`) built on SQLite's online backup, so
 it is safe to take while the timer is running and while WAL is active — unlike a
-plain file copy, which can miss the newest commits sitting in the `-wal` sidecar. The
-Settings button that invokes it is not built yet. Restoring is a file copy: quit
-Dayly, drop the `.sqlite` file back into the data folder, start it again.
+plain file copy, which can miss the newest commits sitting in the `-wal` sidecar.
+Restoring is a file copy: quit Dayly, drop the `.sqlite` file back into the data
+folder, start it again.
 
 ---
 
