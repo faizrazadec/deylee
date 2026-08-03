@@ -38,8 +38,21 @@ struct MiniPositionStore {
         defaults.set(stored, forKey: Self.defaultsKey)
     }
 
+    /// Malformed entries are dropped one at a time.
+    ///
+    /// A single `as?` over the whole map is all-or-nothing: one entry of the wrong
+    /// shape — this store is user-editable and survives downgrades — would read as an
+    /// empty map, move every display's window back to the default corner, and then the
+    /// next save would write that emptiness back over the good entries.
     private func all() -> [String: [String: Double]] {
-        defaults.dictionary(forKey: Self.defaultsKey) as? [String: [String: Double]] ?? [:]
+        guard let raw = defaults.dictionary(forKey: Self.defaultsKey) else { return [:] }
+        return raw.reduce(into: [:]) { result, entry in
+            guard let point = entry.value as? [String: Double],
+                  let x = point["x"], let y = point["y"],
+                  x.isFinite, y.isFinite
+            else { return }
+            result[entry.key] = ["x": x, "y": y]
+        }
     }
 }
 

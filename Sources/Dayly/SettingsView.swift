@@ -1046,12 +1046,19 @@ private struct SettingsStepperStyle: ButtonStyle {
 
 /// The reminder's hour and minute, as the platform's own time field.
 ///
-/// The picker can only ever hand back a complete time, which is what keeps the two
-/// preferences underneath from being half-written.
+/// Edited against a local draft and committed only when the field gives up focus.
+/// A field-style picker reports a new value on every digit typed, so writing straight
+/// through would persist each intermediate: someone correcting 17:30 to 09:30 types
+/// `0` and the reminder is briefly set to 00:30 — and stays there if they click away
+/// before the second digit. The draft is what keeps the two preferences underneath
+/// from being half-written.
 struct SettingsReminderTimeField: View {
     let time: Date
     let isEnabled: Bool
     let action: (Int, Int) -> Void
+
+    @State private var draft: Date?
+    @FocusState private var isFocused: Bool
 
     /// Matches the medium button and the number-field cluster it shares a card with.
     private static let fieldHeight: CGFloat = 36
@@ -1060,15 +1067,21 @@ struct SettingsReminderTimeField: View {
         DatePicker(
             "Reminder time",
             selection: Binding(
-                get: { time },
-                set: { next in
-                    let parts = Calendar.current.dateComponents([.hour, .minute], from: next)
-                    guard let hour = parts.hour, let minute = parts.minute else { return }
-                    action(hour, minute)
-                }
+                get: { draft ?? time },
+                set: { draft = $0 }
             ),
             displayedComponents: .hourAndMinute
         )
+        .focused($isFocused)
+        .onChange(of: isFocused) { _, focused in
+            if !focused { commit() }
+        }
+        .onSubmit(commit)
+        // A value the user did not type — the store changed under them — replaces the
+        // draft, so the field never shows something the preferences no longer hold.
+        .onChange(of: time) { _, _ in
+            if !isFocused { draft = nil }
+        }
         .datePickerStyle(.field)
         .labelsHidden()
         .font(Type.body.monospacedDigit())
@@ -1083,6 +1096,14 @@ struct SettingsReminderTimeField: View {
         )
         .disabled(!isEnabled)
         .accessibilityLabel("Reminder time")
+    }
+
+    private func commit() {
+        guard let draft else { return }
+        self.draft = nil
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: draft)
+        guard let hour = parts.hour, let minute = parts.minute else { return }
+        action(hour, minute)
     }
 }
 
