@@ -16,8 +16,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Dayly"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
-# App icon: build AppIcon.icns from the repo's generated 1024px master.
-ICON_SRC="../build/icon.png"
+# App icon: build AppIcon.icns from the 1024px master.
+ICON_SRC="Resources/AppIcon.png"
 if [[ -f "$ICON_SRC" ]]; then
   ICONSET="$(mktemp -d)/AppIcon.iconset"
   mkdir -p "$ICONSET"
