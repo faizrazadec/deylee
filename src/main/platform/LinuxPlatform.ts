@@ -21,11 +21,17 @@ const WATCHER_NAMES = [
 ] as const;
 
 /**
+ * The .desktop basename this app installs outside a snap, matching
+ * `linux.executableName` in electron-builder.yml.
+ */
+const DESKTOP_BASE_NAME = 'dayly-time-tracker';
+
+/**
  * Must match `linux.executableName` in electron-builder.yml, because that is what the
  * snap declares in its `autostart:` entry — snapd only honours the file it was told to
  * look for, so a mismatch here writes an autostart entry nothing ever reads.
  */
-const AUTOSTART_FILE_NAME = 'dayly-time-tracker.desktop';
+const AUTOSTART_FILE_NAME = `${DESKTOP_BASE_NAME}.desktop`;
 
 /**
  * What the entry was called before the executable was renamed to match the registered
@@ -119,22 +125,50 @@ export class LinuxPlatform implements Platform {
     // to be appended before `whenReady`, which has already resolved by the time this
     // runs; and `app.setName` must never be called here because
     // `app.getPath('userData')` is derived from it and the database has not been
-    // opened yet. The autostart entry is named after the app name for the same
-    // reason — that is how GNOME and Wayland match a window to its .desktop file.
+    // opened yet.
     //
-    // Redirecting userData, however, is exactly what has to happen here and nowhere
-    // else: it must land before the store and the database are opened, and bootstrap
-    // calls this first.
+    // The two things that *do* belong here both have to land before anything else
+    // reads them: the application id before the first window exists, and the userData
+    // root before the store and the database are opened. Bootstrap calls this first.
+    this.claimSnapApplicationId();
+    this.redirectSnapUserData();
+  }
+
+  /**
+   * Reports the application id snapd's desktop entry actually carries.
+   *
+   * snapd re-exports the entry as `<instance>_<app>.desktop`, and on Wayland that
+   * basename *is* the id the shell matches windows against. Reporting the unprefixed
+   * name leaves every window unassociated, so GNOME concludes the app is not running:
+   * a launcher click then starts another process rather than raising the window, and
+   * that process loses the race against focus-stealing prevention and appears to do
+   * nothing at all. `StartupWMClass` cannot rescue it — that is read only under X11,
+   * and Dayly runs as a native Wayland client.
+   *
+   * Done here rather than through `desktopName` in package.json because the right
+   * answer differs by packaging: the .deb and the AppImage install plain
+   * `dayly-time-tracker.desktop`, which is what package.json already declares, and only
+   * the snap carries the prefix.
+   */
+  private claimSnapApplicationId(): void {
+    const instance = process.env.SNAP_INSTANCE_NAME ?? process.env.SNAP_NAME;
+    if (instance === undefined || instance.length === 0) return;
+    app.setDesktopName(`${instance}_${DESKTOP_BASE_NAME}.desktop`);
+  }
+
+  /**
+   * Moves userData off the per-revision directory when running as a snap.
+   *
+   * Electron resolves it under `$SNAP_USER_DATA`, which snapd keeps per revision and
+   * rolls back with `snap revert` — a user recovering from a bad update would silently
+   * lose every tracked hour. `$SNAP_USER_COMMON` is the revision-independent directory
+   * snapd provides for exactly this, and moving the root moves the database, the
+   * preferences and the backups together rather than leaving them in three places.
+   */
+  private redirectSnapUserData(): void {
     const common = process.env.SNAP_USER_COMMON;
-    if (common !== undefined && common.length > 0) {
-      // Inside a snap, Electron resolves userData under $SNAP_USER_DATA, which snapd
-      // keeps *per revision* and rolls back with `snap revert`. A user recovering from
-      // a bad update would silently lose every tracked hour. $SNAP_USER_COMMON is the
-      // revision-independent directory snapd provides for precisely this, and moving
-      // the root moves the database, the preferences and the backups together rather
-      // than leaving them in three different places.
-      app.setPath('userData', join(common, 'dayly'));
-    }
+    if (common === undefined || common.length === 0) return;
+    app.setPath('userData', join(common, 'dayly'));
   }
 
   async detectTrayAvailable(): Promise<boolean> {
