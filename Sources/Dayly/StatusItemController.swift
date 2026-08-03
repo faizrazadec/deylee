@@ -28,6 +28,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// can re-resolve it, which is what keeps the colour correct if the system flips
     /// between light and dark while the panel is open.
     private var highlightOn = false
+    /// The fill, kept as its own sublayer so it can be inset and capsule-shaped
+    /// independently of the button, whose own bounds span the full bar height.
+    private var highlightLayer: CALayer?
 
     init(model: AppModel) {
         self.model = model
@@ -48,7 +51,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // it simply stays on from the click until the panel closes.
             (button.cell as? NSButtonCell)?.highlightsBy = []
             button.wantsLayer = true
-            button.layer?.cornerRadius = Self.highlightCornerRadius
         }
 
         menu.autoenablesItems = false
@@ -67,9 +69,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         MainActor.assumeIsolated { refreshTimer?.invalidate() }
     }
 
-    /// The menu bar's own rounded-rect highlight geometry.
-    private static let highlightCornerRadius: CGFloat = 4
-
     /// Holds the button lit for exactly as long as the panel or the menu is up.
     ///
     /// Drawn rather than delegated to `isHighlighted`: AppKit resets that when mouse
@@ -84,16 +83,34 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func applyHighlight() {
         guard let button = statusItem.button else { return }
         button.wantsLayer = true
-        // No implicit fade: the fill has to land on the same frame as the click, or the
-        // delay is itself the flicker this exists to remove.
+        guard let hostLayer = button.layer else { return }
+
+        let fill = highlightLayer ?? {
+            let layer = CALayer()
+            // Behind the glyph, never over it.
+            hostLayer.insertSublayer(layer, at: 0)
+            highlightLayer = layer
+            return layer
+        }()
+
+        // No implicit animation: the fill has to land on the same frame as the click,
+        // and a resize has to follow the title without sliding after it.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        button.layer?.cornerRadius = Self.highlightCornerRadius
+        // Re-framed every time because the button grows and shrinks with the H:MM
+        // title as the minutes tick over.
+        // The button's own bounds are already inset from the bar — 22 pt inside a
+        // 33 pt menu bar on this display — which is exactly the inset the system's
+        // pill has. Insetting again only made it look squat. A radius of half the
+        // height is what turns it from a rounded square into the capsule the menu bar
+        // draws around an active extra.
+        fill.frame = button.bounds
+        fill.cornerRadius = button.bounds.height / 2
         // A dynamic NSColor snapshots the *current* appearance when it becomes a
         // CGColor, which is not necessarily the menu bar's — resolving against the
         // button's own appearance is what keeps it right in both themes.
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            button.layer?.backgroundColor = highlightOn ? Self.highlightColor.cgColor : nil
+            fill.backgroundColor = highlightOn ? Self.highlightColor.cgColor : nil
         }
         CATransaction.commit()
     }
