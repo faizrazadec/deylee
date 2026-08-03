@@ -463,6 +463,9 @@ async function initialiseTray(rt: Runtime): Promise<void> {
 
   // With no tray host the mini-window is the only way to reach the app at all.
   trayFallbackActive = true;
+  // Before any window is opened, so the panel is built as an ordinary window rather
+  // than a popover with nothing to hang from.
+  rt.windows.setTrayFallbackActive(true);
   rt.prefs.set('showMiniWindow', true);
   if (rt.prefs.get('trayFallbackNoticeShown')) return;
 

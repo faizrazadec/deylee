@@ -87,10 +87,40 @@ function readStoredPosition(
 
 export class WindowManager {
   private readonly platform: Platform;
+  /**
+   * True when no tray host exists, so the panel has no icon to hang from.
+   *
+   * The panel is built as a tray popover — frameless, out of the taskbar, dismissed on
+   * blur. Every one of those is right when a tray icon anchors it and wrong when a dock
+   * or taskbar entry is the only handle: blur-to-dismiss turns a launcher click into a
+   * flash, because the click blurs the panel and then reopens it, and `skipTaskbar`
+   * leaves the shell with no window to represent so the icon disappears.
+   */
+  private trayFallbackActive = false;
   private readonly prefs: PreferencesStore;
   private readonly windows = new Map<WindowKind, BrowserWindow>();
   private panelVisibility: ((visible: boolean) => void) | null = null;
   private miniMoveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Called once the tray probe has answered, before any window is opened. The panel is
+   * created lazily, so this lands in time to shape its options.
+   */
+  setTrayFallbackActive(active: boolean): void {
+    this.trayFallbackActive = active;
+  }
+
+  /**
+   * True only where the panel has to stand in as the app's main window.
+   *
+   * Linux by design, not by accident. macOS and Windows report a tray unconditionally,
+   * so the fallback there could only be a freak failure — and reshaping the panel would
+   * do real harm on macOS, where it is an NSPanel precisely so it can float over
+   * fullscreen apps without activating Dayly. A framed taskbar window would lose that.
+   */
+  private panelIsOnlyHandle(): boolean {
+    return this.trayFallbackActive && this.platform.os === 'linux';
+  }
 
   constructor(deps: { platform: Platform; prefs: PreferencesStore }) {
     this.platform = deps.platform;
@@ -208,6 +238,10 @@ export class WindowManager {
         // Clicking into the panel's own devtools blurs it too; dismissing then
         // would make the panel impossible to inspect.
         if (win.webContents.isDevToolsFocused()) return;
+        // With no tray, the panel is an ordinary window and dismiss-on-blur is actively
+        // wrong: clicking its own launcher entry blurs it, the hide races the activation
+        // that follows, and the window flashes instead of coming forward.
+        if (this.panelIsOnlyHandle()) return;
         win.hide();
       });
       // Driven by the window's own events rather than by the toggle call, so a
@@ -237,19 +271,24 @@ export class WindowManager {
 
   private optionsFor(kind: WindowKind): BrowserWindowConstructorOptions {
     switch (kind) {
-      case 'panel':
+      case 'panel': {
+        // Without a tray the panel is the app's main window, not a popover hanging off
+        // an icon: it needs a frame to be moved, minimised and closed, and it has to
+        // appear in the taskbar so the shell has something to represent.
+        const asPopover = !this.panelIsOnlyHandle();
         return {
           // docs/DESIGN.md §4: 320 wide with a 284px content column inside 18px padding.
           // Height is content-driven between 372 and 436; 436 is the tallest state
           // (running, with a full segment list).
           width: 320,
           height: 436,
-          frame: false,
+          frame: asPopover ? false : true,
           resizable: false,
-          skipTaskbar: true,
+          skipTaskbar: asPopover,
           show: false,
-          ...this.platform.panelWindowOptions(),
+          ...(asPopover ? this.platform.panelWindowOptions() : {}),
         };
+      }
 
       case 'mini': {
         const position = this.resolveMiniPosition();
