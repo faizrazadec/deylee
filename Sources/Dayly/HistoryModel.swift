@@ -320,9 +320,21 @@ final class HistoryModel {
         }
     }
 
+    /// The reason the error carries, not Cocoa's placeholder for it.
+    ///
+    /// DaylyKit's errors describe themselves through `CustomStringConvertible` rather
+    /// than `LocalizedError`, so the `NSError` bridge would answer "The operation
+    /// couldn't be completed. (DaylyKit.Database.Failure error 1.)" — which tells the
+    /// user nothing about the unwritable path or the unreadable database that actually
+    /// stopped the export.
     private func describe(_ error: Error) -> String {
-        let message = (error as? LocalizedError)?.errorDescription
-            ?? (error as NSError).localizedDescription
+        let message = if let localized = (error as? LocalizedError)?.errorDescription {
+            localized
+        } else if let describable = error as? CustomStringConvertible {
+            describable.description
+        } else {
+            (error as NSError).localizedDescription
+        }
         return message.isEmpty ? "The export could not be written." : message
     }
 }

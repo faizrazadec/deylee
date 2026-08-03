@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var stopWatchingPreferences: PreferencesUnsubscribe?
     private var idleMonitor: IdleMonitor?
     private var powerMonitor: PowerMonitor?
+    private var reminderService: ReminderService?
     private var rolloverTimer: Timer?
     private var heartbeatTimer: Timer?
     private var pendingRecovery: PendingRecovery?
@@ -120,6 +121,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startPowerMonitor(engine: engine, prefs: prefs)
         startRollover(engine: engine)
         startHeartbeat(repo: repo, engine: engine)
+
+        let reminder = ReminderService(
+            prefs: prefs,
+            isRunning: { [weak self] in self?.model?.snapshot.state == .running },
+            post: { [weak self] notice in self?.model?.post(notice) }
+        )
+        reminder.start()
+        reminderService = reminder
 
         reconcileLoginItem(prefs: prefs)
         model.apply(try engine.snapshot())
@@ -277,6 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         heartbeatTimer?.invalidate()
         idleMonitor?.stop()
         powerMonitor?.stop()
+        reminderService?.stop()
         stopWatchingPreferences?()
         settingsModel?.stopObserving()
         return .terminateNow
