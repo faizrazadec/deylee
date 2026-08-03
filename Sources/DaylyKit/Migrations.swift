@@ -24,7 +24,7 @@ public let CURRENT_SCHEMA_VERSION = 1
 /// shaped for an older schema, ignore columns it does not know about, and let a
 /// later rebuild take the newer ones with it. There is no down-migration to fall
 /// back on, so the only safe answer is to not open the file at all.
-public struct SchemaTooNewError: Error, CustomStringConvertible {
+public struct SchemaTooNewError: DaylyError {
     public let storedVersion: Int
     public let supportedVersion: Int
 

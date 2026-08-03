@@ -111,8 +111,13 @@ final class PowerMonitor {
         away = nil
     }
 
+    /// `@Sendable` because the notification centre delivers the block from its own
+    /// context; the queue is `.main`, so `assumeIsolated` is stating a fact rather than
+    /// making a promise.
     private func observe(
-        _ center: NotificationCenter, _ name: Notification.Name, _ handler: @escaping () -> Void
+        _ center: NotificationCenter,
+        _ name: Notification.Name,
+        _ handler: @escaping @MainActor @Sendable () -> Void
     ) {
         observers.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated(handler)
