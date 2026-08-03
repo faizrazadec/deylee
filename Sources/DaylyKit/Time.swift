@@ -35,11 +35,11 @@ private func pad2(_ value: Int) -> String {
 }
 
 extension Date {
-    init(epochMs: EpochMs) {
+    public init(epochMs: EpochMs) {
         self.init(timeIntervalSince1970: Double(epochMs) / 1_000)
     }
 
-    var epochMs: EpochMs {
+    public var epochMs: EpochMs {
         EpochMs((timeIntervalSince1970 * 1_000).rounded())
     }
 }
