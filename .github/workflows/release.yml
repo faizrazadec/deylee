@@ -1,0 +1,210 @@
+name: release
+
+# Tags are the trigger, and `npm run release` is what creates them. Nothing publishes
+# from a branch push — a release is always something you tagged on purpose.
+on:
+  push:
+    tags: ['v*']
+  # Lets you re-run a failed platform without cutting a new tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build (e.g. v0.2.0)
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  # Required for GITHUB_TOKEN to create the Release and upload assets.
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      # One platform failing must not cancel the others: a green Linux build is still
+      # worth publishing while a Windows runner issue is investigated.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS
+          - os: windows-latest
+            name: Windows
+          - os: ubuntu-latest
+            name: Linux
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` runs the postinstall that rebuilds better-sqlite3 against Electron's
+      # ABI. It needs a C++ toolchain, which all three GitHub runners ship by default.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # electron-builder only packages what is already on disk — it does not invoke
+      # the bundler. Without this step it would ship a stale or empty out/ directory.
+      - name: Build bundles
+        run: npm run build
+
+      - name: Package and publish
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # There is no signing identity in CI yet. Left on, electron-builder would
+          # hunt the keychain for one and fail the macOS build rather than producing
+          # an unsigned artifact. See README › Signing for what this costs to fix.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # Kept even on failure so a partially-built matrix leg is still inspectable.
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dayly-${{ matrix.name }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+            release/*.yml
+            release/*.blockmap
+
+  snap:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            name: amd64
+            arch: x64
+          # Free and unlimited on public repositories, generally available since
+          # August 2025. There is no `ubuntu-latest-arm`, so the version is pinned
+          # here of necessity — and ubuntu-24.04 is pinned to match, rather than
+          # riding `ubuntu-latest`, so a future image migration cannot quietly move
+          # the amd64 leg off the release that core24 is built against.
+          - os: ubuntu-24.04-arm
+            name: arm64
+            arch: arm64
+
+    name: Snap ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # The Snap Store is a separate destination from the GitHub Release. A store
+    # outage, an expired credential or a rejected revision must not mark the whole
+    # release failed when the installers themselves published fine.
+    continue-on-error: true
+    # A ceiling, not an estimate. Without it a wedged snapcraft sits on a runner for
+    # the default six hours, twice, and `cancel-in-progress: false` will not free it.
+    timeout-minutes: 45
+
+    env:
+      # Belt and braces alongside `snapcraft.core24.useLXD` in electron-builder.yml.
+      # It earns its place on the arm64 leg in particular: those runners have no
+      # nested virtualisation, so snapcraft's default Multipass backend — a VM —
+      # cannot start there at all.
+      SNAPCRAFT_BUILD_ENVIRONMENT: lxd
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # snapd is already on the image and /snap/bin is already on PATH, so only
+      # snapcraft has to be installed. Pinned to the 9.x track: electron-builder
+      # drives the core24 target through `snapcraft pack`, which 9.x provides, and an
+      # unpinned `--classic` install would put whatever snapcraft ships next into the
+      # release path. 9.0.1 is what the arm64 VM build was verified against.
+      - name: Install snapcraft
+        run: |
+          sudo snap install snapcraft --classic --channel=9.x/stable
+          snapcraft --version
+
+      # LXD is on no GitHub runner image and must be installed here. This action is
+      # used rather than a hand-rolled `snap install lxd && lxd init` because of the
+      # two things it does afterwards. It points the LXD socket at a group the runner
+      # is already in (`snap set lxd daemon.group=adm`), which is what makes the
+      # `sg lxd -c` wrapper unnecessary. And it opens the DOCKER-USER chain for
+      # lxdbr0: Docker is preinstalled on both images and sets the global FORWARD
+      # policy to DROP, which otherwise leaves the build container with no network
+      # and fails snapcraft while it fetches stage-packages — an error that reads
+      # like a broken Ubuntu mirror, not a firewall.
+      #
+      # Alpha action, pinned to a commit as its own README asks. `channel` is pinned
+      # too, because the action defaults to `latest/candidate` — a pre-release LXD
+      # has no business in a release pipeline.
+      - name: Set up LXD
+        uses: canonical/setup-lxd@da2ac84e727dc534215fd14cd088b9209d65893b # 2026-05-28
+        with:
+          channel: 5.21/stable
+
+      # Two seconds here rather than a permission error twenty minutes into a build.
+      # `lxc list` needs exactly the socket access snapcraft needs.
+      - name: Check LXD is reachable
+        run: lxc list
+
+      - name: Install
+        run: npm ci
+
+      - name: Build bundles
+        run: npm run build
+
+      # No `sg lxd -c` wrapper: since Ubuntu 24.04 `sg` prompts for a group password
+      # and hangs until the job times out. It is also unnecessary now that the socket
+      # lives in a group this process already holds.
+      #
+      # The arch flag matches the runner it runs on. That keeps `platforms:` out of
+      # the generated snapcraft.yaml — electron-builder emits that cross-compile
+      # block only when target and host differ — and a mismatch would fail loudly
+      # rather than quietly shipping two snaps of the same architecture.
+      #
+      # `--publish always` hands the finished snap to electron-builder's snapStore
+      # publisher, which runs `snapcraft upload --release <channels>`. That subprocess
+      # inherits the environment unfiltered, which is how the credential reaches it.
+      - name: Build and publish snap
+        run: npx electron-builder --linux snap --${{ matrix.arch }} --publish always
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+
+      # `continue-on-error` hides this job's failure from the run's conclusion, which
+      # is right for a store outage and wrong for a credential that quietly expired.
+      # The annotation is the compromise: the release still goes green, the summary
+      # still says the snap did not ship.
+      - name: Flag the failure in the run summary
+        if: failure()
+        run: |
+          echo "::error title=Snap ${{ matrix.name }} did not publish::Build or upload failed. If the build succeeded and the upload did not, check the store credential has not expired: snapcraft whoami"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dayly-snap-${{ matrix.name }}
+          retention-days: 7
+          if-no-files-found: ignore
+          # A .snap is already squashfs-compressed; zipping it again buys nothing.
+          compression-level: 0
+          path: release/*.snap
