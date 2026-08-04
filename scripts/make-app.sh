@@ -1,5 +1,5 @@
 #!/bin/bash
-# Assemble Dayly.app from the SwiftPM build output. SwiftPM alone produces a bare
+# Assemble Deylee.app from the SwiftPM build output. SwiftPM alone produces a bare
 # binary; a menu-bar app needs a bundle so LSUIElement and the bundle id apply.
 set -euo pipefail
 
@@ -8,12 +8,12 @@ cd "$(dirname "$0")/.."
 CONFIG="${1:-release}"
 swift build -c "$CONFIG"
 
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/Dayly"
-APP="dist/Dayly.app"
+BIN="$(swift build -c "$CONFIG" --show-bin-path)/Deylee"
+APP="dist/Deylee.app"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/Dayly"
+cp "$BIN" "$APP/Contents/MacOS/Deylee"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
 # App icon: build AppIcon.icns from the 1024px master.

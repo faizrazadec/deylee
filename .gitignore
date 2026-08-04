@@ -5,7 +5,7 @@ dist/
 .swiftpm/
 
 # Local time-tracking data.
-# Dayly's real database lives in ~/Library/Application Support/dayly, never in the
+# Deylee's real database lives in ~/Library/Application Support/deylee, never in the
 # repo — but a backup taken through Settings, or an export written to the project
 # folder, would otherwise be committed. This is personal working-hours data; keep it
 # out of version control.
@@ -13,9 +13,9 @@ dist/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
-dayly-backup-*.sqlite
-dayly-*_to_*.csv
-dayly-*_to_*.json
+deylee-backup-*.sqlite
+deylee-*_to_*.csv
+deylee-*_to_*.json
 
 # Backend secrets. The Supabase service_role key bypasses row-level security
 # entirely — it is the one credential that can read every customer's hours. It

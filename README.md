@@ -1,10 +1,10 @@
-# Dayly
+# Deylee
 
 A local-only time tracker that lives in the macOS menu bar. Start the day, pause for a
-coffee, end the day — Dayly keeps the running total beside the clock glyph and the full
+coffee, end the day — Deylee keeps the running total beside the clock glyph and the full
 history in a SQLite file you own.
 
-Native Swift, SwiftUI and AppKit. Dayly used to be an Electron app for macOS, Windows
+Native Swift, SwiftUI and AppKit. Deylee used to be an Electron app for macOS, Windows
 and Linux; that build has been removed — it survives in git history alone. The app
 is a single Swift package at the root of this repository, targets macOS only, and is
 specified in
@@ -23,23 +23,23 @@ specified in
   either. Grep `Sources/` for `URLSession` and you will find nothing. If an
   update check returns it will be the same deal as before — a version comparison
   against a public feed, no identifier, no payload, off by a single preference — but
-  today the honest statement is simpler: Dayly opens no sockets.
+  today the honest statement is simpler: Deylee opens no sockets.
 
 Everything lives in one SQLite file you own, can copy, can inspect with any SQLite
 browser, and can delete.
 
 ### Where your data lives
 
-The database is `~/Library/Application Support/dayly/dayly.sqlite` — and that path is
-deliberate down to the lower-case `dayly`. It is exactly where the Electron build kept
+The database is `~/Library/Application Support/deylee/deylee.sqlite` — and that path is
+deliberate down to the lower-case `deylee`. It is exactly where the Electron build kept
 its database, so an existing user's history opens untouched, with nothing to import
-and nothing to migrate. The file is in WAL mode, so `dayly.sqlite-wal` and
-`dayly.sqlite-shm` sidecars sit beside it while the app runs; the newest commits live
+and nothing to migrate. The file is in WAL mode, so `deylee.sqlite-wal` and
+`deylee.sqlite-shm` sidecars sit beside it while the app runs; the newest commits live
 in the `-wal` file, which is why a copy of the `.sqlite` file alone can silently miss
 them — copy all three, or use the online-backup API (see *Data model*).
 
 Preferences moved: the Swift app stores them in `UserDefaults` under the
-`me.faizraza.dayly` domain, validated and clamped on every read and write. The
+`me.faizraza.deylee` domain, validated and clamped on every read and write. The
 `preferences.json` the Electron build wrote still sits beside the database, but the
 app does not read it — it is a leftover.
 
@@ -60,9 +60,9 @@ SwiftUI and AppKit. Nothing to audit, nothing to bump, nothing that can drift.
 ## Getting started
 
 ```sh
-swift build            # compile DaylyKit and the app
+swift build            # compile DeyleeKit and the app
 ./scripts/test.sh      # run the suite — NOT bare `swift test`, see below
-./scripts/make-app.sh  # assemble dist/Dayly.app (release by default; pass `debug`)
+./scripts/make-app.sh  # assemble dist/Deylee.app (release by default; pass `debug`)
 ```
 
 `./scripts/test.sh` exists because the Command Line Tools ship `Testing.framework`
@@ -77,7 +77,7 @@ not exist), so DST is exercised on every run.
 To point a development run at a throwaway store instead of your real history:
 
 ```sh
-DAYLY_DATA_DIR=/tmp/dayly-test ./dist/Dayly.app/Contents/MacOS/Dayly
+DEYLEE_DATA_DIR=/tmp/deylee-test ./dist/Deylee.app/Contents/MacOS/Deylee
 ```
 
 ### Packaging
@@ -86,7 +86,7 @@ SwiftPM produces a bare binary, and a menu-bar app needs a bundle — `LSUIEleme
 and the bundle id only apply inside one. `./scripts/make-app.sh` builds, copies
 `Resources/Info.plist`, renders `AppIcon.icns` from the repo's generated icon master,
 and ad-hoc signs the bundle so Gatekeeper and TCC treat it as a stable identity. The
-result is `dist/Dayly.app`.
+result is `dist/Deylee.app`.
 
 ---
 
@@ -96,7 +96,7 @@ Every surface is built. What is missing is everything downstream of shipping it.
 
 | Surface | Status |
 |---|---|
-| `DaylyKit` — models, time maths, SQLite store, repository, timer engine | Complete, with the test suite ported |
+| `DeyleeKit` — models, time maths, SQLite store, repository, timer engine | Complete, with the test suite ported |
 | Menu-bar item — live `H:MM` title, tooltip, context menu | Built |
 | Panel — timer, target progress, today's segments | Built |
 | History window — calendar, roll-ups, manual edits, CSV/JSON export | Built |
@@ -116,19 +116,19 @@ have been compiled and launched, not lived with.
 
 ```
 Package.swift
-Sources/DaylyKit/     platform-free core: models, time maths, SQLite, repository, engine
-Sources/Dayly/        the app: status item, panel, SwiftUI views, idle/power monitors
-Tests/DaylyKitTests/  the core's suite (Swift Testing)
+Sources/DeyleeKit/     platform-free core: models, time maths, SQLite, repository, engine
+Sources/Deylee/        the app: status item, panel, SwiftUI views, idle/power monitors
+Tests/DeyleeKitTests/  the core's suite (Swift Testing)
 Resources/            Info.plist and the 1024 px icon master
 scripts/              test.sh, make-app.sh
 docs/                 the binding spec
 ```
 
-- **Two targets, one boundary.** `DaylyKit` is the core — segment and day models,
+- **Two targets, one boundary.** `DeyleeKit` is the core — segment and day models,
   DST-correct day-boundary maths, a dependency-free wrapper over the system SQLite,
   the repository, and the timer engine. It is deliberately free of AppKit and
   SwiftUI: that is what would let an iOS companion sit on the same core later, and it
-  is why the engine is testable without a window. `Dayly` owns everything with a
+  is why the engine is testable without a window. `Deylee` owns everything with a
   lifetime — the `NSStatusItem`, the non-activating panel, the idle and power
   monitors, the login item.
 - **IPC collapsed away.** The Electron build was a main process, a preload bridge and
@@ -141,7 +141,7 @@ docs/                 the binding spec
   panel, a timer for the menu-bar title — which is what makes the display correct
   across a crash, a restart, a machine sleep or a clock change.
 
-## The awkward cases, and what Dayly does about them
+## The awkward cases, and what Deylee does about them
 
 - **Crash or force-quit.** While a segment is open the app writes a heartbeat every
   30 seconds, and once more first thing on a clean quit. On the next launch, an open
@@ -177,12 +177,12 @@ docs/                 the binding spec
   from the day rather than recorded as anything.
 - **Installing an older build over a newer database.** Migrations run forwards only,
   so an older build cannot understand a file a newer one wrote. Rather than opening
-  it anyway, Dayly refuses to start with a dialog saying which schema version the
+  it anyway, Deylee refuses to start with a dialog saying which schema version the
   file is at and which this build understands. Your history is untouched; install the
   newer build again, or move the `.sqlite` file aside to start fresh. The protocol is
   shared with the Electron build, so the two can never corrupt each other's files.
 - **Two copies of the app.** LaunchServices treats an app bundle as one instance;
-  opening Dayly again — from the Dock, Finder or Spotlight — just surfaces the panel.
+  opening Deylee again — from the Dock, Finder or Spotlight — just surfaces the panel.
 - **Closing windows.** The panel hides when you click elsewhere; nothing quits. Quit
   lives in the menu-bar item's right-click menu.
 
@@ -208,7 +208,7 @@ Electron-era export still reads. Any SQLite browser reads the file directly too.
 **Backup** exists as an API (`DataStore.backup`) built on SQLite's online backup, so
 it is safe to take while the timer is running and while WAL is active — unlike a
 plain file copy, which can miss the newest commits sitting in the `-wal` sidecar.
-Restoring is a file copy: quit Dayly, drop the `.sqlite` file back into the data
+Restoring is a file copy: quit Deylee, drop the `.sqlite` file back into the data
 folder, start it again.
 
 ---
@@ -236,15 +236,15 @@ Expected with the Command Line Tools: they ship `Testing.framework` but do not p
 on SwiftPM's search paths. Run `./scripts/test.sh` instead, which passes the
 framework and rpath flags explicitly.
 
-**Dayly refuses to start, saying the database was written by a newer version.**
+**Deylee refuses to start, saying the database was written by a newer version.**
 You installed an older build over a database a newer one wrote, and it stopped rather
 than corrupt your history. Install the newer version again — your data is exactly as
-you left it. If you genuinely want the older build, move `dayly.sqlite` out of
-`~/Library/Application Support/dayly/` first; it will start with an empty database
+you left it. If you genuinely want the older build, move `deylee.sqlite` out of
+`~/Library/Application Support/deylee/` first; it will start with an empty database
 and you can keep the old file as an archive.
 
 **Nothing was tracked while I was away.**
-That is deliberate. Dayly records only what it can account for — see *The awkward
+That is deliberate. Deylee records only what it can account for — see *The awkward
 cases* above for what a sleep, lock or idle gap becomes.
 
 ---

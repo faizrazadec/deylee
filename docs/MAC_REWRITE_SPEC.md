@@ -1,6 +1,6 @@
-# Dayly — macOS Native Rewrite Specification
+# Deylee — macOS Native Rewrite Specification
 
-This document is the contract for rewriting Dayly (Electron + TypeScript + React +
+This document is the contract for rewriting Deylee (Electron + TypeScript + React +
 SQLite) as a native Swift/SwiftUI macOS app with identical functionality and design.
 It was synthesized from an exhaustive survey of the shipped codebase. Where
 `docs/DESIGN.md` and the shipped code diverge, **this spec documents the shipped
@@ -11,7 +11,7 @@ All user-visible strings quoted here are exact copy and must be reproduced verba
 
 ## 1. Product overview and non-goals
 
-Dayly is a **local-only** desktop time tracker that lives in the menu bar. One
+Deylee is a **local-only** desktop time tracker that lives in the menu bar. One
 timer, one day at a time: the user starts work, pauses for breaks, ends the day.
 Time is stored as immutable segments in a local SQLite file; every displayed total
 is derived by summing segments — nothing is ever a running counter.
@@ -28,7 +28,7 @@ Surfaces:
   day detail, manual segment add/edit/delete, CSV/JSON export.
 - **Settings window** (560 × 640) — all preferences, data folder, backup, updates.
 
-Identity: app name **Dayly**, bundle id `me.faizraza.dayly` (Electron build),
+Identity: app name **Deylee**, bundle id `me.faizraza.deylee` (Electron build),
 category `public.app-category.productivity`, `LSUIElement: true` (accessory app —
 no Dock tile except while History/Settings is open). Version 0.1.0 at time of
 survey; version is owned by release tooling, never hand-edited.
@@ -37,7 +37,7 @@ survey; version is owned by release tooling, never hand-edited.
 
 - No accounts, no cloud, no sync, no telemetry. The **only** network request the
   app may ever make is a preference-gated update check against GitHub Releases
-  (`https://github.com/faizrazadec/dayly/releases`); nothing downloads without an
+  (`https://github.com/faizrazadec/deylee-ios/releases`); nothing downloads without an
   explicit user action.
 - No stored totals or status columns anywhere — totals are always summed from
   segments at read time.
@@ -50,15 +50,15 @@ survey; version is owned by release tooling, never hand-edited.
 
 ### 2.1 Database file and location
 
-- Filename: **`dayly.sqlite`**, at `<userData>/dayly.sqlite`.
-- Electron `userData` on macOS is **`~/Library/Application Support/dayly/`**
-  (lowercase `dayly` — package.json has no `productName`, so `app.name` is the
+- Filename: **`deylee.sqlite`**, at `<userData>/deylee.sqlite`.
+- Electron `userData` on macOS is **`~/Library/Application Support/deylee/`**
+  (lowercase `deylee` — package.json has no `productName`, so `app.name` is the
   package name; verified against the packaged app and the live machine).
-- **Absolute import path: `~/Library/Application Support/dayly/dayly.sqlite`**.
+- **Absolute import path: `~/Library/Application Support/deylee/deylee.sqlite`**.
 - The same folder holds `preferences.json` (electron-store, see §7) plus Chromium
   cruft (irrelevant).
-- Journal mode is **WAL** (persisted in the file header), so `dayly.sqlite-wal`
-  and `dayly.sqlite-shm` sidecars exist while the Electron app runs. **A naive
+- Journal mode is **WAL** (persisted in the file header), so `deylee.sqlite-wal`
+  and `deylee.sqlite-shm` sidecars exist while the Electron app runs. **A naive
   byte-copy of only the `.sqlite` file can silently miss the newest commits.**
   Import must either open the file normally (replaying the WAL) or use the SQLite
   online backup API (`sqlite3_backup_init/step/finish`, or `VACUUM INTO`).
@@ -146,12 +146,12 @@ recovery: trim, empty → null, non-finite → null.
    no row → 0.
 3. If stored version > supported → refuse **before any write** with a
    `SchemaTooNewError`. Startup shows a dialog — title:
-   `This data was written by a newer Dayly`; body:
-   `Your database is at schema version ${stored}, but this build — Dayly ${version} — only understands version ${supported}.`
+   `This data was written by a newer Deylee`; body:
+   `Your database is at schema version ${stored}, but this build — Deylee ${version} — only understands version ${supported}.`
    (blank line)
-   `Nothing has been changed and nothing has been lost. Update Dayly to the latest`
+   `Nothing has been changed and nothing has been lost. Update Deylee to the latest`
    `release and your data will open again exactly as you left it.` — then quit.
-   Any other migration error → dialog titled `Dayly could not start` with the
+   Any other migration error → dialog titled `Deylee could not start` with the
    error message, then quit.
 4. Pending migrations run ascending in **one transaction**; after each, `DELETE
    FROM schema_version` then `INSERT` the new version. Statements are idempotent;
@@ -228,7 +228,7 @@ Repository behaviors that are part of the contract:
 ### 2.7 Data import story (Swift app reading the Electron database)
 
 - The importer must open (or online-backup from)
-  `~/Library/Application Support/dayly/dayly.sqlite`, honoring the WAL sidecars.
+  `~/Library/Application Support/deylee/deylee.sqlite`, honoring the WAL sidecars.
 - Preserve the `schema_version` table protocol and implement the same
   refuse-if-newer behavior so the two implementations never corrupt each other's
   files if they ever share one.
@@ -239,7 +239,7 @@ Repository behaviors that are part of the contract:
 - `preferences.json` sits beside the DB; its keys/defaults are in §7. Whether it
   is imported is an open question.
 - Backup feature (user-invoked; keep identical): NSSavePanel titled
-  **`Back up Dayly data`**, default filename `dayly-backup-${YYYY-MM-DD}.sqlite`
+  **`Back up Deylee data`**, default filename `deylee-backup-${YYYY-MM-DD}.sqlite`
   (local date), filter "SQLite database" / `.sqlite`, create-directory and
   overwrite-confirmation enabled. Cancel is a normal outcome (no message). Copy
   via the SQLite **online backup API from a second read-only connection** (never
@@ -471,7 +471,7 @@ snapshot** (never throws).
   subtraction). Main builds `IdlePrompt { id: UUID, segmentId, idleStartedAt,
   idleMs }` **only if the open segment exists and is `'work'`**, opens the panel,
   and posts a notification — title `You were away`, body
-  `Dayly kept counting for ${formatCompact(idleMs)}. Keep it or drop it?`
+  `Deylee kept counting for ${formatCompact(idleMs)}. Keep it or drop it?`
 - Resolution (`IdleChoice = 'keep' | 'discard'`): `keep` → untouched (idle time
   stays work). `discard` → trim: `endedAt = clamp(idleStartedAt, [startedAt,
   now])`; if that would empty the segment, **keep instead** (trimming to nothing
@@ -610,10 +610,10 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
   hiding it.
 - **Tooltip** (always), with `totals = "${formatHM(workedMs)} worked · ${formatHM(breakMs)} break"`
   (` · ` U+00B7, `—` em dash):
-  - RUNNING → `Dayly — ${totals}`
-  - PAUSED → `Dayly — paused · ${totals}`
-  - ENDED → `Dayly — day ended · ${totals}`
-  - IDLE, workedMs > 0 → `Dayly — stopped · ${totals}`; IDLE, 0 → `Dayly — not tracking`
+  - RUNNING → `Deylee — ${totals}`
+  - PAUSED → `Deylee — paused · ${totals}`
+  - ENDED → `Deylee — day ended · ${totals}`
+  - IDLE, workedMs > 0 → `Deylee — stopped · ${totals}`; IDLE, 0 → `Deylee — not tracking`
 - Refresh: title/tooltip re-applied every **1 s** and immediately on every timer
   snapshot; totals via `liveTotals(snapshot, now)`.
 - **Left click** → toggle the panel anchored to the item's bounds. **Right click
@@ -632,7 +632,7 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
      click time, not the state the menu was built for.
   2. `End Day` — enabled only when RUNNING or PAUSED.
   3. separator
-  4. `Open Dayly` (opens the panel), 5. `History`, 6. `Settings`
+  4. `Open Deylee` (opens the panel), 5. `History`, 6. `Settings`
   7. separator
   8. `Quit`
 - `getBounds` returns null before the menu bar lays the item out (placeholder
@@ -727,7 +727,7 @@ disable while resolving. These three modals are **non-dismissible** (no Escape,
 no backdrop) — the user must choose. On panel mount, pull any pending recovery
 once (broadcast raced during load).
 
-- **RecoveryPrompt** — title `Unfinished session`. Body: `Dayly closed while a
+- **RecoveryPrompt** — title `Unfinished session`. Body: `Deylee closed while a
   {work|break} segment was still running. It started at
   {formatClock(startedAt)} on {formatDateLong(date)}.` Stats card (2-column,
   sunken bg): `Recoverable` → `formatCompact(recoverableMs)`; `Unaccounted` →
@@ -799,7 +799,7 @@ outside the rounded card is fully transparent. Row contents, left to right:
 anywhere except the button opens the panel** (the button stops double-click
 propagation so a fast pause/resume tap doesn't also open it). Whole-card tooltip
 (exact template):
-`{Label} · {formatCompact(workedMs)} worked · {formatCompact(breakMs)} break — double-click to open Dayly`.
+`{Label} · {formatCompact(workedMs)} worked · {formatCompact(breakMs)} break — double-click to open Deylee`.
 No context menu, no edge snapping, no keyboard shortcuts.
 
 ### 5.4 History window
@@ -926,7 +926,7 @@ segment it is still writing to.` (open segment), `That segment could not be
 identified.`; rejection fallback `The segment could not be deleted.`
 
 **Export**: range = the visible month, always. Save panel: title
-`Export Dayly data`, default filename `dayly-{from}_to_{to}.{csv|json}`,
+`Export Deylee data`, default filename `deylee-{from}_to_{to}.{csv|json}`,
 CSV/JSON type filter, sheet on the History window. Cancel → no UI at all.
 Success → banner `Saved to {path}`; error → banner with the message; rejection
 fallback `The export could not be written.` Export does **not** trigger
@@ -948,7 +948,7 @@ with zero segments emits one near-empty CSV row.
   segments as full stored objects.
 
 **Empty/error states**: month load failed → `History could not be read` /
-`Dayly could not reach its local database. Close and reopen this window to try
+`Deylee could not reach its local database. Close and reopen this window to try
 again.`; empty month → `Nothing tracked in {Month Year}` / `Days appear here
 once you track time. You can still add a segment by hand from the day panel.`
 Week fetch failure just leaves the Week stat at `—` (no error UI).
@@ -974,8 +974,8 @@ hairline-divided rows (px 8 / py 8 rhythm).
 
 Sections, rows, and exact copy (top to bottom):
 
-**General** — "How Dayly starts up and how it looks."
-1. **Launch at login** (toggle, `launchAtLogin`, default off) — "Starts Dayly in
+**General** — "How Deylee starts up and how it looks."
+1. **Launch at login** (toggle, `launchAtLogin`, default off) — "Starts Deylee in
    the background when you sign in." Semantics: OS registration
    (SMAppService) is applied and awaited **before** persisting; an OS refusal
    leaves the preference untouched and flashes "Could not save". Read-back
@@ -993,7 +993,7 @@ Sections, rows, and exact copy (top to bottom):
 4. **Week starts on** (segmented `Sunday | Monday`, `weekStartsOn`, default
    Monday) — "Used by the week totals in History."
 
-**Tracking** — "Your target, and when Dayly should question the time it is
+**Tracking** — "Your target, and when Deylee should question the time it is
 counting."
 5. **Daily target** (number field, `dailyTargetHours`, default 8; min 0, max
    24, step 0.5, suffix "hours"; decimals allowed, clamped, never rounded) —
@@ -1002,11 +1002,11 @@ counting."
    no row yet), invalidate today, emit a snapshot. Past days are never
    rewritten.
 6. **Detect when you step away** (toggle, `idleDetectionEnabled`, default on)
-   — "While the timer runs, Dayly watches how long the machine has been
+   — "While the timer runs, Deylee watches how long the machine has been
    untouched and asks whether to keep the time."
 7. **Ask after** (number field, `idleThresholdMinutes`, default 10; min 1, max
    240, step 1, suffix "minutes"; disabled when detection is off) — enabled:
-   "How long the machine must sit untouched before Dayly asks."; disabled:
+   "How long the machine must sit untouched before Deylee asks."; disabled:
    "Turn on "Detect when you step away" to change this."
 8. **Pause when the computer sleeps** (toggle, `autoPauseOnSleep`, default on)
    — "The gap is held until you are back, then you choose whether it was a
@@ -1024,13 +1024,13 @@ counting."
     One field writes two preferences (`reminderHour` then `reminderMinute`,
     sequentially); incomplete mid-edit values are ignored, never half-written.
 
-**Data** — "Everything Dayly records stays on this machine. Nothing is ever
+**Data** — "Everything Deylee records stays on this machine. Nothing is ever
 uploaded."
 12. **Data folder** info block — title "Data folder", description "Your
     database and preferences live here.", then the absolute folder path in a
     selectable monospace 12 px box (truncated, full path in tooltip;
     placeholder `Locating…`).
-13. Buttons: **`Reveal in file manager`** — Finder with `dayly.sqlite` selected
+13. Buttons: **`Reveal in file manager`** — Finder with `deylee.sqlite` selected
     (`NSWorkspace.activateFileViewerSelecting`); failures swallowed.
     **`Back up database…`** — becomes `Backing up…` while busy; flow per §2.7.
     Success → 12 px line in work green: `Backed up to {path}` (monospace,
@@ -1039,13 +1039,13 @@ uploaded."
 
 **Updates** — description (capable): "A version check against the project's
 public releases page. No account, no telemetry, no payload." — (not capable):
-"This build has no update feed, so Dayly never checks. New versions live on the
+"This build has no update feed, so Deylee never checks. New versions live on the
 project's public releases page."
 14. **Check for updates automatically** (toggle, `updateCheckEnabled`, default
-    on; **disabled when the build cannot auto-update**) — capable: "Dayly's
+    on; **disabled when the build cannot auto-update**) — capable: "Deylee's
     only network request. Nothing is downloaded without asking."; not capable:
     "This build has no update feed, so there is nothing to check on a schedule.
-    Dayly makes no network request either way." The shipped Electron mac build
+    Deylee makes no network request either way." The shipped Electron mac build
     has `canAutoUpdate = false` (unsigned), reason copy: `Automatic updates
     need a signed build — check the Releases page.` Manual "Check now" runs
     even when the pref is off (pressing the button is consent for that one
@@ -1054,7 +1054,7 @@ project's public releases page."
 15. **Version row** — label `Version {currentVersion}` (bare `Version` until
     known). Control: a compact one-line status + at most one action (message
     max-width ~19 rem; link-styled action = leaves the app; real button =
-    Dayly does it itself; never green; no animation):
+    Deylee does it itself; never green; no animation):
 
     | status | message | action |
     |---|---|---|
@@ -1068,7 +1068,7 @@ project's public releases page."
     | unsupported | the reason string | link `Open Releases` |
     | error | `Couldn't check for updates` (detail in tooltip) | `Try again` |
 
-    Error-string mapping: network failures → `Could not reach GitHub. Dayly
+    Error-string mapping: network failures → `Could not reach GitHub. Deylee
     will try again later.`; download before check → `There is nothing to
     download yet — check for updates first.`; dev build → `Updates are only
     checked in an installed build.`; missing feed → `This build has no update
@@ -1245,7 +1245,7 @@ Message shape: `Could not save "{key}": unknown preference, or wrong type.`
 
 | Electron mechanism | Swift counterpart |
 |---|---|
-| Main process + preload bridge + IPC channels (`window.dayly`) | Collapses into one process: a timer-engine/repository core (actor or serial-queue-confined) plus `@Observable`/Combine streams to the UI. Keep the **payload shapes, error-as-value semantics (`MutationResult`, file-write results with a distinct "cancelled" case), fallback behaviors, and event pairing (invalidate + snapshot)** identical. The channel-name allow-list, payload narrowing, `windowKind`, and `dismissNotice` plumbing disappear. |
+| Main process + preload bridge + IPC channels (`window.deylee`) | Collapses into one process: a timer-engine/repository core (actor or serial-queue-confined) plus `@Observable`/Combine streams to the UI. Keep the **payload shapes, error-as-value semantics (`MutationResult`, file-write results with a distinct "cancelled" case), fallback behaviors, and event pairing (invalidate + snapshot)** identical. The channel-name allow-list, payload narrowing, `windowKind`, and `dismissNotice` plumbing disappear. |
 | better-sqlite3 (SQLite 3.53.x), WAL, prepared statements | GRDB or raw sqlite3; same pragmas (§2.2), same SQL semantics, SAVEPOINT-nested transactions, single writer. |
 | SQLite online backup via a second read-only connection | `sqlite3_backup_init/step/finish` (or `VACUUM INTO`) from a second read-only connection; close it in a defer. |
 | electron-store `preferences.json` | `UserDefaults` or a JSON file — keep per-key validate/clamp-on-read-and-write semantics either way (see §9 for which store). |
@@ -1287,7 +1287,7 @@ smaller ones fall out of it.**
 
 1. **DESIGN.md vs shipped code.** CLAUDE.md declares `docs/DESIGN.md` binding,
    but the shipped app diverges substantially: no macOS vibrancy on the panel;
-   solid status dot + label instead of the 2 px state hairline + `DAYLY`
+   solid status dot + label instead of the 2 px state hairline + `DEYLEE`
    wordmark; 6 px progress bar vs 3 px (with hatched paused states specced but
    absent); chip-style segment rows vs quiet dot rows; two-choice idle prompt vs
    the specced three-choice (`convert-to-break`); in-panel modals vs 380 px
@@ -1307,12 +1307,12 @@ smaller ones fall out of it.**
 
 **Data and identity**
 
-4. Should the Swift app **adopt** `~/Library/Application Support/dayly/` as its
+4. Should the Swift app **adopt** `~/Library/Application Support/deylee/` as its
    live store, or **one-time-import** (via the backup API) into its own
    container? This decides whether both apps can ever run against the same file.
 5. Will the Swift app be **sandboxed**? If yes, reading the Electron DB needs an
    NSOpenPanel grant or temporary exception; if no, direct import works.
-6. Reuse bundle id `me.faizraza.dayly` or take a new one? (The Electron build is
+6. Reuse bundle id `me.faizraza.deylee` or take a new one? (The Electron build is
    unsigned, so no signing conflict either way; login-item and defaults
    continuity favor reuse.)
 7. Is importing `preferences.json` in scope, or only the SQLite data? Related:
@@ -1349,7 +1349,7 @@ smaller ones fall out of it.**
 16. **Prompt modals vs popover dismissal**: the Electron panel hides on blur
     with an unanswered mandatory prompt still queued. Acceptable for the Swift
     popover/panel too, or pin it open while a prompt is pending?
-17. **"Open Dayly" quirk**: the tray-menu item opens the panel un-anchored
+17. **"Open Deylee" quirk**: the tray-menu item opens the panel un-anchored
     (centered on the primary display if freshly created); only the left-click
     path anchors under the icon. Reproduce, or always anchor? (In-process Swift
     can always fetch the item bounds trivially.)

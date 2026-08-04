@@ -1,6 +1,6 @@
-# Dayly — visual specification
+# Deylee — visual specification
 
-Transcribed from the Claude Design project *“Dayly time tracker UI design”* (`dayly UI.dc.html`,
+Transcribed from the Claude Design project *“Deylee time tracker UI design”* (`deylee UI.dc.html`,
 UI spec v1). This is the binding source for anything visual. Where it conflicts with the earlier
 placeholder styling in `ARCHITECTURE.md` §12–13, **this document wins**.
 
@@ -74,7 +74,7 @@ Linux `Cantarell, Ubuntu, system-ui`. One shared stack in CSS covers all three.
 | body | `400 13px/1.4` |
 | meta | `400 12px/1.5` |
 | small | `400 11.5px/1.4` |
-| caps | `600 10px/1`, `letter-spacing:.12em` (`.16em` for the `DAYLY` wordmark) |
+| caps | `600 10px/1`, `letter-spacing:.12em` (`.16em` for the `DEYLEE` wordmark) |
 
 **Every** numeral that ticks or aligns uses `font-variant-numeric: tabular-nums`.
 
@@ -97,7 +97,7 @@ Height is content-driven, 372–436. Structure, top to bottom:
 
 1. **State hairline**, 2px, full bleed — *absent* when idle, solid `--run` when running,
    `repeating-linear-gradient(90deg, var(--break) 0 5px, transparent 5px 10px)` when paused.
-2. **Header** `13px 18px 0`: `DAYLY` (caps, `.16em`, `--text-3`) · right: `Mon 27 Jul` (11px, `--text-3`).
+2. **Header** `13px 18px 0`: `DEYLEE` (caps, `.16em`, `--text-3`) · right: `Mon 27 Jul` (11px, `--text-3`).
 3. **Body** `16px 18px 18px`, `gap:16px`:
    - **Status row**, `gap:9px`:
      - idle — 9px ring, `1.5px solid --text-3`, label “Not started” (`500 12px`, `--text-2`).
@@ -203,9 +203,9 @@ toggle) · **SYSTEM** (launch at login toggle; data folder with a `Reveal` butto
 
 **Windows** — the icon carries the whole state; the tooltip carries the numbers:
 ```
-dayly — Not started        /  Click to start today
-dayly — Running, 5:12      /  Started 09:12 · 2h 48m to target
-dayly — On break, 5:12     /  Paused 15:04 · break 12m
+deylee — Not started        /  Click to start today
+deylee — Running, 5:12      /  Started 09:12 · 2h 48m to target
+deylee — On break, 5:12     /  Paused 15:04 · break 12m
 ```
 
 **Linux** — symbolic monochrome, 22/24px, `currentColor` so themes can tint it.
@@ -253,7 +253,7 @@ Actions: `Keep the 21 minutes` / `Discard it` / `Break since 14:32`.
 Footnote: “Esc keeps the time. The prompt never steals focus mid-typing — it waits for activity to
 resume.”
 
-**Crash recovery** — grey ring + horizontal tick. “dayly closed while the clock was running”.
+**Crash recovery** — grey ring + horizontal tick. “deylee closed while the clock was running”.
 Body: “Last saved at **13:47**, started **09:12**. That's **4h 35m** recovered.” Then a bordered
 box previewing the recovered segments. Actions: `Continue from 13:47` / `End day at 13:47` /
 `Discard`.
