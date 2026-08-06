@@ -25,6 +25,7 @@ final class AuthService: NSObject, ObservableObject {
     private let config: ClientConfig
     private let repo: Repository
     private var session: StoredSession?
+    private var webAuthSession: ASWebAuthenticationSession?
 
     init(config: ClientConfig, repo: Repository) {
         self.config = config
@@ -132,17 +133,32 @@ final class AuthService: NSObject, ObservableObject {
             let session = ASWebAuthenticationSession(
                 url: components.url!,
                 callbackURLScheme: config.googleCallbackScheme
-            ) { url, error in
+            ) { @Sendable url, error in
+                // `@Sendable` is load-bearing, not decoration.
+                //
+                // ASWebAuthenticationSession delivers its result over XPC, on a
+                // background queue. Without this marker the closure inherits this
+                // method's @MainActor isolation, and Swift 6 emits a runtime executor
+                // check that fails there — dispatch_assert_queue_fail, SIGTRAP, the
+                // app disappearing at the exact moment sign-in succeeds. It compiles
+                // cleanly either way, which is what makes it worth a comment.
+                //
+                // Resuming a continuation is safe from any thread, so nothing else
+                // needs to hop.
                 if let error { continuation.resume(throwing: error) }
                 else if let url { continuation.resume(returning: url) }
                 else { continuation.resume(throwing: CancellationError()) }
             }
             session.presentationContextProvider = self
-            // A fresh session each time: reusing the browser's cookie would silently
-            // sign in whoever used it last, which is wrong on a shared Mac.
+            // Reuses the system browser's existing session, so signing in once is
+            // remembered rather than retyped on every launch.
             session.prefersEphemeralWebBrowserSession = false
+            // Held for the duration: a session released mid-flow takes the sheet with
+            // it, and the continuation would never be resumed.
+            self.webAuthSession = session
             session.start()
         }
+        webAuthSession = nil
 
         guard let code = URLComponents(url: callback, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "code" })?.value
