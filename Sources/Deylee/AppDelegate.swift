@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsModel: SettingsModel?
     private var settingsWindow: SettingsWindowController?
     private var syncCoordinator: SyncCoordinator?
+    private var signInWindow: SignInWindowController?
     private var stopWatchingPreferences: PreferencesUnsubscribe?
     private var idleMonitor: IdleMonitor?
     private var powerMonitor: PowerMonitor?
@@ -108,6 +109,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.preferencesChanged(next, engine: engine) }
         }
 
+        // The gate. Until sign-in resolves there is no status item, no panel and no
+        // timer — the UI spec puts this window "before the tray item appears", and
+        // an account that can be postponed is an account most people never make.
+        //
+        // It resolves in three ways: signed in, closed, or "continue without an
+        // account" when the API is unreachable. All three land here, because a first
+        // run with no signal must not leave somebody holding an app that does
+        // nothing. Whatever is tracked meanwhile is claimed by the first successful
+        // sign-in, so choosing to wait costs no history.
+        if let coordinator, !coordinator.auth.isSignedIn {
+            let gate = SignInWindowController(auth: coordinator.auth) { [weak self] in
+                self?.presentStatusItem(model: model, prefs: prefs, engine: engine, repo: repo)
+            }
+            signInWindow = gate
+            gate.show()
+        } else {
+            presentStatusItem(model: model, prefs: prefs, engine: engine, repo: repo)
+        }
+
+        // The monitors start in presentStatusItem, not here. Nothing can be running
+        // before the gate resolves, so watching for idleness or sleep would be
+        // watching for nothing — and starting them in both places would leave two of
+        // each, each closing the same segment.
+    }
+
+    /// Everything that only exists once somebody is through the gate.
+    ///
+    /// Reached exactly once, from one of the gate's three outcomes, so the guard is
+    /// belt and braces rather than expected control flow.
+    private func presentStatusItem(
+        model: AppModel, prefs: PreferencesStore, engine: TimerEngine, repo: Repository
+    ) {
+        guard statusItem == nil else { return }
+
         let statusItem = StatusItemController(model: model)
         self.statusItem = statusItem
 
@@ -138,7 +173,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reminderService = reminder
 
         reconcileLoginItem(prefs: prefs)
-        model.apply(try engine.snapshot())
+        // A failure here must not take the launch down: the model already holds the
+        // snapshot boot() handed it, so a stale first frame beats no app at all.
+        if let snapshot = try? engine.snapshot() { model.apply(snapshot) }
 
         // Last, so the queue is handed a fully booted app: the prompt is the first
         // thing the user sees, and answering it writes through the engine immediately.

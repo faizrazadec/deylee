@@ -56,9 +56,7 @@ final class AuthService: NSObject, ObservableObject {
             // already dirty, so this is enough to carry all of it up on first sync.
             try repo.claimLocalData(forUserID: session.userID)
 
-            try TokenStore.save(session)
-            self.session = session
-            state = .signedIn(email: session.email, userID: session.userID)
+            try adopt(session)
         } catch let error as MutationError {
             // The "already belongs to another account" refusal, most likely.
             state = .failed(error.message)
@@ -67,8 +65,81 @@ final class AuthService: NSObject, ObservableObject {
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             state = .signedOut
         } catch {
-            state = .failed(String(describing: error))
+            state = .failed(Self.readable(error))
         }
+    }
+
+    /// Whether there is a session, without exposing it.
+    var isSignedIn: Bool { session != nil }
+
+    // MARK: - Email and password
+
+    func signUp(email: String, password: String) async {
+        await withPassword(path: "/v1/auth/signup", email: email, password: password)
+    }
+
+    func signInWithPassword(email: String, password: String) async {
+        await withPassword(path: "/v1/auth/password", email: email, password: password)
+    }
+
+    private func withPassword(path: String, email: String, password: String) async {
+        state = .signingIn
+        struct Body: Encodable {
+            let email: String
+            let password: String
+            let deviceId: String?
+            let timezone: String
+        }
+        do {
+            let response: SessionResponseDTO = try await APIClient.post(
+                config.apiBaseURL.appending(path: path),
+                body: Body(
+                    email: email,
+                    password: password,
+                    deviceId: try? repo.syncState().deviceID,
+                    timezone: TimeZone.current.identifier
+                )
+            )
+            try adopt(response.stored())
+        } catch let error as MutationError {
+            state = .failed(error.message)
+        } catch {
+            state = .failed(Self.readable(error))
+        }
+    }
+
+    /// Take a freshly issued session: claim any history written before it existed,
+    /// store it, and announce it.
+    ///
+    /// Claiming comes first deliberately. If the store already belongs to somebody
+    /// else it throws here, before the session is written — otherwise the app would
+    /// be signed in as one person while holding another person's hours.
+    private func adopt(_ session: StoredSession) throws {
+        try repo.claimLocalData(forUserID: session.userID)
+        try TokenStore.save(session)
+        self.session = session
+        state = .signedIn(email: session.email, userID: session.userID)
+    }
+
+    /// A sentence rather than a type name.
+    ///
+    /// This text is shown under the field on the sign-in screen, so
+    /// `URLError(.cannotConnectToHost)` would be a poor thing to hand somebody who
+    /// simply has no network — and "could not connect" is also what the window
+    /// looks for before offering to work without an account.
+    private static func readable(_ error: any Error) -> String {
+        if let failure = error as? APIClient.HTTPFailure { return failure.message }
+        if let url = error as? URLError {
+            switch url.code {
+            case .notConnectedToInternet, .networkConnectionLost:
+                return "You appear to be offline — could not connect to Deylee."
+            case .cannotConnectToHost, .cannotFindHost, .timedOut:
+                return "Could not connect to Deylee. It may be down, or you may be offline."
+            default:
+                return url.localizedDescription
+            }
+        }
+        return String(describing: error)
     }
 
     /// Sign out locally.
