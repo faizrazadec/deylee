@@ -11,10 +11,17 @@ All user-visible strings quoted here are exact copy and must be reproduced verba
 
 ## 1. Product overview and non-goals
 
-Deylee is a **local-only** desktop time tracker that lives in the menu bar. One
+Deylee is a **local-first** desktop time tracker that lives in the menu bar. One
 timer, one day at a time: the user starts work, pauses for breaks, ends the day.
 Time is stored as immutable segments in a local SQLite file; every displayed total
 is derived by summing segments — nothing is ever a running counter.
+
+**Local-first, not local-only.** Every write lands in SQLite before anything else
+happens, and the UI reads only from there, so the app is fully usable with no
+network at all. Sync is a background reconciliation on top of that — see
+`SYNC_PROTOCOL.md`. A timer that stops working on a train would be worse than one
+that never synced, which is why the local store is the source of truth for a write
+until the server has acknowledged it.
 
 Surfaces:
 
@@ -35,14 +42,33 @@ survey; version is owned by release tooling, never hand-edited.
 
 **Non-goals (binding):**
 
-- No accounts, no cloud, no sync, no telemetry. The **only** network request the
-  app may ever make is a preference-gated update check against GitHub Releases
-  (`https://github.com/faizrazadec/deylee-ios/releases`); nothing downloads without an
-  explicit user action.
+- **No telemetry, ever.** Nothing about how the app is used leaves the machine.
+- **Accounts and sync are optional, never required.** Signed out, the app behaves
+  exactly as it always has: local SQLite, no network, no account. Signing in adds
+  sync; it does not become a precondition for tracking time.
+- The network requests the app may make are: a preference-gated update check
+  against GitHub Releases (`https://github.com/faizrazadec/deylee-ios/releases`),
+  and — only when signed in — Google sign-in and `POST /v1/sync`. Nothing
+  downloads without an explicit user action.
 - No stored totals or status columns anywhere — totals are always summed from
-  segments at read time.
+  segments at read time. This holds on the server too: nothing aggregated is ever
+  transmitted or persisted.
 - No multiple projects/tags/clients. One timeline of `work`/`break` segments.
-- No server component; SQLite on disk is the entire persistence story.
+- The UI never mutates optimistically. It waits for the engine's next snapshot,
+  and sync never writes to the UI's view of the world directly.
+
+**Superseded non-goals.** These were binding and no longer are; recorded so the
+change is visible rather than silently rewritten:
+
+- *"No accounts, no cloud, no sync"* — superseded. Deylee is being sold to
+  companies, which need multi-device sync and a manager-facing view.
+- *"No server component"* — superseded by `server/`, a Hummingbird API that
+  imports DeyleeKit so the day-boundary, overlap and midnight-split rules are the
+  same code on both sides rather than a port that drifts.
+- *"Windows and Linux are not targets"* — superseded. macOS, iOS, web, Windows,
+  Android and a browser extension are all planned. They are thin clients against
+  `SYNC_PROTOCOL.md`; the invariants live on the server precisely so six
+  implementations cannot disagree about them.
 
 ---
 
