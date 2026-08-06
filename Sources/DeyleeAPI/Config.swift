@@ -39,6 +39,14 @@ struct Config: Sendable {
     let databaseCACertificatePath: String?
 
     let port: Int
+
+    /// The address to bind.
+    ///
+    /// Loopback by default, so a development run is not quietly serving the whole
+    /// local network. A container must set HOST=0.0.0.0 or nothing outside it can
+    /// reach the process — the platform's health check fails, the deploy is marked
+    /// bad, and the logs say only that the server started.
+    let host: String
 }
 
 enum ConfigError: Error, CustomStringConvertible {
@@ -115,7 +123,8 @@ extension Config {
             refreshTokenTTL: TimeInterval(optional("REFRESH_TOKEN_TTL_DAYS").flatMap(Int.init) ?? 90) * 86_400,
             databaseURL: try required("DEYLEE_DB_URL"),
             databaseCACertificatePath: optional("DEYLEE_DB_CA_CERT"),
-            port: optional("PORT").flatMap(Int.init) ?? 8080
+            port: optional("PORT").flatMap(Int.init) ?? 8080,
+            host: optional("HOST") ?? "127.0.0.1"
         )
     }
 

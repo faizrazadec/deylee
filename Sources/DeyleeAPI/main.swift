@@ -55,7 +55,7 @@ SyncController(store: store, tokens: tokens, logger: logger).addRoutes(to: route
 let app = Application(
     router: router,
     configuration: .init(
-        address: .hostname("127.0.0.1", port: config.port),
+        address: .hostname(config.host, port: config.port),
         serverName: "deylee-api"
     ),
     services: [store.client],
@@ -63,7 +63,7 @@ let app = Application(
 )
 
 logger.info("listening", metadata: [
-    "port": .string("\(config.port)"),
+    "address": .string("\(config.host):\(config.port)"),
     "audiences": .string("\(config.googleAudiences.count) google client(s)"),
     "hostedDomain": .string(config.googleAllowedHostedDomain ?? "any"),
 ])
