@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var miniWindow: MiniWindowController?
     private var settingsModel: SettingsModel?
     private var settingsWindow: SettingsWindowController?
+    private var syncCoordinator: SyncCoordinator?
     private var stopWatchingPreferences: PreferencesUnsubscribe?
     private var idleMonitor: IdleMonitor?
     private var powerMonitor: PowerMonitor?
@@ -86,8 +87,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.engine = engine
         self.model = model
 
+        // Optional by design: a build with no API configured simply never syncs,
+        // and the app is unchanged in every other respect.
+        let coordinator = SyncCoordinator(repo: repo)
+        self.syncCoordinator = coordinator
+        coordinator?.start()
+
         let settingsModel = SettingsModel(store: prefs)
-        let settingsWindow = SettingsWindowController(model: settingsModel)
+        let settingsWindow = SettingsWindowController(model: settingsModel, sync: coordinator)
         self.settingsModel = settingsModel
         self.settingsWindow = settingsWindow
 

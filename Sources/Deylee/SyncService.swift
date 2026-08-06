@@ -1,0 +1,239 @@
+import DeyleeKit
+import Foundation
+
+// MARK: - Wire types
+//
+// These mirror `docs/SYNC_PROTOCOL.md` exactly. They are deliberately separate from
+// DeyleeKit's `SyncSegment` and `SyncDay`: the core should not know what JSON is,
+// and the wire format should be free to gain a field without reshaping the store.
+
+private struct RowDTO: Codable {
+    var id: String
+    var dayDate: String?
+    var type: String?
+    var startedAt: EpochMs?
+    var endedAt: EpochMs?
+    var note: String?
+    var date: String?
+    var targetMinutes: Int?
+    var createdAt: EpochMs?
+    var updatedAt: EpochMs
+    var deletedAt: EpochMs?
+    var seq: Int64?
+}
+
+private struct ChangeDTO: Codable {
+    var table: String
+    var op: String
+    var row: RowDTO
+}
+
+private struct SyncRequestDTO: Encodable {
+    let protocolVersion: Int
+    let deviceId: String
+    let cursor: Int64
+    let changes: [ChangeDTO]
+}
+
+private struct ChangeResultDTO: Decodable {
+    let id: String
+    let status: String
+    let code: String?
+    let message: String?
+}
+
+private struct SyncResponseDTO: Decodable {
+    let protocolVersion: Int
+    let cursor: Int64
+    let serverTime: EpochMs
+    let hasMore: Bool
+    let results: [ChangeResultDTO]
+    let changes: [ChangeDTO]
+}
+
+// MARK: - Service
+
+/// Reconciles this device with the server.
+///
+/// Never on the path of a user action. Starting a timer writes to SQLite and
+/// returns; this runs afterwards, on a schedule, and its failure is a status line
+/// rather than an error dialog. A sync that cannot complete must leave the app
+/// exactly as usable as it was.
+@MainActor
+final class SyncService: ObservableObject {
+    enum Status: Equatable {
+        case idle
+        case syncing
+        case succeeded(at: EpochMs)
+        case failed(String)
+        /// Rows the server refused, which the user has to resolve — an overlap
+        /// created on two devices at once, most often.
+        case rejected([String])
+    }
+
+    @Published private(set) var status: Status = .idle
+
+    private let config: ClientConfig
+    private let repo: Repository
+    private let auth: AuthService
+    private let now: () -> EpochMs
+    private var inFlight = false
+
+    init(
+        config: ClientConfig,
+        repo: Repository,
+        auth: AuthService,
+        now: @escaping () -> EpochMs = { EpochMs(Date().timeIntervalSince1970 * 1000) }
+    ) {
+        self.config = config
+        self.repo = repo
+        self.auth = auth
+        self.now = now
+    }
+
+    /// Push what is pending and pull what is new, repeating while the server says
+    /// there is more.
+    ///
+    /// Reentrancy is refused rather than queued: two syncs racing would push the
+    /// same rows twice and interleave their cursor writes. The next scheduled run
+    /// picks up anything this one missed.
+    func syncNow() async {
+        guard !inFlight else { return }
+        guard let token = await auth.accessToken() else { return }
+        inFlight = true
+        defer { inFlight = false }
+
+        status = .syncing
+        do {
+            var rejections: [String] = []
+            var pages = 0
+            // Bounded so a server that always reports `hasMore` cannot spin here
+            // forever; the next scheduled sync continues from the stored cursor.
+            while pages < 50 {
+                pages += 1
+                let (more, refused) = try await exchangeOnce(token: token)
+                rejections.append(contentsOf: refused)
+                if !more { break }
+            }
+            status = rejections.isEmpty ? .succeeded(at: now()) : .rejected(rejections)
+        } catch let failure as APIClient.HTTPFailure where failure.needsFullResync {
+            // The client is ahead of the server — it is talking to a restored
+            // backup. Rewinding to zero re-delivers everything; rows already held
+            // are matched by uuid and upserted, so nothing duplicates.
+            try? repo.advanceCursor(to: 0, at: now())
+            status = .failed("The server was restored from a backup; resyncing from the start.")
+        } catch let failure as APIClient.HTTPFailure where failure.isUnauthorized {
+            status = .failed("Signed out. Sign in again to resume syncing.")
+        } catch {
+            status = .failed(String(describing: error))
+        }
+    }
+
+    /// One round trip: everything pending goes up, everything past the cursor comes
+    /// down. Returns whether the server has more, and any rows it refused.
+    private func exchangeOnce(token: String) async throws -> (hasMore: Bool, rejected: [String]) {
+        let state = try repo.syncState()
+        let pending = try repo.pendingPush()
+
+        var changes: [ChangeDTO] = []
+        for day in pending.days { changes.append(Self.encode(day)) }
+        for segment in pending.segments { changes.append(Self.encode(segment)) }
+
+        let response: SyncResponseDTO = try await APIClient.post(
+            config.apiBaseURL.appending(path: "/v1/sync"),
+            body: SyncRequestDTO(
+                protocolVersion: 1,
+                deviceId: state.deviceID,
+                cursor: state.cursor,
+                changes: changes
+            ),
+            bearer: token
+        )
+
+        // Only rows the server actually took are cleared, and only if they have not
+        // been edited since — `markPushed` checks `updated_at`, so an edit made
+        // while this request was in flight stays pending.
+        let applied = Set(response.results.filter { $0.status == "applied" }.map(\.id))
+        try repo.markPushed(
+            pending.days.filter { applied.contains($0.uuid) }.map { ($0.uuid, $0.updatedAt) },
+            table: .days
+        )
+        try repo.markPushed(
+            pending.segments.filter { applied.contains($0.uuid) }.map { ($0.uuid, $0.updatedAt) },
+            table: .segments
+        )
+
+        var incomingDays: [SyncDay] = []
+        var incomingSegments: [SyncSegment] = []
+        for change in response.changes {
+            if change.table == "days", let day = Self.decodeDay(change.row) {
+                incomingDays.append(day)
+            } else if change.table == "segments", let segment = Self.decodeSegment(change.row) {
+                incomingSegments.append(segment)
+            }
+        }
+        try repo.applyRemote(days: incomingDays, segments: incomingSegments, serverSeq: response.cursor)
+
+        // Only after the rows are durably written. A cursor advanced first is a
+        // cursor that skips rows if the process dies in between.
+        try repo.advanceCursor(to: response.cursor, at: now())
+
+        let refused = response.results
+            .filter { $0.status != "applied" }
+            .map { $0.message ?? $0.code ?? "rejected" }
+        return (response.hasMore, refused)
+    }
+
+    // MARK: Encoding
+
+    private static func encode(_ day: SyncDay) -> ChangeDTO {
+        ChangeDTO(
+            table: "days",
+            op: day.deletedAt == nil ? "upsert" : "delete",
+            row: RowDTO(
+                id: day.uuid, date: day.date.description, targetMinutes: day.targetMinutes,
+                createdAt: day.createdAt, updatedAt: day.updatedAt, deletedAt: day.deletedAt
+            )
+        )
+    }
+
+    private static func encode(_ segment: SyncSegment) -> ChangeDTO {
+        ChangeDTO(
+            table: "segments",
+            op: segment.deletedAt == nil ? "upsert" : "delete",
+            row: RowDTO(
+                id: segment.uuid, dayDate: segment.dayDate.description,
+                type: segment.type.rawValue, startedAt: segment.startedAt,
+                endedAt: segment.endedAt, note: segment.note,
+                createdAt: segment.createdAt, updatedAt: segment.updatedAt,
+                deletedAt: segment.deletedAt
+            )
+        )
+    }
+
+    /// A row that cannot be understood is skipped rather than fatal: a newer server
+    /// may send a shape this build does not know, and refusing the whole batch over
+    /// one row would strand the client until it updates.
+    private static func decodeDay(_ row: RowDTO) -> SyncDay? {
+        guard let date = row.date.flatMap(DateKey.init), let target = row.targetMinutes
+        else { return nil }
+        return SyncDay(
+            uuid: row.id, date: date, targetMinutes: target, endedAt: row.endedAt,
+            createdAt: row.createdAt ?? row.updatedAt, updatedAt: row.updatedAt,
+            deletedAt: row.deletedAt
+        )
+    }
+
+    private static func decodeSegment(_ row: RowDTO) -> SyncSegment? {
+        guard let date = row.dayDate.flatMap(DateKey.init),
+              let type = row.type.flatMap(SegmentType.init(rawValue:)),
+              let startedAt = row.startedAt
+        else { return nil }
+        return SyncSegment(
+            uuid: row.id, dayDate: date, type: type, startedAt: startedAt,
+            endedAt: row.endedAt, note: row.note,
+            createdAt: row.createdAt ?? row.updatedAt, updatedAt: row.updatedAt,
+            deletedAt: row.deletedAt
+        )
+    }
+}

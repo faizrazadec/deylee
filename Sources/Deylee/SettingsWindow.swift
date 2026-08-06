@@ -10,13 +10,15 @@ import SwiftUI
 /// window has gone.
 @MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
+    private let sync: SyncCoordinator?
     private let model: SettingsModel
     private var window: NSWindow?
 
     /// Called after the window has been destroyed, so the owner can forget it.
     var onClose: (() -> Void)?
 
-    init(model: SettingsModel) {
+    init(model: SettingsModel, sync: SyncCoordinator? = nil) {
+        self.sync = sync
         self.model = model
         super.init()
     }
@@ -42,7 +44,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         window.title = "Settings"
-        window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
+        window.contentViewController = NSHostingController(rootView: SettingsView(model: model, sync: sync))
         // Set after the hosting controller, which would otherwise size the window to
         // whatever its content happens to fit.
         window.setContentSize(Layout.settingsSize)

@@ -333,6 +333,9 @@ final class SettingsModel {
 /// the only confirmation there is.
 struct SettingsView: View {
     let model: SettingsModel
+    /// Absent when this build has no API configured. Sync is optional, so the
+    /// section is simply not shown rather than shown in a disabled state.
+    var sync: SyncCoordinator?
 
     var body: some View {
         VStack(spacing: 0) {

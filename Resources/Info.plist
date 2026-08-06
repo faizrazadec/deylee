@@ -2,6 +2,21 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>DeyleeGoogleClientID</key>
+	<string>67518619707-lvkjelp7t5mhvci33ki588679rcios86.apps.googleusercontent.com</string>
+	<key>DeyleeAPIBaseURL</key>
+	<string>http://127.0.0.1:8080</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Google Sign-In</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.67518619707-lvkjelp7t5mhvci33ki588679rcios86</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
