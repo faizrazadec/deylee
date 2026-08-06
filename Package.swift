@@ -9,8 +9,12 @@ let package = Package(
         .library(name: "DeyleeKit", targets: ["DeyleeKit"]),
     ],
     targets: [
+        // SQLite's C API on platforms that do not ship it as a Swift module.
+        // Apple's SDKs have `SQLite3`; Linux has only the C library, and the server
+        // imports this package for the time and overlap rules it must enforce.
+        .systemLibrary(name: "CSQLite", path: "Sources/CSQLite"),
         // Platform-free core: models, day-boundary time math, SQLite store, timer engine.
-        .target(name: "DeyleeKit"),
+        .target(name: "DeyleeKit", dependencies: ["CSQLite"]),
         // The menu-bar app: NSStatusItem, popover panel, windows, power/idle monitors.
         .executableTarget(
             name: "Deylee",

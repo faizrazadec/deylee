@@ -1,5 +1,13 @@
 import Foundation
-import SQLite3
+
+// Apple's SDKs ship SQLite as a Swift module; Linux ships only the C library, which
+// `CSQLite` wraps. The names below are identical either way, so nothing after this
+// line has to know which platform it is on.
+#if canImport(SQLite3)
+    import SQLite3
+#else
+    import CSQLite
+#endif
 
 /// Thin wrapper over the system SQLite3 C API. Deylee's schema is small and its SQL
 /// is written by hand — same stance as better-sqlite3 in the Electron app — so a

@@ -1,0 +1,10 @@
+// SQLite's C API, for platforms that do not ship it as a Swift module.
+//
+// Apple's SDKs provide `SQLite3` already; Linux provides only the C library, so
+// this module map is what lets DeyleeKit — and therefore the day-boundary, overlap
+// and midnight-split rules the server needs — compile there at all.
+module CSQLite [system] {
+    header "shim.h"
+    link "sqlite3"
+    export *
+}
