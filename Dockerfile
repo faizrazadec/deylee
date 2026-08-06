@@ -23,6 +23,11 @@ COPY Resources ./Resources
 RUN swift package --package-path server resolve
 
 COPY server/Sources ./server/Sources
+# The test target too, even though nothing here runs it. SwiftPM validates every
+# target in the manifest before building any of them, and a test target whose
+# directory is absent does not resolve to nothing — it falls back to searching, finds
+# the executable's sources, and fails with "overlapping sources".
+COPY server/Tests ./server/Tests
 RUN swift build --package-path server -c release --product DeyleeAPI
 
 # Collect the runtime pieces into one place for a clean copy into the final image.
