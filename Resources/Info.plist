@@ -2,6 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Permits plaintext HTTP to the local machine only, which is what a
+		     development build needs to reach an API running in a container on
+		     127.0.0.1. Every other host still requires HTTPS, so this weakens
+		     nothing about how the shipped app talks to a real server. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>DeyleeGoogleClientID</key>
 	<string>67518619707-lvkjelp7t5mhvci33ki588679rcios86.apps.googleusercontent.com</string>
 	<key>DeyleeAPIBaseURL</key>
