@@ -40,6 +40,19 @@ struct AccountSection: View {
                     action: "Cancel",
                     perform: auth.cancelSignIn
                 )
+            case .needsTransferConfirmation(let email):
+                // The question itself is asked in the sign-in window, never here —
+                // same rule as the credentials, and for the same reason. This row
+                // only says a decision is outstanding and puts that window back in
+                // front of somebody who clicked away from it.
+                AccountRow(
+                    initial: email.first.map(String.init)?.uppercased(),
+                    title: email,
+                    detail: "Confirm moving this machine's history over",
+                    action: "Review",
+                    prominent: true,
+                    perform: presentSignIn
+                )
             case .signedIn(let email, _):
                 AccountRow(
                     initial: email.first.map(String.init)?.uppercased(),

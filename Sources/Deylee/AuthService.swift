@@ -16,6 +16,10 @@ final class AuthService: NSObject, ObservableObject {
     enum State: Equatable {
         case signedOut
         case signingIn
+        /// Signed in as far as the server is concerned, but this machine's history
+        /// belongs to somebody else and nothing has been written yet. Waiting on
+        /// `confirmTransfer()` or `cancelTransfer()`.
+        case needsTransferConfirmation(email: String)
         case signedIn(email: String, userID: String)
         case failed(String)
     }
@@ -25,6 +29,9 @@ final class AuthService: NSObject, ObservableObject {
     private let config: ClientConfig
     private let repo: Repository
     private var session: StoredSession?
+    /// A session issued but not yet written, held only while the transfer question
+    /// is on screen. Never reaches the keychain unless the answer is yes.
+    private var pendingTransfer: StoredSession?
     private var webAuthSession: ASWebAuthenticationSession?
 
     init(config: ClientConfig, repo: Repository) {
@@ -52,13 +59,12 @@ final class AuthService: NSObject, ObservableObject {
             let idToken = try await exchange(code: code, verifier: verifier)
             let session = try await establishSession(idToken: idToken)
 
-            // Claim history written before anyone signed in. Everything local is
-            // already dirty, so this is enough to carry all of it up on first sync.
-            try repo.claimLocalData(forUserID: session.userID)
-
+            // `adopt` claims history written before anyone signed in — everything
+            // local is already dirty, so recording the user carries all of it up on
+            // the first sync — and parks the session instead if the store turns out
+            // to belong to somebody else.
             try adopt(session)
         } catch let error as MutationError {
-            // The "already belongs to another account" refusal, most likely.
             state = .failed(error.message)
         } catch is CancellationError {
             state = .signedOut
@@ -111,11 +117,52 @@ final class AuthService: NSObject, ObservableObject {
     /// Take a freshly issued session: claim any history written before it existed,
     /// store it, and announce it.
     ///
-    /// Claiming comes first deliberately. If the store already belongs to somebody
-    /// else it throws here, before the session is written — otherwise the app would
-    /// be signed in as one person while holding another person's hours.
+    /// Claiming comes first deliberately. If the store belongs to somebody else, the
+    /// session is parked rather than written — otherwise the app would be signed in
+    /// as one person while holding another person's hours. Nothing is decided here;
+    /// the window asks, and `confirmTransfer()` is the only way through.
     private func adopt(_ session: StoredSession) throws {
+        if try repo.ownerToDisplace(signingInAs: session.userID) != nil {
+            pendingTransfer = session
+            state = .needsTransferConfirmation(email: session.email)
+            return
+        }
         try repo.claimLocalData(forUserID: session.userID)
+        try commit(session)
+    }
+
+    /// Take the parked session and move this machine's history onto it.
+    ///
+    /// The rows are kept, not discarded — the hours were tracked on this machine and
+    /// the person switching accounts is usually the same person. They are re-issued
+    /// under new identities, which is what stops them being pushed on top of the
+    /// previous owner's rows; see `transferLocalData`.
+    func confirmTransfer() {
+        guard let session = pendingTransfer else { return }
+        pendingTransfer = nil
+        do {
+            try repo.transferLocalData(toUserID: session.userID)
+            try commit(session)
+        } catch {
+            state = .failed(Self.readable(error))
+        }
+    }
+
+    /// Decline the switch. The session issued for it is dropped unwritten, so the
+    /// store still belongs to whoever it belonged to a moment ago.
+    func cancelTransfer() {
+        pendingTransfer = nil
+        state = .signedOut
+    }
+
+    /// The account this machine's history currently belongs to, for the question the
+    /// window asks. Nil once there is nothing pending.
+    var transferWouldDisplace: String? {
+        guard let session = pendingTransfer else { return nil }
+        return try? repo.ownerToDisplace(signingInAs: session.userID)
+    }
+
+    private func commit(_ session: StoredSession) throws {
         try TokenStore.save(session)
         self.session = session
         state = .signedIn(email: session.email, userID: session.userID)

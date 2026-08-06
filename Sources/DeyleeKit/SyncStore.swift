@@ -125,10 +125,76 @@ extension Repository {
         if let existing = current.userID, existing != userID {
             throw MutationError(
                 code: .openSegmentConflict,
-                message: "This store already belongs to another account. Sign out first."
+                message: "This store already belongs to another account."
             )
         }
         try db.run("UPDATE sync_state SET user_id = ? WHERE id = 1", [.text(userID)])
+    }
+
+    /// Hand this machine's history to a different account, keeping every row.
+    ///
+    /// `claimLocalData` refuses the switch because it cannot know whether the person
+    /// at the keyboard means it. This is the deliberate way through, and callers must
+    /// only reach it once that has been confirmed — nothing here asks.
+    ///
+    /// Every live row is given a **fresh uuid**, and that is the part which is not
+    /// optional. A uuid is the row's identity on the server, where `days.id` and
+    /// `segments.id` are global primary keys rather than keys within an account.
+    /// Pushing an inherited uuid would therefore land in the server's
+    /// `ON CONFLICT (id) DO UPDATE`, against a row the *previous* owner still owns:
+    /// last-write-wins would overwrite their history with this machine's copy, while
+    /// the new owner — whose pull is filtered by `user_id` — would never see the row
+    /// arrive at all. Fresh ids make this an honest copy into the new account and
+    /// leave the old one exactly as it was.
+    ///
+    /// The cursor resets for a related reason: it counts the previous owner's place
+    /// in the server's sequence, which says nothing about the new account. Keeping it
+    /// would skip every row already in that account's history.
+    public func transferLocalData(toUserID userID: String) throws {
+        try db.transaction {
+            // Seeded from each row's own created_at, exactly as the backfill does, so
+            // re-identified history still sorts into the order it was lived in.
+            //
+            // `updated_at` is deliberately left alone. It is the client's claim about
+            // when the edit was made, and these rows were not edited — they were
+            // re-identified. Nothing is lost by keeping it honest, because a fresh
+            // uuid always takes the server's INSERT branch and never has a
+            // last-write-wins comparison to win.
+            for table in ["days", "segments"] {
+                try db.run("""
+                    UPDATE \(table)
+                    SET uuid = \(uuidV7SQL(millis: "created_at")),
+                        dirty = 1,
+                        server_seq = NULL
+                    WHERE deleted_at IS NULL
+                    """)
+
+                // Tombstones described rows in the previous account. The new account
+                // never had them, so there is nothing to delete there — they stay on
+                // disk as this store's own record and are never pushed.
+                try db.run(
+                    "UPDATE \(table) SET dirty = 0, server_seq = NULL WHERE deleted_at IS NOT NULL"
+                )
+            }
+
+            try db.run(
+                """
+                UPDATE sync_state
+                SET user_id = ?, cursor = 0, last_synced_at = NULL
+                WHERE id = 1
+                """,
+                [.text(userID)]
+            )
+        }
+    }
+
+    /// The account this store belongs to, when it is not the one signing in.
+    ///
+    /// Nil when the store is unclaimed or already belongs to `userID` — in both cases
+    /// `claimLocalData` will simply succeed and there is nothing to ask about.
+    public func ownerToDisplace(signingInAs userID: String) throws -> String? {
+        guard let existing = try syncState().userID, existing != userID else { return nil }
+        return existing
     }
 
     public func advanceCursor(to cursor: Int64, at now: EpochMs) throws {

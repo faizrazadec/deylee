@@ -50,11 +50,22 @@ struct SignInView: View {
         return false
     }
 
+    /// The account that has just been signed into, while its history question is
+    /// unanswered. Nil at every other moment.
+    private var confirmingTransferAs: String? {
+        if case .needsTransferConfirmation(let email) = auth.state { return email }
+        return nil
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider().overlay(Palette.border)
-            form
+            if let email = confirmingTransferAs {
+                transferConfirmation(as: email)
+            } else {
+                form
+            }
         }
         .frame(width: 380)
         .background(Palette.surface)
@@ -165,6 +176,69 @@ struct SignInView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding(.top, Space.xs)
+        }
+        .padding(.horizontal, Space.x5l)
+        .padding(.top, Space.x4l)
+        .padding(.bottom, Space.x5l)
+    }
+
+    // MARK: Transfer
+
+    /// Asked once, in the window rather than a dialog, and only when this machine's
+    /// history belongs to an account other than the one that just signed in.
+    ///
+    /// The wording avoids "merge" on purpose: the hours move wholesale to the new
+    /// account, they are not interleaved with what is already there. It also avoids
+    /// promising that the previous owner keeps everything, because anything this
+    /// machine never managed to push exists nowhere else.
+    private func transferConfirmation(as email: String) -> some View {
+        VStack(alignment: .leading, spacing: Space.x3l) {
+            VStack(alignment: .leading, spacing: Space.l) {
+                Text("This machine's history belongs to another account")
+                    .font(Type.body.weight(.medium))
+                    .foregroundStyle(Palette.fg)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("""
+                    Continuing as \(email) moves every day and segment tracked on this \
+                    Mac into that account. Nothing here is deleted, and whatever the \
+                    other account already synced stays in it.
+                    """)
+                    .font(Type.small)
+                    .foregroundStyle(Palette.fgMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                auth.confirmTransfer()
+            } label: {
+                Text("Move my history over")
+                    .font(Type.body.weight(.medium))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Space.l)
+            }
+            .buttonStyle(.plain)
+            .background(Palette.accent)
+            .foregroundStyle(Palette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+
+            Button {
+                error = nil
+                password = ""
+                auth.cancelTransfer()
+            } label: {
+                Text("Cancel")
+                    .font(Type.body)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Space.l)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Palette.fg)
+            .background(Palette.raised)
+            .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                    .strokeBorder(Palette.border, lineWidth: 1)
+            )
         }
         .padding(.horizontal, Space.x5l)
         .padding(.top, Space.x4l)

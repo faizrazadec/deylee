@@ -52,6 +52,15 @@ private final class Harness {
     func dirtyCount(_ table: String) throws -> Int {
         try db.queryOne("SELECT count(*) FROM \(table) WHERE dirty = 1") { $0.int(0) } ?? -1
     }
+
+    /// Takes a table name or a table name with a WHERE clause already on it.
+    func count(_ from: String) throws -> Int {
+        try db.queryOne("SELECT count(*) FROM \(from)") { $0.int(0) } ?? -1
+    }
+
+    func uuids(_ table: String) throws -> [String] {
+        try db.query("SELECT uuid FROM \(table) ORDER BY id") { $0.text(0) }
+    }
 }
 
 @Suite struct SyncStateTests {
@@ -75,7 +84,8 @@ private final class Harness {
     }
 
     /// Two people's hours in one file cannot be told apart afterwards, so the merge
-    /// must be refused at the door rather than regretted later.
+    /// must be refused at the door rather than regretted later. Going through anyway
+    /// is `transferLocalData`, and it is a different, deliberate call.
     @Test func refusesASecondUserOnTheSameStore() throws {
         let h = try Harness()
         try h.repo.claimLocalData(forUserID: "user-a")
@@ -83,6 +93,88 @@ private final class Harness {
             try h.repo.claimLocalData(forUserID: "user-b")
         }
         #expect(try h.repo.syncState().userID == "user-a")
+    }
+
+    /// Only when there is something to displace: an unclaimed store, or the same
+    /// user signing in again, has no question to ask.
+    @Test func namesTheOwnerOnlyWhenOneWouldBeDisplaced() throws {
+        let h = try Harness()
+        #expect(try h.repo.ownerToDisplace(signingInAs: "user-a") == nil)
+        try h.repo.claimLocalData(forUserID: "user-a")
+        #expect(try h.repo.ownerToDisplace(signingInAs: "user-a") == nil)
+        #expect(try h.repo.ownerToDisplace(signingInAs: "user-b") == "user-a")
+    }
+
+    /// The whole point of the transfer: the hours stay on the machine.
+    @Test func transferKeepsEveryRowAndRestampsTheStore() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-08-05", startedAt: 1_000, endedAt: 2_000)
+        try h.seed(date: "2026-08-06", startedAt: 3_000, endedAt: 4_000)
+        try h.repo.claimLocalData(forUserID: "user-a")
+
+        try h.repo.transferLocalData(toUserID: "user-b")
+
+        #expect(try h.repo.syncState().userID == "user-b")
+        #expect(try h.count("days") == 2)
+        #expect(try h.count("segments") == 2)
+    }
+
+    /// A uuid is the row's identity on the server, where the primary key is global
+    /// rather than per-account. Carrying one across would push this machine's copy
+    /// on top of the previous owner's row — overwriting their history — while the
+    /// new owner's pull, filtered by user_id, never returns it.
+    @Test func transferReissuesEveryRowIdentity() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-08-05", startedAt: 1_000, endedAt: 2_000)
+        try h.repo.claimLocalData(forUserID: "user-a")
+        let before = try h.uuids("days") + h.uuids("segments")
+
+        try h.repo.transferLocalData(toUserID: "user-b")
+
+        let after = try h.uuids("days") + h.uuids("segments")
+        #expect(after.count == before.count)
+        #expect(Set(after).isDisjoint(with: Set(before)))
+        // Still UUIDv7, so the re-identified rows keep sorting into the order they
+        // were lived in rather than arriving at the server shuffled.
+        #expect(after.allSatisfy { $0.count == 36 && Array($0)[14] == "7" })
+    }
+
+    /// Everything has to go up again: under the new account these are rows the
+    /// server has never seen, whatever the old account's sync had acknowledged.
+    @Test func transferQueuesEverythingForTheNewAccount() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-08-05", startedAt: 1_000, endedAt: 2_000)
+        try h.repo.claimLocalData(forUserID: "user-a")
+        // As though the previous owner had synced it all.
+        try h.db.run("UPDATE days     SET dirty = 0, server_seq = 42")
+        try h.db.run("UPDATE segments SET dirty = 0, server_seq = 43")
+        try h.repo.advanceCursor(to: 99, at: 5_000)
+
+        try h.repo.transferLocalData(toUserID: "user-b")
+
+        #expect(try h.dirtyCount("days") == 1)
+        #expect(try h.dirtyCount("segments") == 1)
+        #expect(try h.count("days WHERE server_seq IS NOT NULL") == 0)
+        #expect(try h.count("segments WHERE server_seq IS NOT NULL") == 0)
+        // The cursor counted the previous owner's place in the server's sequence.
+        // Keeping it would skip everything already in the new account's history.
+        #expect(try h.repo.syncState().cursor == 0)
+        #expect(try h.repo.syncState().lastSyncedAt == nil)
+    }
+
+    /// A tombstone says "the row I sent you is gone". The new account was never sent
+    /// it, so pushing one would be a delete for a row that does not exist there.
+    @Test func transferDoesNotPushTheOldAccountsDeletions() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-08-05", startedAt: 1_000, endedAt: 2_000)
+        try h.seed(date: "2026-08-06", startedAt: 3_000, endedAt: 4_000)
+        try h.repo.claimLocalData(forUserID: "user-a")
+        try h.db.run("UPDATE days SET deleted_at = 9_000 WHERE date = '2026-08-06'")
+
+        try h.repo.transferLocalData(toUserID: "user-b")
+
+        #expect(try h.dirtyCount("days") == 1)
+        #expect(try h.count("days WHERE deleted_at IS NOT NULL AND dirty = 1") == 0)
     }
 
     /// A response that arrives late must not rewind a cursor that has moved on;
