@@ -98,11 +98,16 @@ struct SignInView: View {
 
     private var form: some View {
         VStack(alignment: .leading, spacing: Space.x3l) {
+            // Centred at its natural width rather than stretched: the enclosing
+            // stack is leading-aligned for the field labels, and a full-width
+            // segmented control would read as two buttons instead of one choice.
             Picker("", selection: $mode) {
                 ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .fixedSize()
+            .frame(maxWidth: .infinity, alignment: .center)
             .disabled(isBusy)
 
             field("EMAIL") {
