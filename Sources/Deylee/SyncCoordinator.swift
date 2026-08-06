@@ -15,6 +15,10 @@ final class SyncCoordinator {
     let auth: AuthService
     let sync: SyncService
 
+    /// Raises the sign-in window. Set by the app, because the window's lifetime and
+    /// its effect on the activation policy belong there rather than here.
+    var presentSignIn: (() -> Void)?
+
     private var timer: Timer?
     private var observers: [any NSObjectProtocol] = []
 

@@ -16,6 +16,9 @@ struct StoredSession: Sendable, Codable, Equatable {
     var userID: String
     var email: String
     var displayName: String?
+    /// How this session was obtained, for the Settings row: the spec shows
+    /// "Synced 2 min ago · Google", and the provider is not derivable afterwards.
+    var provider: String = "Google"
 
     /// Treated as expired a minute early, so a token does not lapse mid-flight and
     /// turn an ordinary sync into a spurious 401.

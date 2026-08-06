@@ -100,7 +100,7 @@ final class AuthService: NSObject, ObservableObject {
                     timezone: TimeZone.current.identifier
                 )
             )
-            try adopt(response.stored())
+            try adopt(response.stored(provider: "Email"))
         } catch let error as MutationError {
             state = .failed(error.message)
         } catch {
@@ -141,6 +141,20 @@ final class AuthService: NSObject, ObservableObject {
         }
         return String(describing: error)
     }
+
+    /// Abandon an in-flight sign-in, from the Settings row's Cancel.
+    ///
+    /// Cancelling the browser session makes its completion handler fire with
+    /// `canceledLogin`, which `signIn()` already treats as signed out — so the state
+    /// unwinds through the one path rather than a second one written for this.
+    func cancelSignIn() {
+        webAuthSession?.cancel()
+        webAuthSession = nil
+        if case .signingIn = state { state = .signedOut }
+    }
+
+    /// The provider behind the current session, for display.
+    var currentProvider: String? { session?.provider }
 
     /// Sign out locally.
     ///
@@ -348,14 +362,15 @@ struct SessionResponseDTO: Decodable {
         let timezone: String
     }
 
-    func stored(now: Date = Date()) -> StoredSession {
+    func stored(now: Date = Date(), provider: String = "Google") -> StoredSession {
         StoredSession(
             accessToken: accessToken,
             refreshToken: refreshToken,
             accessExpiresAt: EpochMs(now.timeIntervalSince1970 * 1000) + EpochMs(expiresIn) * 1000,
             userID: user.id,
             email: user.email,
-            displayName: user.displayName
+            displayName: user.displayName,
+            provider: provider
         )
     }
 }

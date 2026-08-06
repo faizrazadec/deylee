@@ -379,7 +379,11 @@ struct SettingsView: View {
                 // every other section means. Absent entirely when this build has no
                 // API configured — sync is optional, not merely disabled.
                 if let sync {
-                    AccountSection(auth: sync.auth, sync: sync.sync)
+                    AccountSection(
+                        auth: sync.auth,
+                        sync: sync.sync,
+                        presentSignIn: { sync.presentSignIn?() }
+                    )
                 }
                 general
                 tracking

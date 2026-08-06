@@ -118,6 +118,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // run with no signal must not leave somebody holding an app that does
         // nothing. Whatever is tracked meanwhile is claimed by the first successful
         // sign-in, so choosing to wait costs no history.
+        // The same window, raised from Settings too — the spec is explicit that
+        // there is no second, smaller form to maintain.
+        coordinator?.presentSignIn = { [weak self] in
+            guard let self, let coordinator = self.syncCoordinator else { return }
+            let window = SignInWindowController(auth: coordinator.auth) {}
+            self.signInWindow = window
+            window.show()
+        }
+
         if let coordinator, !coordinator.auth.isSignedIn {
             let gate = SignInWindowController(auth: coordinator.auth) { [weak self] in
                 self?.presentStatusItem(model: model, prefs: prefs, engine: engine, repo: repo)
