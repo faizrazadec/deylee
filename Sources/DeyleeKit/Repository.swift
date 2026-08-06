@@ -13,7 +13,8 @@ public final class Repository {
     /// Where the heartbeat records the last instant the app was known to be alive.
     public static let appStateHeartbeat = "heartbeat_at"
 
-    private let db: Database
+    // Internal rather than private: SyncStore.swift extends Repository.
+    let db: Database
     private let zone: TimeZone
 
     public init(db: Database, in zone: TimeZone = .current) {
