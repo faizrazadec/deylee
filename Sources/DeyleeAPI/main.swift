@@ -1,6 +1,7 @@
 import Foundation
 import Hummingbird
 import Logging
+import PostgresNIO
 
 // Configuration is read before anything binds a port. A missing variable should
 // stop the process here, with the name of the variable, rather than surface as a
@@ -17,11 +18,29 @@ do {
 }
 
 var logger = Logger(label: "deylee-api")
-logger.logLevel = .info
+// Raiseable without a rebuild. Connection-pool faults are only explained at debug
+// level, and needing a redeploy to find out why the database is unreachable is
+// exactly the wrong time to need one.
+logger.logLevel = Logger.Level(
+    rawValue: ProcessInfo.processInfo.environment["LOG_LEVEL"] ?? "info"
+) ?? .info
 
 let tokens = try await TokenService(config: config)
 
+let store: Store
+do {
+    store = try Store(
+        url: config.databaseURL,
+        caCertificatePath: config.databaseCACertificatePath,
+        logger: logger
+    )
+} catch {
+    FileHandle.standardError.write(Data("deylee-api: \(error)\n".utf8))
+    exit(1)
+}
+
 let router = Router()
+router.add(middleware: ErrorLogging(logger: logger))
 
 // Liveness only. Deliberately does not touch the database: a health check that
 // fails when Postgres is briefly unreachable invites an orchestrator to kill a
@@ -30,12 +49,16 @@ router.get("/health") { _, _ -> [String: String] in
     ["status": "ok"]
 }
 
+AuthController(store: store, tokens: tokens, config: config, logger: logger).addRoutes(to: router)
+SyncController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
+
 let app = Application(
     router: router,
     configuration: .init(
         address: .hostname("127.0.0.1", port: config.port),
         serverName: "deylee-api"
     ),
+    services: [store.client],
     logger: logger
 )
 
