@@ -12,16 +12,16 @@ import PackageDescription
 // being Swift is that the day-boundary maths, the overlap rules and the midnight
 // split are the *same code* the Mac app runs, not a port of it that drifts.
 //
-// Note the package identity below: for a path dependency SwiftPM derives it from
-// the *directory name*, not from the `name:` in the manifest it points at. The
-// repository directory is still `dayly.faizraza.me`, so that is the identity here.
-// Renaming the directory will break resolution with an "unknown package" error
-// naming the new one, and this line is what needs to change.
+// The `name:` on that path dependency is not decoration. Without it SwiftPM derives
+// a path dependency's identity from the *directory name*, which makes resolution
+// depend on what the checkout happens to be called: it broke the moment a container
+// copied the tree to /src, and it would break again the day this folder is renamed
+// to match the app. Naming it pins the identity to something the manifest controls.
 let package = Package(
     name: "DeyleeServer",
     platforms: [.macOS(.v14)],
     dependencies: [
-        .package(path: ".."),
+        .package(name: "Deylee", path: ".."),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
         .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
@@ -30,7 +30,7 @@ let package = Package(
         .executableTarget(
             name: "DeyleeAPI",
             dependencies: [
-                .product(name: "DeyleeKit", package: "dayly.faizraza.me"),
+                .product(name: "DeyleeKit", package: "Deylee"),
                 .product(name: "Hummingbird", package: "hummingbird"),
                 .product(name: "JWTKit", package: "jwt-kit"),
                 .product(name: "PostgresNIO", package: "postgres-nio"),
