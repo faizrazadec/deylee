@@ -9,7 +9,13 @@ import PostgresNIO
 /// named alongside it are absent; `days` has `date` and `targetMinutes`, `segments`
 /// has `dayDate`, `type`, `startedAt` and `note`, and both use `endedAt`.
 struct SyncRow: Codable, Sendable {
-    let id: UUID
+    /// A string, not a `UUID`, and lower-cased on the way out.
+    ///
+    /// Foundation renders `UUID.uuidString` in upper case, while Postgres and the
+    /// clients' SQLite stores both use lower case. Since a client upserts by this
+    /// value into a case-SENSITIVE text index, echoing it back in the wrong case
+    /// would insert a duplicate of every row it already held.
+    let id: String
     var dayDate: String?
     var type: String?
     var startedAt: Int64?
@@ -150,14 +156,14 @@ struct SyncController: Sendable {
                 throw HTTPError(.badRequest, message: "Unknown \(change.table)/\(change.op).")
             }
             _ = try await connection.query(PostgresQuery(unsafeSQL: "RELEASE SAVEPOINT \(name)"), logger: logger)
-            return ChangeResult(id: change.row.id.uuidString, status: "applied")
+            return ChangeResult(id: change.row.id, status: "applied")
         } catch {
             _ = try? await connection.query(
                 PostgresQuery(unsafeSQL: "ROLLBACK TO SAVEPOINT \(name)"), logger: logger
             )
             let (code, message) = Self.classify(error)
             return ChangeResult(
-                id: change.row.id.uuidString, status: "rejected", code: code, message: message
+                id: change.row.id, status: "rejected", code: code, message: message
             )
         }
     }
@@ -200,11 +206,14 @@ struct SyncController: Sendable {
         guard let dayDate = row.dayDate, let type = row.type, let startedAt = row.startedAt else {
             throw HTTPError(.badRequest, message: "A segment needs dayDate, type and startedAt.")
         }
+        guard let rowID = UUID(uuidString: row.id) else {
+            throw HTTPError(.badRequest, message: "That id is not a UUID.")
+        }
         _ = try await connection.query(
             """
             INSERT INTO public.segments
                 (id, user_id, day_date, type, started_at, ended_at, note, created_at, updated_at)
-            VALUES (\(row.id), \(userID), \(dayDate), \(type), \(startedAt), \(row.endedAt),
+            VALUES (\(rowID), \(userID), \(dayDate), \(type), \(startedAt), \(row.endedAt),
                     \(row.note), \(row.createdAt ?? row.updatedAt), \(row.updatedAt))
             ON CONFLICT (id) DO UPDATE SET
                 day_date   = EXCLUDED.day_date,
@@ -225,11 +234,14 @@ struct SyncController: Sendable {
         guard let date = row.date, let target = row.targetMinutes else {
             throw HTTPError(.badRequest, message: "A day needs date and targetMinutes.")
         }
+        guard let rowID = UUID(uuidString: row.id) else {
+            throw HTTPError(.badRequest, message: "That id is not a UUID.")
+        }
         _ = try await connection.query(
             """
             INSERT INTO public.days
                 (id, user_id, date, target_minutes, ended_at, created_at, updated_at)
-            VALUES (\(row.id), \(userID), \(date), \(target), \(row.endedAt),
+            VALUES (\(rowID), \(userID), \(date), \(target), \(row.endedAt),
                     \(row.createdAt ?? row.updatedAt), \(row.updatedAt))
             ON CONFLICT (id) DO UPDATE SET
                 date           = EXCLUDED.date,
@@ -248,14 +260,17 @@ struct SyncController: Sendable {
     private func tombstone(
         _ table: String, _ row: SyncRow, on connection: PostgresConnection
     ) async throws {
+        guard let rowID = UUID(uuidString: row.id) else {
+            throw HTTPError(.badRequest, message: "That id is not a UUID.")
+        }
         let query: PostgresQuery = table == "segments"
             ? """
               UPDATE public.segments SET deleted_at = \(row.updatedAt), updated_at = \(row.updatedAt)
-              WHERE id = \(row.id) AND deleted_at IS NULL AND \(row.updatedAt) >= updated_at
+              WHERE id = \(rowID) AND deleted_at IS NULL AND \(row.updatedAt) >= updated_at
               """
             : """
               UPDATE public.days SET deleted_at = \(row.updatedAt), updated_at = \(row.updatedAt)
-              WHERE id = \(row.id) AND deleted_at IS NULL AND \(row.updatedAt) >= updated_at
+              WHERE id = \(rowID) AND deleted_at IS NULL AND \(row.updatedAt) >= updated_at
               """
         _ = try await connection.query(query, logger: logger)
     }
@@ -287,7 +302,8 @@ struct SyncController: Sendable {
                 table: "segments",
                 op: deletedAt == nil ? "upsert" : "delete",
                 row: SyncRow(
-                    id: id, dayDate: dayDate, type: type, startedAt: startedAt, endedAt: endedAt,
+                    id: id.uuidString.lowercased(), dayDate: dayDate, type: type,
+                    startedAt: startedAt, endedAt: endedAt,
                     note: note, createdAt: createdAt, updatedAt: updatedAt, deletedAt: deletedAt,
                     seq: seq
                 )
@@ -308,7 +324,7 @@ struct SyncController: Sendable {
                 table: "days",
                 op: deletedAt == nil ? "upsert" : "delete",
                 row: SyncRow(
-                    id: id, endedAt: endedAt, date: date, targetMinutes: target,
+                    id: id.uuidString.lowercased(), endedAt: endedAt, date: date, targetMinutes: target,
                     createdAt: createdAt, updatedAt: updatedAt, deletedAt: deletedAt, seq: seq
                 )
             ))

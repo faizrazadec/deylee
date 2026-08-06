@@ -16,6 +16,18 @@ struct GoogleSignInRequest: Decodable {
     let timezone: String?
 }
 
+struct PasswordRequest: Decodable {
+    let email: String
+    let password: String
+    let displayName: String?
+    let deviceId: UUID?
+    let timezone: String?
+}
+
+struct SetPasswordRequest: Decodable {
+    let password: String
+}
+
 struct RefreshRequest: Decodable {
     let refreshToken: String
 }
@@ -36,8 +48,19 @@ struct SessionResponse: Codable, ResponseEncodable {
     let user: UserDTO
 }
 
+struct OKResponse: Codable, ResponseEncodable {
+    let ok: Bool
+}
+
 // MARK: - Routes
 
+/// Sign-in, sign-up and refresh.
+///
+/// Every database call here goes through a SECURITY DEFINER function rather than a
+/// table. Authentication cannot be tenant-scoped — it is what establishes the
+/// tenant — so the API's ordinary row-level-security-bound connection cannot read
+/// or write these rows at all. The functions are the enumerated exceptions, and
+/// the account-linking rules live inside them where both routes share one copy.
 struct AuthController: Sendable {
     let store: Store
     let tokens: TokenService
@@ -46,13 +69,14 @@ struct AuthController: Sendable {
 
     func addRoutes(to router: Router<BasicRequestContext>) {
         router.post("/v1/auth/google", use: signInWithGoogle)
+        router.post("/v1/auth/signup", use: signUpWithPassword)
+        router.post("/v1/auth/password", use: signInWithPassword)
         router.post("/v1/auth/refresh", use: refresh)
+        router.post("/v1/auth/set-password", use: setPassword)
     }
 
-    /// Exchange a Google ID token for a session of our own.
-    ///
-    /// Runs without tenancy: there is no user id to scope to until Google has been
-    /// believed, and `app_users` is not reachable from a user-scoped connection.
+    // MARK: Google
+
     @Sendable
     func signInWithGoogle(
         _ request: Request, context: BasicRequestContext
@@ -63,177 +87,227 @@ struct AuthController: Sendable {
         do {
             claims = try await tokens.verifyGoogleIDToken(body.idToken)
         } catch let error as TokenError {
-            // The reason is safe to return: it tells a legitimate user why they were
-            // refused — wrong account, unverified address — and tells an attacker
-            // only that their forged token was rejected.
             throw HTTPError(.unauthorized, message: error.description)
         }
-
         guard let email = claims.email else {
             throw HTTPError(.unauthorized, message: "Google returned no email address.")
         }
 
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let sessionID = UUID()
-        let refreshToken = RefreshToken.generate()
-        let refreshExpiry = now + Int64(config.refreshTokenTTL * 1000)
-
-        let user = try await store.withoutTenant { connection in
-            // Keyed on the Google subject, never the email: people change their
-            // address, and matching on it would eventually attach one person's
-            // history to another person's account.
-            let rows = try await connection.query(
-                """
-                INSERT INTO public.app_users
-                    (google_sub, email, email_verified, display_name, timezone)
-                VALUES (\(claims.sub.value), \(email), \(claims.emailVerified ?? false),
-                        \(claims.name), COALESCE(\(body.timezone), 'UTC'))
-                ON CONFLICT (google_sub) DO UPDATE SET
-                    email          = EXCLUDED.email,
-                    email_verified = EXCLUDED.email_verified,
-                    display_name   = COALESCE(EXCLUDED.display_name, app_users.display_name),
-                    timezone       = COALESCE(\(body.timezone), app_users.timezone),
-                    updated_at     = \(now),
-                    last_seen_at   = \(now)
-                RETURNING id, email, display_name, timezone
-                """,
-                logger: logger
-            )
-
-            var found: UserDTO?
-            for try await (id, mail, name, zone) in rows.decode(
-                (UUID, String, String?, String).self
-            ) {
-                found = UserDTO(id: id.uuidString, email: mail, displayName: name, timezone: zone)
-            }
-            guard let user = found else {
-                throw HTTPError(.internalServerError, message: "The account could not be stored.")
-            }
-
-            _ = try await connection.query(
-                """
-                INSERT INTO public.refresh_tokens
-                    (user_id, session_id, token_hash, device_id, issued_at, expires_at)
-                VALUES (\(UUID(uuidString: user.id)!), \(sessionID),
-                        \(ByteBuffer(bytes: RefreshToken.digest(refreshToken))), \(body.deviceId),
-                        \(now), \(refreshExpiry))
-                """,
-                logger: logger
-            )
-            return user
-        }
-
-        let access = try await tokens.issueAccessToken(
-            userID: UUID(uuidString: user.id)!, sessionID: sessionID
+        // Adopting an existing account with this address is safe here and only here:
+        // Google asserts it verified the mailbox, so whoever holds this token
+        // controls it. Sign-up with a password deliberately refuses the reverse.
+        let user = try await callReturningUser(
+            """
+            SELECT id, email, display_name, timezone
+            FROM public.auth_sign_in_with_google(
+                \(claims.sub.value), \(email), \(claims.emailVerified ?? false),
+                \(claims.name), \(body.timezone))
+            """
         )
-
-        logger.info("signed in", metadata: ["user": .string(user.id)])
-
-        return SessionResponse(
-            accessToken: access,
-            refreshToken: refreshToken,
-            expiresIn: Int(config.accessTokenTTL),
-            user: user
-        )
+        return try await issueSession(for: user, deviceID: body.deviceId)
     }
+
+    // MARK: Password
+
+    @Sendable
+    func signUpWithPassword(
+        _ request: Request, context: BasicRequestContext
+    ) async throws -> SessionResponse {
+        let body = try await request.decode(as: PasswordRequest.self, context: context)
+        let user = try await callReturningUser(
+            """
+            SELECT id, email, display_name, timezone
+            FROM public.auth_sign_up_with_password(
+                \(body.email), \(body.password), \(body.displayName), \(body.timezone))
+            """
+        )
+        return try await issueSession(for: user, deviceID: body.deviceId)
+    }
+
+    @Sendable
+    func signInWithPassword(
+        _ request: Request, context: BasicRequestContext
+    ) async throws -> SessionResponse {
+        let body = try await request.decode(as: PasswordRequest.self, context: context)
+        let user = try await callReturningUser(
+            """
+            SELECT id, email, display_name, timezone
+            FROM public.auth_sign_in_with_password(\(body.email), \(body.password))
+            """
+        )
+        return try await issueSession(for: user, deviceID: body.deviceId)
+    }
+
+    /// Add or change a password on an account the caller is already signed into.
+    ///
+    /// This is the safe route into password sign-in for someone who started with
+    /// Google: the access token has already established who they are, so nothing
+    /// further needs proving. It is also why sign-up may refuse a known address
+    /// outright rather than inventing an email-verification flow.
+    @Sendable
+    func setPassword(_ request: Request, context: BasicRequestContext) async throws -> OKResponse {
+        guard let header = request.headers[.authorization], header.hasPrefix("Bearer "),
+              let payload = try? await tokens.verifyAccessToken(String(header.dropFirst(7))),
+              let userID = UUID(uuidString: payload.sub.value)
+        else {
+            throw HTTPError(.unauthorized, message: "A bearer token is required.")
+        }
+        let body = try await request.decode(as: SetPasswordRequest.self, context: context)
+
+        do {
+            try await store.withoutTenant { connection in
+                _ = try await connection.query(
+                    "SELECT public.auth_set_password(\(userID), \(body.password))",
+                    logger: logger
+                ).collect()
+            }
+        } catch {
+            throw Self.mapped(error)
+        }
+        return OKResponse(ok: true)
+    }
+
+    // MARK: Refresh
 
     /// Trade a refresh token for a new pair, rotating it.
     ///
-    /// Rotation is what makes theft survivable. Each refresh mints a new token and
-    /// marks the old one replaced; presenting a token that has already been
-    /// replaced means two parties hold it, and the only safe reading is that one of
-    /// them stole it. Both are then signed out — the legitimate user included,
-    /// which is the point, because otherwise nobody ever finds out.
+    /// The rotation function returns an outcome instead of raising, because raising
+    /// would roll back the revocation it had just performed — a replay would be
+    /// reported while the stolen token quietly stayed alive. Every failure answers
+    /// 401 with the same words, so a caller cannot learn from the response whether
+    /// a token ever existed.
     @Sendable
     func refresh(_ request: Request, context: BasicRequestContext) async throws -> SessionResponse {
         let body = try await request.decode(as: RefreshRequest.self, context: context)
-        let digest = ByteBuffer(bytes: RefreshToken.digest(body.refreshToken))
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-
+        let oldHash = ByteBuffer(bytes: RefreshToken.digest(body.refreshToken))
         let newToken = RefreshToken.generate()
-        let newExpiry = now + Int64(config.refreshTokenTTL * 1000)
+        let newHash = ByteBuffer(bytes: RefreshToken.digest(newToken))
+        let expiry = Int64(Date().timeIntervalSince1970 * 1000)
+            + Int64(config.refreshTokenTTL * 1000)
 
-        let (user, sessionID) = try await store.withoutTenant { connection -> (UserDTO, UUID) in
+        let (outcome, user) = try await store.withoutTenant {
+            connection -> (String, UserDTO?) in
             let rows = try await connection.query(
                 """
-                SELECT t.id, t.user_id, t.session_id, t.expires_at, t.revoked_at, t.replaced_by,
-                       u.email, u.display_name, u.timezone
-                FROM public.refresh_tokens t
-                JOIN public.app_users u ON u.id = t.user_id
-                WHERE t.token_hash = \(digest)
+                SELECT outcome, user_id, email, display_name, timezone
+                FROM public.auth_rotate_refresh_token(\(oldHash), \(newHash), \(expiry))
                 """,
                 logger: logger
             )
-
-            var row: (UUID, UUID, UUID, Int64, Int64?, UUID?, String, String?, String)?
-            for try await found in rows.decode(
-                (UUID, UUID, UUID, Int64, Int64?, UUID?, String, String?, String).self
+            for try await (outcome, id, email, name, zone) in rows.decode(
+                (String, UUID?, String?, String?, String?).self
             ) {
-                row = found
+                guard let id, let email, let zone else { return (outcome, nil) }
+                return (outcome, UserDTO(id: id.uuidString.lowercased(), email: email,
+                                         displayName: name, timezone: zone))
             }
+            return ("unknown", nil)
+        }
 
-            guard let (tokenID, userID, sessionID, expiresAt, revokedAt, replacedBy,
-                       email, displayName, timezone) = row
-            else {
-                throw HTTPError(.unauthorized, message: "That refresh token is not recognised.")
+        guard outcome == "rotated", let user else {
+            if outcome == "replayed" {
+                logger.warning("refresh token replayed; session revoked")
             }
+            throw HTTPError(.unauthorized, message: "That session has ended. Sign in again.")
+        }
 
-            // Replay. Revoke the entire chain, not just the row presented.
-            if revokedAt != nil || replacedBy != nil {
-                _ = try await connection.query(
-                    """
-                    UPDATE public.refresh_tokens SET revoked_at = \(now)
-                    WHERE session_id = \(sessionID) AND revoked_at IS NULL
-                    """,
-                    logger: logger
-                )
-                logger.warning("refresh token replayed; session revoked", metadata: [
-                    "user": .string(userID.uuidString), "session": .string(sessionID.uuidString),
-                ])
-                throw HTTPError(.unauthorized, message: "That session has been ended. Sign in again.")
-            }
-
-            guard expiresAt > now else {
-                throw HTTPError(.unauthorized, message: "That refresh token has expired.")
-            }
-
-            let inserted = try await connection.query(
-                """
-                INSERT INTO public.refresh_tokens
-                    (user_id, session_id, token_hash, issued_at, expires_at)
-                VALUES (\(userID), \(sessionID), \(ByteBuffer(bytes: RefreshToken.digest(newToken))),
-                        \(now), \(newExpiry))
-                RETURNING id
-                """,
-                logger: logger
+        // The rotated token stays on the same chain, so the access token must carry
+        // the same session id or the two would describe different sessions.
+        let sessionID = try await store.withoutTenant { connection -> UUID in
+            let rows = try await connection.query(
+                "SELECT public.auth_session_for_token(\(newHash))", logger: logger
             )
-            var newID: UUID?
-            for try await id in inserted.decode(UUID.self) { newID = id }
-            guard let newID else {
-                throw HTTPError(.internalServerError, message: "The session could not be renewed.")
-            }
-
-            _ = try await connection.query(
-                "UPDATE public.refresh_tokens SET replaced_by = \(newID) WHERE id = \(tokenID)",
-                logger: logger
-            )
-
-            return (
-                UserDTO(id: userID.uuidString, email: email,
-                        displayName: displayName, timezone: timezone),
-                sessionID
-            )
+            for try await id in rows.decode(UUID?.self) { if let id { return id } }
+            throw HTTPError(.internalServerError, message: "The session could not be renewed.")
         }
 
         let access = try await tokens.issueAccessToken(
             userID: UUID(uuidString: user.id)!, sessionID: sessionID
         )
+        return SessionResponse(
+            accessToken: access, refreshToken: newToken,
+            expiresIn: Int(config.accessTokenTTL), user: user
+        )
+    }
+
+    // MARK: Shared
+
+    /// Run a function that returns one user row, translating its refusals.
+    private func callReturningUser(_ query: PostgresQuery) async throws -> UserDTO {
+        do {
+            return try await store.withoutTenant { connection -> UserDTO in
+                let rows = try await connection.query(query, logger: logger)
+                for try await (id, email, name, zone) in rows.decode(
+                    (UUID, String, String?, String).self
+                ) {
+                    return UserDTO(id: id.uuidString.lowercased(), email: email,
+                                   displayName: name, timezone: zone)
+                }
+                throw HTTPError(.unauthorized, message: "Those details were not accepted.")
+            }
+        } catch let error as HTTPError {
+            throw error
+        } catch {
+            throw Self.mapped(error)
+        }
+    }
+
+    private func issueSession(for user: UserDTO, deviceID: UUID?) async throws -> SessionResponse {
+        let sessionID = UUID()
+        let refreshToken = RefreshToken.generate()
+        let expiry = Int64(Date().timeIntervalSince1970 * 1000)
+            + Int64(config.refreshTokenTTL * 1000)
+
+        try await store.withoutTenant { connection in
+            _ = try await connection.query(
+                """
+                SELECT public.auth_issue_refresh_token(
+                    \(UUID(uuidString: user.id)!), \(sessionID),
+                    \(ByteBuffer(bytes: RefreshToken.digest(refreshToken))),
+                    \(deviceID), \(expiry))
+                """,
+                logger: logger
+            ).collect()
+        }
+
+        let access = try await tokens.issueAccessToken(
+            userID: UUID(uuidString: user.id)!, sessionID: sessionID
+        )
+        logger.info("session issued", metadata: ["user": .string(user.id)])
 
         return SessionResponse(
-            accessToken: access,
-            refreshToken: newToken,
-            expiresIn: Int(config.accessTokenTTL),
-            user: user
+            accessToken: access, refreshToken: refreshToken,
+            expiresIn: Int(config.accessTokenTTL), user: user
         )
+    }
+
+    /// Turn a function's refusal into something a person can act on.
+    ///
+    /// Wrong password and unknown address both become the same sentence on purpose:
+    /// distinguishing them would let anyone test which addresses are registered.
+    private static func mapped(_ error: any Error) -> HTTPError {
+        guard let psql = error as? PSQLError,
+              let message = psql.serverInfo?[.message]
+        else {
+            return HTTPError(.internalServerError, message: "The request could not be completed.")
+        }
+        switch message {
+        case "email-taken":
+            return HTTPError(
+                .conflict,
+                message: "That email already has an account. Sign in instead — "
+                    + "if you created it with Google, use Continue with Google."
+            )
+        case "weak-password":
+            return HTTPError(.badRequest, message: "Passwords must be 8 to 72 characters.")
+        case "unverified-email":
+            return HTTPError(.unauthorized, message: "Google has not verified that address.")
+        case "invalid-credentials":
+            return HTTPError(.unauthorized, message: "That email and password do not match.")
+        case "no-such-user":
+            return HTTPError(.unauthorized, message: "That account no longer exists.")
+        default:
+            return HTTPError(.internalServerError, message: "The request could not be completed.")
+        }
     }
 }
