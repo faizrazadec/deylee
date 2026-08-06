@@ -375,6 +375,12 @@ struct SettingsView: View {
     private var sections: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.x5l) {
+                // First, because signing in is the one thing here that changes what
+                // every other section means. Absent entirely when this build has no
+                // API configured — sync is optional, not merely disabled.
+                if let sync {
+                    AccountSection(auth: sync.auth, sync: sync.sync)
+                }
                 general
                 tracking
                 reminders
@@ -557,7 +563,11 @@ struct SettingsView: View {
     private var data: some View {
         SettingsSectionCard(
             title: "Data",
-            description: "Everything Deylee records stays on this machine. Nothing is ever uploaded."
+            // Was "Nothing is ever uploaded", which stopped being true the moment
+            // sync existed. Copy that quietly contradicts the software is worse
+            // than none: this is the screen where somebody checks.
+            description: "Your database lives on this machine. Signed out, it goes nowhere; "
+                + "signed in, your hours sync to your account and nothing else does."
         ) {
             dataFolderBlock
             SettingsHairline()
