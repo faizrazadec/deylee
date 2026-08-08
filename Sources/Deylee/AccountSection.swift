@@ -32,11 +32,16 @@ struct AccountSection: View {
                     prominent: true,
                     perform: presentSignIn
                 )
-            case .signingIn:
+            case .signingIn(let route):
+                // Only the Google route has handed anything to a browser. Saying so
+                // during an email sign-up describes something that is not happening
+                // and sends people looking for a window that was never opened.
                 AccountRow(
                     initial: nil,
-                    title: "Waiting for your browser…",
-                    detail: "Finish in the window that opened",
+                    title: route == .browser ? "Waiting for your browser…" : "Signing in…",
+                    detail: route == .browser
+                        ? "Finish in the window that opened"
+                        : "Checking your details",
                     action: "Cancel",
                     perform: auth.cancelSignIn
                 )
