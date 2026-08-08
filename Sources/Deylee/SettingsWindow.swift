@@ -64,6 +64,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// Whether the window is on screen, so a caller can put back exactly what it
+    /// took away rather than guessing.
+    var isVisible: Bool { window?.isVisible ?? false }
+
     func close() {
         window?.performClose(nil)
     }

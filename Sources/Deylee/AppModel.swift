@@ -32,6 +32,16 @@ final class AppModel {
     @ObservationIgnored var openHistoryWindow: () -> Void = {}
     @ObservationIgnored var openSettingsWindow: () -> Void = {}
 
+    /// Whether an account is still needed. False on a build with no API, where
+    /// nothing is ever gated and the app is the local tracker it always was.
+    @ObservationIgnored var needsSignIn: () -> Bool = { false }
+
+    /// Raises sign-in and runs the closure afterwards, but only if it succeeded.
+    ///
+    /// Supplied by the app, which owns the windows: signing in replaces whatever
+    /// raised it and that window comes back when it is done.
+    @ObservationIgnored var presentSignIn: (@escaping () -> Void) -> Void = { _ in }
+
     init(engine: TimerEngine, repo: Repository, initial: TimerSnapshot) {
         self.engine = engine
         self.repo = repo
@@ -59,7 +69,19 @@ final class AppModel {
         switch snapshot.state {
         case .running: run { try engine.pause() }
         case .paused: run { try engine.resume() }
-        case .idle, .ended: run { try engine.start() }
+        case .idle, .ended:
+            // Starting a day is the moment an account starts to matter, because it
+            // is the first thing worth syncing. Asking here rather than at launch
+            // means somebody can open the app, look at it, and decide — and the
+            // one press they made still does what they pressed it for: sign-in
+            // resolves and the timer starts without a second click.
+            guard needsSignIn() else {
+                run { try engine.start() }
+                return
+            }
+            presentSignIn { [weak self] in
+                self?.run { try self!.engine.start() }
+            }
         }
     }
 

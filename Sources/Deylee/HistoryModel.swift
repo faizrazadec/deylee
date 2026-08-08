@@ -307,7 +307,7 @@ final class HistoryModel {
             guard response == .OK, let url = panel.url else { return }
             do {
                 try content.write(to: url, atomically: true, encoding: .utf8)
-                self.status = HistoryStatus(tone: .ok, text: "Saved to \(url.path)")
+                self.status = HistoryStatus(tone: .ok, text: "Saved to \(Self.folderName(of: url))")
             } catch {
                 self.status = HistoryStatus(tone: .error, text: self.describe(error))
             }
@@ -318,6 +318,21 @@ final class HistoryModel {
         } else {
             panel.begin { complete($0) }
         }
+    }
+
+    /// The folder a saved file landed in, named the way Finder names it.
+    ///
+    /// The full path was accurate and unreadable — a status line is glanced at, and
+    /// the user chose the location a moment ago, so the folder is the only part that
+    /// tells them anything. `displayName` rather than the path component because the
+    /// folder people see as "Downloads" is "Téléchargements" on a French system, and
+    /// the on-disk name is English on every one of them.
+    private static func folderName(of url: URL) -> String {
+        let folder = url.deletingLastPathComponent()
+        let display = FileManager.default.displayName(atPath: folder.path)
+        // Falls back to the on-disk name if the display name comes back empty, which
+        // beats a status line reading "Saved to".
+        return display.isEmpty ? folder.lastPathComponent : display
     }
 
     /// The reason the error carries, not Cocoa's placeholder for it.

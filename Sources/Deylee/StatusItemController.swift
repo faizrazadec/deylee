@@ -175,4 +175,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func showPanel() {
         panel.show(below: statusItem.button?.window?.frame)
     }
+
+    /// Steps the panel aside without dismissing anything it was asking about.
+    ///
+    /// Used when sign-in has to take its place: the panel is a popover and would
+    /// resign key anyway, but relying on that would mean the panel's return
+    /// depended on a side effect rather than on being told.
+    func hidePanel() {
+        panel.hide()
+    }
 }

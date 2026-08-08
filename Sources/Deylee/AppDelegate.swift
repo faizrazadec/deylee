@@ -109,44 +109,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.preferencesChanged(next, engine: engine) }
         }
 
-        // The gate. Until sign-in resolves there is no status item, no panel and no
-        // timer — the UI spec puts this window "before the tray item appears", and
-        // an account that can be postponed is an account most people never make.
-        //
-        // It resolves in three ways: signed in, closed, or "continue without an
-        // account" when the API is unreachable. All three land here, because a first
-        // run with no signal must not leave somebody holding an app that does
-        // nothing. Whatever is tracked meanwhile is claimed by the first successful
-        // sign-in, so choosing to wait costs no history.
-        // The same window, raised from Settings too — the spec is explicit that
-        // there is no second, smaller form to maintain.
-        coordinator?.presentSignIn = { [weak self] in
-            guard let self, let coordinator = self.syncCoordinator else { return }
-            let window = SignInWindowController(auth: coordinator.auth) {}
-            self.signInWindow = window
-            window.show()
+        // Sign-in is raised by the action that needs it, never at launch. An
+        // account matters the moment somebody starts a day — that is the first
+        // thing worth syncing — and asking before they have decided to use the app
+        // is asking a stranger to commit.
+        model.needsSignIn = { [weak self] in
+            guard let coordinator = self?.syncCoordinator else { return false }
+            return !coordinator.auth.isSignedIn
         }
-
-        if let coordinator, !coordinator.auth.isSignedIn {
-            let gate = SignInWindowController(auth: coordinator.auth) { [weak self] in
-                self?.presentStatusItem(model: model, prefs: prefs, engine: engine, repo: repo)
-            }
-            signInWindow = gate
-            gate.show()
-        } else {
-            presentStatusItem(model: model, prefs: prefs, engine: engine, repo: repo)
+        model.presentSignIn = { [weak self] resume in
+            self?.presentSignIn(then: resume)
         }
+        coordinator?.presentSignIn = { [weak self] in self?.presentSignIn(then: {}) }
 
-        // The monitors start in presentStatusItem, not here. Nothing can be running
-        // before the gate resolves, so watching for idleness or sleep would be
-        // watching for nothing — and starting them in both places would leave two of
-        // each, each closing the same segment.
+        presentStatusItem(model: model, prefs: prefs, engine: engine, repo: repo)
+
+        // The monitors start inside presentStatusItem rather than here, so there is
+        // exactly one of each. Starting them in both places would leave two idle
+        // monitors racing to close the same segment.
     }
 
-    /// Everything that only exists once somebody is through the gate.
+    /// Raise sign-in in place of whatever is currently showing.
     ///
-    /// Reached exactly once, from one of the gate's three outcomes, so the guard is
-    /// belt and braces rather than expected control flow.
+    /// Whichever window asked steps aside for the duration and is put back
+    /// afterwards, so the screen never holds two things competing for the same
+    /// decision. `resume` runs only on success — a cancelled sign-in leaves the
+    /// user exactly where they were rather than performing an action they
+    /// declined to authorise.
+    private func presentSignIn(then resume: @escaping () -> Void) {
+        guard let coordinator = syncCoordinator else { return }
+
+        let settingsWasOpen = settingsWindow?.isVisible ?? false
+        settingsWindow?.close()
+        statusItem?.hidePanel()
+
+        let window = SignInWindowController(auth: coordinator.auth) { [weak self] in
+            guard let self else { return }
+            let signedIn = coordinator.auth.isSignedIn
+            if settingsWasOpen {
+                self.settingsWindow?.show()
+            } else if signedIn {
+                // Back to the panel the press came from, so the timer that is about
+                // to start is visible when it does.
+                self.statusItem?.showPanel()
+            }
+            if signedIn { resume() }
+        }
+        signInWindow = window
+        window.show()
+    }
+
+    /// Raises the status item and everything that hangs off it.
+    ///
+    /// Called once, at launch. The app is whole from the first frame whether or not
+    /// anybody has an account; sign-in is asked for later, by the action that needs
+    /// it.
     private func presentStatusItem(
         model: AppModel, prefs: PreferencesStore, engine: TimerEngine, repo: Repository
     ) {

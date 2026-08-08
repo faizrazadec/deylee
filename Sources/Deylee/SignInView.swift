@@ -1,20 +1,25 @@
 import DeyleeKit
 import SwiftUI
 
-/// The window that stands between a fresh install and the app.
+/// The sign-in window.
 ///
-/// From the UI spec, section 11: 380 wide, native title bar, shown once, before
-/// the tray item appears. Taller than the spec's 420 because that layout assumed a
-/// sign-in link and no password field; everything else — copy, rhythm, the amber
-/// error line, the disabled primary — follows it.
+/// From the UI spec, section 11: 380 wide, native title bar. Taller than the spec's
+/// 420 because that layout assumed a sign-in link and no password field; everything
+/// else — copy, rhythm, the amber error line, the disabled primary — follows it.
 ///
-/// Sign-in is a gate, not a preference. Deylee is a synced product now, and an
-/// account that is optional is an account most people never make, which leaves
-/// them with a local tracker and no history when they change machines.
+/// Raised by the action that needs an account rather than at launch: pressing
+/// Start, or asking to sign in from Settings. That timing is the point. An account
+/// matters the moment there is something worth syncing, and demanding one from
+/// somebody who has not yet decided to use the app is asking a stranger to commit.
 ///
-/// The one exception is a first run with no network, which would otherwise be an
-/// app that does nothing at all. That offers to track now and claim the history on
-/// the first successful sign-in — nothing is lost, and the app is never a brick.
+/// Whichever window asked steps aside while this is up and returns afterwards, so
+/// the screen never holds two things competing for the same decision. On success
+/// the action that raised it completes on its own — the press the user already made
+/// is not thrown away and asked for again.
+///
+/// Dismissing it is always allowed. The app keeps tracking locally, and the first
+/// successful sign-in claims that history, because everything local is already
+/// dirty.
 struct SignInView: View {
     @ObservedObject var auth: AuthService
     /// Called once there is a session, so the app can put its tray item up.
