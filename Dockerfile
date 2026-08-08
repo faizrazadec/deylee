@@ -1,4 +1,5 @@
-# The sync API, for any container host — Railway, Cloud Run, Fly, a plain VM.
+# The sync API, for any container host — Cloud Run, Fly, a plain VM, or Docker on
+# the machine in front of you.
 #
 # Build from the REPOSITORY ROOT, not from server/:
 #
@@ -62,7 +63,8 @@ ENV DEYLEE_DB_CA_CERT=/app/certs/supabase-prod-ca-2021.crt
 # Without this the process listens on loopback only, and nothing outside the
 # container — including the platform's health check — can reach it.
 ENV HOST=0.0.0.0
-# Overridden by the platform. Railway and Cloud Run both inject PORT.
+# A default, not a decision. Most managed hosts inject PORT and expect the process
+# to honour it; `docker run -e PORT=…` does the same locally.
 ENV PORT=8080
 EXPOSE 8080
 
