@@ -2,12 +2,18 @@ import AppKit
 import DeyleeKit
 import SwiftUI
 
-/// Hosts the sign-in window, and owns the decision to show it at all.
+/// Hosts the sign-in window.
 ///
-/// The spec calls for a native title bar and a window "shown once, before the tray
-/// item appears". That ordering is the point: until this closes, Deylee has no
-/// status item, no panel and no timer. An account that can be postponed is an
-/// account most people never make.
+/// The spec's section 11 calls for a native title bar and a window "shown once,
+/// before the tray item appears". The title bar carries over; the ordering does not.
+/// The window is raised by the action that wants an account — pressing Start, or
+/// asking from Settings — because the app is whole from the first frame and gating
+/// launch demanded a commitment from somebody who had not yet seen what they were
+/// committing to.
+///
+/// Every way out of this window resolves it, and the caller's action then runs
+/// regardless: an account is what makes hours follow you between machines, never
+/// what permits you to record them.
 @MainActor
 final class SignInWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?

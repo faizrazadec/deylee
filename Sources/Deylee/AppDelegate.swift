@@ -133,27 +133,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// Whichever window asked steps aside for the duration and is put back
     /// afterwards, so the screen never holds two things competing for the same
-    /// decision. `resume` runs only on success — a cancelled sign-in leaves the
-    /// user exactly where they were rather than performing an action they
-    /// declined to authorise.
+    /// decision.
+    ///
+    /// `resume` runs however the window was resolved — signed in, dismissed, or
+    /// continued without an account. It used to run only on success, which meant
+    /// both the close button and the button captioned "Continue without an account"
+    /// silently dropped the press that raised the window: an account became a
+    /// precondition for starting a day, which §1 of the spec forbids in as many
+    /// words. The action being resumed is a local one — opening a day writes a row
+    /// to SQLite on this machine — and a local write needs no session to authorise
+    /// it. Sync picks the day up later, because everything written locally is
+    /// already dirty.
     private func presentSignIn(then resume: @escaping () -> Void) {
         guard let coordinator = syncCoordinator else { return }
 
         let settingsWasOpen = settingsWindow?.isVisible ?? false
+        let panelWasOpen = statusItem?.isPanelVisible ?? false
         settingsWindow?.close()
         statusItem?.hidePanel()
 
         let window = SignInWindowController(auth: coordinator.auth) { [weak self] in
             guard let self else { return }
-            let signedIn = coordinator.auth.isSignedIn
             if settingsWasOpen {
                 self.settingsWindow?.show()
-            } else if signedIn {
+            } else if panelWasOpen {
                 // Back to the panel the press came from, so the timer that is about
-                // to start is visible when it does.
+                // to start is visible when it does. Restored on every outcome now,
+                // since the timer starts on every outcome.
                 self.statusItem?.showPanel()
             }
-            if signedIn { resume() }
+            resume()
         }
         signInWindow = window
         window.show()

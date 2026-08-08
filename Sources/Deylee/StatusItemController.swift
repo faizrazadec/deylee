@@ -172,6 +172,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func openSettings() { model.openSettings() }
     @objc private func quit() { NSApp.terminate(nil) }
 
+    /// Whether the panel is on screen, so a caller that steps it aside can put back
+    /// what was actually there rather than opening it on somebody who never had it up.
+    var isPanelVisible: Bool { panel.isVisible }
+
     func showPanel() {
         panel.show(below: statusItem.button?.window?.frame)
     }
