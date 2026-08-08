@@ -28,6 +28,11 @@ struct Mailer: Sendable {
     enum MailError: Error, CustomStringConvertible {
         case rejected(status: Int, detail: String)
         case unreachable(String)
+        /// A code that will not survive the trip through the template's numeric
+        /// `otp`. Unreachable while `SignupCode` is the only thing making codes,
+        /// and an error rather than a force-unwrap because the alternative is this
+        /// type trusting a promise made in another one.
+        case malformedCode(String)
 
         var description: String {
             switch self {
@@ -35,6 +40,8 @@ struct Mailer: Sendable {
                 "Resend refused the message (\(status)): \(detail)"
             case .unreachable(let reason):
                 "Could not reach Resend: \(reason)"
+            case .malformedCode(let code):
+                "Code \(code) is not a whole number and cannot be templated"
             }
         }
     }
@@ -45,6 +52,14 @@ struct Mailer: Sendable {
     /// request rather than swallowing it: a person staring at a code entry screen
     /// with no mail coming is worse than being told the send failed.
     func sendSignupCode(_ code: String, to recipient: String) async throws {
+        // The template declares `otp` as a number and refuses a string outright, so
+        // the code goes over the wire as an integer. That is lossless only because
+        // `SignupCode` never draws a leading zero — this line is why that rule
+        // exists, and changing either one without the other mails the wrong digits.
+        guard let otp = Int(code), String(otp) == code else {
+            throw MailError.malformedCode(code)
+        }
+
         // `subject` is required even when a template supplies the body, and
         // html/text/react may not be combined with a template — Resend rejects that
         // pairing outright.
@@ -54,7 +69,7 @@ struct Mailer: Sendable {
             "subject": "Your Deylee code",
             "template": [
                 "id": templateID,
-                "variables": ["otp": code],
+                "variables": ["otp": otp],
             ],
         ]
 
@@ -83,15 +98,23 @@ struct Mailer: Sendable {
     }
 }
 
-/// A six-digit code, uniformly distributed.
+/// A six-digit code, uniformly distributed, never starting with a zero.
 ///
 /// `SystemRandomNumberGenerator` is seeded by the OS CSPRNG, so this is not the
 /// `arc4random_uniform`-modulo-bias trap: `random(in:)` rejects and redraws rather
-/// than folding the range. Leading zeros are kept — the code is text, never a
-/// number, and "042931" must not become "42931" anywhere between here and the
-/// person typing it back.
+/// than folding the range.
+///
+/// The range starts at 100000 because the Resend template types `otp` as a number,
+/// and a number cannot carry a leading zero: "042931" would arrive as "42931" and be
+/// rejected by the server that made it, for one code in ten. Excluding those codes
+/// outright is the honest fix — padding a number back to six digits in the template
+/// would put the invariant somewhere this repository cannot test.
+///
+/// The cost is 900,000 codes rather than 1,000,000. Against a ten-minute expiry and a
+/// capped attempt count that is not a meaningful difference; a guesser is stopped by
+/// the cap long before the size of the space matters.
 enum SignupCode {
     static func generate() -> String {
-        String(format: "%06d", Int.random(in: 0...999_999))
+        String(Int.random(in: 100_000...999_999))
     }
 }
