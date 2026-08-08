@@ -13,8 +13,12 @@
 	</dict>
 	<key>DeyleeGoogleClientID</key>
 	<string>67518619707-lvkjelp7t5mhvci33ki588679rcios86.apps.googleusercontent.com</string>
+	<!-- Production. A build for anyone else's machine must carry this value —
+	     a loopback address here means every installer gets a dead sign-in.
+	     Point it at http://127.0.0.1:8081 only for local development, and
+	     change it back before assembling anything that leaves this machine. -->
 	<key>DeyleeAPIBaseURL</key>
-	<string>http://127.0.0.1:8080</string>
+	<string>https://api.faizraza.me</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
