@@ -11,11 +11,10 @@
 # runs, not a port of it that drifts.
 
 FROM swift:6.0-noble AS build
-# DeyleeKit wraps SQLite's C API, which Linux provides as a library rather than as a
-# Swift module. Without the headers the shared time and overlap rules cannot compile
-# here at all.
-RUN apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev \
-    && rm -rf /var/lib/apt/lists/*
+# No SQLite package is needed any more. DeyleeKit used to link the system libsqlite3;
+# it now compiles its own SQLite from the vendored amalgamation (CSQLCipher), as plain
+# SQLite on Linux — the codec is Apple-only, because the server never opens a store.
+# One fewer build and runtime dependency as a result.
 WORKDIR /src
 
 # Manifests first, so a change to source alone reuses the resolved-dependency layer.
@@ -49,11 +48,10 @@ WORKDIR /app
 # Certificates for two different jobs: the system store to verify Google's JWKS
 # endpoint over HTTPS, and Supabase's own CA below to verify the database.
 #
-# libsqlite3-0 is the runtime half of what the build stage needed headers for. The
-# slim image does not carry it, and without it the binary links but will not start:
-# "error while loading shared libraries: libsqlite3.so.0".
+# Only certificates now. SQLite is compiled into the binary from the vendored
+# amalgamation, so there is no libsqlite3 shared library to carry at runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates libsqlite3-0 \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /out/DeyleeAPI /app/DeyleeAPI
