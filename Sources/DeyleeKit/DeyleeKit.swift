@@ -4,7 +4,7 @@ import Foundation
 /// timer engine live in this module. It must stay free of AppKit/SwiftUI so an iOS
 /// target can sit on top of it later.
 public enum DeyleeKit {
-    public static let version = "0.1.0"
+    public static let version = "0.2.0"
 }
 
 /// An error that carries a reason worth showing someone.
