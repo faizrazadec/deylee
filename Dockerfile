@@ -73,4 +73,13 @@ EXPOSE 8080
 RUN useradd --create-home --shell /usr/sbin/nologin deylee && chown -R deylee /app
 USER deylee
 
+# Asks /health over bash's own TCP redirection rather than curl. The slim image
+# carries neither curl nor wget, and installing one to answer a health check would
+# add runtime attack surface to fix a reporting gap. Reads PORT so the check follows
+# the port the process was actually told to listen on.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/${PORT:-8080} \
+        && printf "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 \
+        && head -1 <&3 | grep -q " 200 "'
+
 CMD ["/app/DeyleeAPI"]
