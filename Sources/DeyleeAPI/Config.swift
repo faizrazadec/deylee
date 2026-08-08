@@ -46,6 +46,25 @@ struct Config: Sendable {
     /// Downloadable from Settings -> Database in the dashboard.
     let databaseCACertificatePath: String?
 
+    /// Resend, which carries the sign-up code.
+    ///
+    /// Required rather than optional, deliberately. Sign-up cannot complete without
+    /// mail, so a deployment missing these is broken — and it is far better to learn
+    /// that on the first line of `main` than from the first person who tries to make
+    /// an account and never receives anything.
+    let resendAPIKey: String
+    /// The `From` header, e.g. `Deylee <no-reply@deylee.app>`. The domain has to be
+    /// verified in Resend or every send is refused.
+    let resendFrom: String
+    /// Id or alias of the published template. It takes one variable, `otp`.
+    let resendOTPTemplateID: String
+
+    /// How long a sign-up code stays good.
+    let signupCodeTTL: Int
+    /// How long before another code may be sent to the same address. Without it the
+    /// endpoint is a free way to post mail to a stranger's inbox.
+    let signupCodeResendCooldown: Int
+
     let port: Int
 
     /// The address to bind.
@@ -132,6 +151,14 @@ extension Config {
             databaseURL: try required("DEYLEE_DB_URL"),
             databaseTLS: (optional("DEYLEE_DB_TLS") ?? "require").lowercased() != "disable",
             databaseCACertificatePath: optional("DEYLEE_DB_CA_CERT"),
+            resendAPIKey: try required("RESEND_API_KEY"),
+            resendFrom: try required("RESEND_FROM"),
+            resendOTPTemplateID: try required("RESEND_OTP_TEMPLATE_ID"),
+            // Ten minutes is long enough to find the mail in a spam folder and short
+            // enough that a code left on a screen is not a standing key.
+            signupCodeTTL: optional("SIGNUP_CODE_TTL_SECONDS").flatMap(Int.init) ?? 600,
+            signupCodeResendCooldown:
+                optional("SIGNUP_CODE_RESEND_SECONDS").flatMap(Int.init) ?? 60,
             port: optional("PORT").flatMap(Int.init) ?? 8080,
             host: optional("HOST") ?? "127.0.0.1"
         )

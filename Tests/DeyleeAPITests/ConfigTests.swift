@@ -13,6 +13,10 @@ private func validEnv(_ overrides: [String: String] = [:]) -> [String: String] {
         "GOOGLE_CLIENT_ID_IOS": "111-ios.apps.googleusercontent.com",
         "SESSION_JWT_PRIVATE_KEY_B64": Data(testPrivateKeyPEM.utf8).base64EncodedString(),
         "DEYLEE_DB_URL": "postgresql://user:pw@localhost:5432/postgres",
+        // Sign-up cannot complete without mail, so these are required too.
+        "RESEND_API_KEY": "re_test_key",
+        "RESEND_FROM": "Deylee <no-reply@example.test>",
+        "RESEND_OTP_TEMPLATE_ID": "tmpl_test",
     ]
     for (k, v) in overrides { env[k] = v }
     return env
@@ -74,6 +78,34 @@ let testPrivateKeyPEM = """
         var env = validEnv()
         env.removeValue(forKey: "DEYLEE_DB_URL")
         #expect(throws: ConfigError.self) { try load(env) }
+    }
+
+    /// Sign-up mails a code before it creates anything, so a deployment that cannot
+    /// send is one where nobody can make an account. Better to refuse at boot than to
+    /// discover it from the first person who tries.
+    @Test func refusesToStartWithoutMailCredentials() {
+        for key in ["RESEND_API_KEY", "RESEND_FROM", "RESEND_OTP_TEMPLATE_ID"] {
+            var env = validEnv()
+            env.removeValue(forKey: key)
+            #expect(throws: ConfigError.self, "missing \(key) should refuse to start") {
+                try load(env)
+            }
+        }
+    }
+
+    /// The code lifetime and the resend cooldown have working defaults, so only the
+    /// three credentials are mandatory.
+    @Test func codeTimingsDefaultWithoutBeingSet() throws {
+        let config = try load(validEnv())
+        #expect(config.signupCodeTTL == 600)
+        #expect(config.signupCodeResendCooldown == 60)
+
+        let tuned = try load(validEnv([
+            "SIGNUP_CODE_TTL_SECONDS": "300",
+            "SIGNUP_CODE_RESEND_SECONDS": "90",
+        ]))
+        #expect(tuned.signupCodeTTL == 300)
+        #expect(tuned.signupCodeResendCooldown == 90)
     }
 
     /// Pasting the PEM in directly rather than base64-encoding it is the obvious

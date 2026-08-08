@@ -28,6 +28,31 @@ struct SetPasswordRequest: Decodable {
     let password: String
 }
 
+/// Ask for a sign-up code. Carries the password, because the account is built from
+/// this request once the code comes back — there is no second chance to collect it.
+struct SignupCodeRequest: Decodable {
+    let email: String
+    let password: String
+    let displayName: String?
+    let timezone: String?
+}
+
+struct VerifyCodeRequest: Decodable {
+    let email: String
+    let code: String
+    let deviceId: UUID?
+    let timezone: String?
+}
+
+/// What the client needs to draw the code screen without inventing its own copy of
+/// the server's constants.
+struct CodeSentResponse: Codable, ResponseEncodable {
+    /// Seconds until the code stops working.
+    let expiresIn: Int
+    /// Seconds before another code may be requested.
+    let resendIn: Int
+}
+
 struct RefreshRequest: Decodable {
     let refreshToken: String
 }
@@ -65,11 +90,13 @@ struct AuthController: Sendable {
     let store: Store
     let tokens: TokenService
     let config: Config
+    let mailer: Mailer
     let logger: Logger
 
     func addRoutes(to router: Router<BasicRequestContext>) {
         router.post("/v1/auth/google", use: signInWithGoogle)
-        router.post("/v1/auth/signup", use: signUpWithPassword)
+        router.post("/v1/auth/signup", use: requestSignupCode)
+        router.post("/v1/auth/signup/verify", use: verifySignupCode)
         router.post("/v1/auth/password", use: signInWithPassword)
         router.post("/v1/auth/refresh", use: refresh)
         router.post("/v1/auth/set-password", use: setPassword)
@@ -109,19 +136,114 @@ struct AuthController: Sendable {
 
     // MARK: Password
 
+    /// Step one of sign-up: park the request and mail a code.
+    ///
+    /// No account exists when this returns. That is the point — an account nobody has
+    /// verified is exactly what let somebody register a stranger's address and keep a
+    /// password on the account the real owner was later handed by Google.
+    ///
+    /// The code is generated here and never stored in the clear. The database keeps
+    /// only a bcrypt digest of it, so this process is the last place the digits exist
+    /// outside the mail itself.
     @Sendable
-    func signUpWithPassword(
+    func requestSignupCode(
+        _ request: Request, context: BasicRequestContext
+    ) async throws -> CodeSentResponse {
+        let body = try await request.decode(as: SignupCodeRequest.self, context: context)
+        let code = SignupCode.generate()
+
+        // The row is written first. Sending mail for a request the database refused —
+        // a taken address, a password too short, a resend inside the cooldown — would
+        // hand an attacker a way to post mail to any inbox they can name.
+        do {
+            try await store.withoutTenant { connection in
+                _ = try await connection.query(
+                    """
+                    SELECT public.auth_request_signup_code(
+                        \(body.email), \(body.password), \(body.displayName), \(body.timezone),
+                        \(code), \(config.signupCodeTTL), \(config.signupCodeResendCooldown))
+                    """,
+                    logger: logger
+                ).collect()
+            }
+        } catch {
+            throw Self.mapped(error)
+        }
+
+        do {
+            try await mailer.sendSignupCode(code, to: body.email)
+        } catch {
+            // The row survives a failed send, holding its cooldown. Saying so plainly
+            // beats a code screen waiting on mail that was never accepted.
+            logger.error("signup code send failed", metadata: ["error": .string("\(error)")])
+            throw HTTPError(
+                .badGateway,
+                message: "Could not send the code. Try again in a moment."
+            )
+        }
+
+        logger.info("signup code sent")
+        return CodeSentResponse(
+            expiresIn: config.signupCodeTTL,
+            resendIn: config.signupCodeResendCooldown
+        )
+    }
+
+    /// Step two: check the code, and only now create the account.
+    ///
+    /// The function answers with an outcome rather than raising, because a raise
+    /// would roll back the attempt counter it had just incremented — the cap would
+    /// read as enforced while a script guessed six digits at its leisure. Every
+    /// failure answers with the same words, so the response cannot be used to learn
+    /// whether an address has a sign-up in flight.
+    @Sendable
+    func verifySignupCode(
         _ request: Request, context: BasicRequestContext
     ) async throws -> SessionResponse {
-        let body = try await request.decode(as: PasswordRequest.self, context: context)
-        let user = try await callReturningUser(
-            """
-            SELECT id, email, display_name, timezone
-            FROM public.auth_sign_up_with_password(
-                \(body.email), \(body.password), \(body.displayName), \(body.timezone))
-            """
-        )
+        let body = try await request.decode(as: VerifyCodeRequest.self, context: context)
+
+        let (outcome, user) = try await store.withoutTenant {
+            connection -> (String, UserDTO?) in
+            let rows = try await connection.query(
+                """
+                SELECT outcome, user_id, email, display_name, timezone
+                FROM public.auth_verify_signup_code(\(body.email), \(body.code))
+                """,
+                logger: logger
+            )
+            for try await (outcome, id, email, name, zone) in rows.decode(
+                (String, UUID?, String?, String?, String?).self
+            ) {
+                guard let id, let email, let zone else { return (outcome, nil) }
+                return (outcome, UserDTO(id: id.uuidString.lowercased(), email: email,
+                                         displayName: name, timezone: zone))
+            }
+            return ("unknown", nil)
+        }
+
+        guard outcome == "created", let user else {
+            throw HTTPError(.unauthorized, message: Self.codeFailure(outcome))
+        }
         return try await issueSession(for: user, deviceID: body.deviceId)
+    }
+
+    /// A sentence for each way a code can fail.
+    ///
+    /// Expiry and a spent attempt budget are told apart from a wrong code on purpose:
+    /// all three end the attempt, but only one is worth retyping, and a person who
+    /// cannot tell them apart retypes the same dead code until they give up. None of
+    /// them reveals whether the address had a request in flight.
+    private static func codeFailure(_ outcome: String) -> String {
+        switch outcome {
+        case "code-expired":
+            "That code has expired. Ask for a new one."
+        case "too-many-attempts":
+            "Too many wrong codes. Ask for a new one."
+        case "email-taken":
+            "That address already has an account. Sign in instead."
+        default:
+            "That code is not right."
+        }
     }
 
     @Sendable

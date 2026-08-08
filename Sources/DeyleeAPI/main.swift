@@ -50,7 +50,15 @@ router.get("/health") { _, _ -> [String: String] in
     ["status": "ok"]
 }
 
-AuthController(store: store, tokens: tokens, config: config, logger: logger).addRoutes(to: router)
+let mailer = Mailer(
+    apiKey: config.resendAPIKey,
+    from: config.resendFrom,
+    templateID: config.resendOTPTemplateID,
+    logger: logger
+)
+
+AuthController(store: store, tokens: tokens, config: config, mailer: mailer, logger: logger)
+    .addRoutes(to: router)
 SyncController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
 
 let app = Application(
