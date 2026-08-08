@@ -255,7 +255,10 @@ final class SettingsModel {
         Task { [weak self] in
             let result: SettingsBackupState = await Task.detached {
                 do {
-                    try DataStore.backup(to: destination)
+                    // The store is encrypted, so the key is needed to read it; the
+                    // backup itself is plaintext, an export the owner can open
+                    // anywhere.
+                    try DataStore.backup(to: destination, key: StoreKey.loadOrCreate())
                     return .done(path: destination.path(percentEncoded: false))
                 } catch {
                     let message = error.localizedDescription

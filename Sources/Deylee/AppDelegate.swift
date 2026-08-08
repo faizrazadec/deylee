@@ -58,7 +58,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func boot() throws {
-        let db = try DataStore.open()
+        // The store is encrypted at rest with a key the Keychain holds. On the very
+        // first launch after updating, this migrates the existing plaintext file in
+        // place; from then on it simply opens it. The key never appears in the build
+        // or on disk in the clear — see StoreKey.
+        let db = try DataStore.open(key: StoreKey.loadOrCreate())
         let repo = Repository(db: db)
         let prefs = DefaultPreferencesStore(
             backend: UserDefaultsPreferencesBackend(),

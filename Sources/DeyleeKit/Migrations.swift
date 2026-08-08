@@ -219,10 +219,12 @@ func readSchemaVersion(_ db: Database) throws -> Int {
 ///  - `foreign_keys` is off by default in SQLite, so `ON DELETE CASCADE` from
 ///    `segments` to `days` only works if it is turned on for every connection.
 ///  - `busy_timeout` covers the short lock a backup or WAL checkpoint takes.
-public func openDatabase(at path: String) throws -> Database {
-    let db = try Database(path: path)
+public func openDatabase(at path: String, key: [UInt8]? = nil) throws -> Database {
+    let db = try Database(path: path, key: key)
     // journal_mode is a property of the file itself, so it is applied first — before
     // anything has a chance to open a transaction in the old rollback journal mode.
+    // With a key it is set after the key, which the Database initialiser has already
+    // applied; SQLCipher needs the key before any statement, including this one.
     try db.execute("PRAGMA journal_mode = WAL")
     try db.execute("PRAGMA foreign_keys = ON")
     try db.execute("PRAGMA busy_timeout = 5000")

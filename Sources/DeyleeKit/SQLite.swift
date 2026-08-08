@@ -1,13 +1,10 @@
 import Foundation
 
-// Apple's SDKs ship SQLite as a Swift module; Linux ships only the C library, which
-// `CSQLite` wraps. The names below are identical either way, so nothing after this
-// line has to know which platform it is on.
-#if canImport(SQLite3)
-    import SQLite3
-#else
-    import CSQLite
-#endif
+// SQLCipher, vendored and compiled as `CSQLCipher`, on every platform. Apple's own
+// `SQLite3` module is deliberately not imported: it is the same C API but cannot
+// open an encrypted file, so a build that reached for it would compile and then
+// fail to read the store the moment a key was set.
+import CSQLCipher
 
 /// Thin wrapper over the system SQLite3 C API. Deylee's schema is small and its SQL
 /// is written by hand — same stance as better-sqlite3 in the Electron app — so a
@@ -31,7 +28,7 @@ public final class Database {
     fileprivate var handle: OpaquePointer?
     private var savepointDepth = 0
 
-    public init(path: String) throws {
+    public init(path: String, key: [UInt8]? = nil) throws {
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
         let code = sqlite3_open_v2(path, &handle, flags, nil)
         guard code == SQLITE_OK else {
@@ -39,6 +36,76 @@ public final class Database {
             sqlite3_close_v2(handle)
             throw Failure(code: code, message: message)
         }
+        if let key {
+            do {
+                try applyKey(key)
+            } catch {
+                sqlite3_close_v2(handle)
+                handle = nil
+                throw error
+            }
+        }
+    }
+
+    /// Attach the encryption key, then force a read so a wrong key fails here rather
+    /// than on the first query.
+    ///
+    /// The key goes in as a raw hex literal (`x'…'`), which tells SQLCipher to use
+    /// the 32 bytes directly and skip the passphrase key-derivation — right for a
+    /// key that is already random rather than a human's word. A file that will not
+    /// open with the key reads as `SQLITE_NOTADB`, the same "file is not a database"
+    /// a plaintext reader gets from an encrypted file; surfaced as a distinct
+    /// failure so a caller can tell "wrong key" from "corrupt".
+    private func applyKey(_ key: [UInt8]) throws {
+        let hex = key.map { String(format: "%02x", $0) }.joined()
+        try execute("PRAGMA key = \"x'\(hex)'\";")
+        do {
+            try execute("SELECT count(*) FROM sqlite_master;")
+        } catch {
+            throw Failure(
+                code: SQLITE_NOTADB,
+                message: "the store key does not open this file"
+            )
+        }
+    }
+
+    /// Whether an on-disk file is unencrypted. A plaintext SQLite database begins
+    /// with the ASCII header "SQLite format 3\0"; an encrypted SQLCipher file begins
+    /// with random salt. A file that does not exist, or is too short to tell, is not
+    /// plaintext for this purpose — there is nothing to migrate.
+    public static func isPlaintext(atPath path: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() }
+        let header = try? handle.read(upToCount: 16)
+        return header == Data("SQLite format 3\0".utf8)
+    }
+
+    /// Copy this (plaintext) database into a new encrypted file at `path`.
+    ///
+    /// Uses `sqlcipher_export`, which reads through this live connection — so commits
+    /// still sitting in the WAL sidecar are included, where a plain file copy would
+    /// drop them — and writes a single, complete encrypted file. The caller swaps it
+    /// into place; this only produces it.
+    public func exportEncrypted(toPath path: String, key: [UInt8]) throws {
+        let hex = key.map { String(format: "%02x", $0) }.joined()
+        let escaped = path.replacingOccurrences(of: "'", with: "''")
+        try execute("ATTACH DATABASE '\(escaped)' AS encrypted KEY \"x'\(hex)'\";")
+        try execute("SELECT sqlcipher_export('encrypted');")
+        try execute("DETACH DATABASE encrypted;")
+    }
+
+    /// Copy this database into a new plaintext file at `path`, whatever this
+    /// connection's own encryption. Attaching with an empty key means the
+    /// destination has no codec, and `sqlcipher_export` decrypts on the way out.
+    ///
+    /// This is for a backup the owner asked for and must be able to open elsewhere —
+    /// an encrypted copy only this Mac's Keychain could read would be no backup at
+    /// all. It is the owner exporting their own hours, which they are entitled to do.
+    public func exportPlaintext(toPath path: String) throws {
+        let escaped = path.replacingOccurrences(of: "'", with: "''")
+        try execute("ATTACH DATABASE '\(escaped)' AS plaintext KEY '';")
+        try execute("SELECT sqlcipher_export('plaintext');")
+        try execute("DETACH DATABASE plaintext;")
     }
 
     deinit {

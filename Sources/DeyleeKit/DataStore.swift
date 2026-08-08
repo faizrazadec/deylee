@@ -44,26 +44,84 @@ public enum DataStore {
 
     /// Opens the store, creating the folder and running migrations.
     ///
+    /// A `key` encrypts the store at rest. Pass it and an existing plaintext file is
+    /// migrated to encrypted in place on first open; pass it and there is no file and
+    /// the store is created encrypted from the start; pass `nil` and the store stays
+    /// plaintext exactly as before. The key lives in the app's Keychain and never in
+    /// this platform-free module — which is why it arrives as bytes.
+    ///
     /// Throws `SchemaTooNewError` when the file was written by a newer build — the
     /// caller must refuse to start rather than write rows shaped for an older schema
-    /// into it.
-    public static func open() throws -> Database {
+    /// into it. Throws a `SQLITE_NOTADB` failure when a key is given that does not
+    /// open an already-encrypted file.
+    public static func open(key: [UInt8]? = nil) throws -> Database {
         try FileManager.default.createDirectory(
             at: folderURL, withIntermediateDirectories: true
         )
-        let db = try openDatabase(at: databaseURL.path)
+        if let key { try encryptInPlaceIfNeeded(key: key) }
+        let db = try openDatabase(at: databaseURL.path, key: key)
         try runMigrations(db)
         return db
     }
 
-    /// Copies the live database to `destination` using SQLite's online backup API.
+    /// One-way migration of an existing plaintext store to encrypted.
     ///
-    /// A plain file copy would be wrong: in WAL mode the most recent commits live in
-    /// the `-wal` sidecar, so copying only the `.sqlite` file can silently lose them.
-    /// The backup API reads through a second connection and produces a single
-    /// consistent file even while the timer is still writing.
-    public static func backup(to destination: URL) throws {
-        let source = try Database(path: databaseURL.path)
-        try source.backup(to: destination.path)
+    /// Does nothing when there is no file (a fresh store is created encrypted
+    /// directly) or when the file is already encrypted (the header is not the
+    /// plaintext magic). Otherwise it exports the plaintext database into a new
+    /// encrypted file beside it, then swaps it in and removes the WAL sidecars,
+    /// which belong to the plaintext file and mean nothing to the encrypted one.
+    ///
+    /// The swap is the risky moment, so it is ordered to survive a crash: the
+    /// encrypted copy is built and closed first, and only then is the original
+    /// replaced. A crash before the replace leaves the untouched plaintext store and
+    /// a stray temp file; a crash after leaves the finished encrypted store. There is
+    /// no window where a half-written file is the store of record.
+    static func encryptInPlaceIfNeeded(key: [UInt8]) throws {
+        guard databaseExists else { return }
+        guard Database.isPlaintext(atPath: databaseURL.path) else { return }
+
+        let temporaryURL = folderURL.appending(
+            path: "deylee.encrypting.sqlite", directoryHint: .notDirectory
+        )
+        try? FileManager.default.removeItem(at: temporaryURL)
+
+        // A scope, so the plaintext connection is closed before the file is replaced.
+        do {
+            let plaintext = try Database(path: databaseURL.path)
+            try plaintext.exportEncrypted(toPath: temporaryURL.path, key: key)
+        }
+
+        // Prove the encrypted copy opens with the key before trusting it with the
+        // only copy of the history.
+        do {
+            _ = try Database(path: temporaryURL.path, key: key)
+        }
+
+        let fileManager = FileManager.default
+        try fileManager.removeItem(at: databaseURL)
+        for sidecar in ["-wal", "-shm"] {
+            let url = URL(fileURLWithPath: databaseURL.path + sidecar)
+            try? fileManager.removeItem(at: url)
+        }
+        try fileManager.moveItem(at: temporaryURL, to: databaseURL)
+    }
+
+    /// Copies the live database to `destination` as a portable, plaintext file.
+    ///
+    /// A `key` is required when the store is encrypted, to read it; the copy itself
+    /// is always plaintext, because a backup the owner cannot open on another machine
+    /// is not a backup. Reading through a live connection also means commits still in
+    /// the `-wal` sidecar are included, where copying only the `.sqlite` file would
+    /// silently drop them.
+    public static func backup(to destination: URL, key: [UInt8]? = nil) throws {
+        let source = try Database(path: databaseURL.path, key: key)
+        if key != nil {
+            try source.exportPlaintext(toPath: destination.path)
+        } else {
+            // No key: the store is already plaintext, so the online backup API is
+            // the faithful copy — page for page, WAL included.
+            try source.backup(to: destination.path)
+        }
     }
 }
