@@ -60,6 +60,7 @@ let mailer = Mailer(
 AuthController(store: store, tokens: tokens, config: config, mailer: mailer, logger: logger)
     .addRoutes(to: router)
 SyncController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
+WitnessController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
 
 let app = Application(
     router: router,
