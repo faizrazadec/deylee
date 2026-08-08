@@ -220,21 +220,28 @@ struct SignInView: View {
     /// they sit where the link's absence left a gap.
     private func codeEntry(for email: String) -> some View {
         VStack(alignment: .center, spacing: Space.x3l) {
-            VStack(spacing: Space.l) {
+            VStack(spacing: Space.m) {
                 CheckMark()
-                VStack(spacing: Space.xs) {
+                VStack(spacing: Space.s) {
                     Text("Check your email")
                         .font(Type.controlLarge.weight(.medium))
                         .foregroundStyle(Palette.fg)
                     // The address is repeated back because a typo in it is the
                     // likeliest reason no mail arrives, and it is the one mistake the
-                    // person can see from here.
-                    Text("We sent a code to \(email). It expires in 10 minutes.")
-                        .font(Type.small)
+                    // person can see from here — so it is the one part of the sentence
+                    // lifted out of the muted grey, as the design has it.
+                    Text("We sent a code to ")
                         .foregroundStyle(Palette.fgMuted)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+                        + Text(email).foregroundStyle(Palette.fg)
+                        + Text(". It expires in \(expiryPhrase).")
+                        .foregroundStyle(Palette.fgMuted)
                 }
+                .font(Type.small)
+                .multilineTextAlignment(.center)
+                // The design holds this sentence to a narrow column rather than the
+                // full panel width, which is what keeps it reading as a caption.
+                .frame(maxWidth: 250)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             VStack(spacing: Space.l) {
@@ -286,28 +293,51 @@ struct SignInView: View {
                 .animation(.easeOut(duration: 0.18), value: canSubmitCode)
             }
 
-            HStack(spacing: Space.l) {
-                Button("Use another email") {
+            // Two quiet pills side by side, as the design draws them. Deliberately not
+            // `.buttonStyle(.link)`: that paints the system's blue, which is not in
+            // the palette and reads as a web link dropped into a native panel.
+            HStack(spacing: Space.m) {
+                Button {
                     code = ""
                     auth.useAnotherEmail()
+                } label: {
+                    Text("Use another email")
+                        .font(Type.small)
+                        .foregroundStyle(Palette.fgMuted)
+                        .padding(.horizontal, Space.xl)
+                        .padding(.vertical, Space.s)
                 }
-                .buttonStyle(.link)
-                .font(Type.small)
+                .buttonStyle(.plain)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
+                        .strokeBorder(Palette.border, lineWidth: 1)
+                )
 
                 if resendSeconds > 0 {
                     // Counts down rather than disabling silently, so the wait reads as
-                    // a rule rather than a broken button.
-                    Text("Resend in 0:\(String(format: "%02d", resendSeconds))")
-                        .font(Type.small)
+                    // a rule rather than a broken button. No border: it is not a
+                    // control yet, and drawing one would invite the click it refuses.
+                    Text(Self.resendLabel(resendSeconds))
+                        .font(Type.small.monospacedDigit())
                         .foregroundStyle(Palette.fgFaint)
-                        .monospacedDigit()
+                        .padding(.horizontal, Space.xl)
+                        .padding(.vertical, Space.s)
                 } else {
-                    Button("Resend") {
+                    Button {
                         code = ""
                         Task { await auth.resendCode() }
+                    } label: {
+                        Text("Resend")
+                            .font(Type.small)
+                            .foregroundStyle(Palette.fgMuted)
+                            .padding(.horizontal, Space.xl)
+                            .padding(.vertical, Space.s)
                     }
-                    .buttonStyle(.link)
-                    .font(Type.small)
+                    .buttonStyle(.plain)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
+                            .strokeBorder(Palette.border, lineWidth: 1)
+                    )
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center)
@@ -320,6 +350,23 @@ struct SignInView: View {
     }
 
     private var canSubmitCode: Bool { code.count == 6 && !isBusy }
+
+    /// "10 minutes", from whatever the server said — never a number written here.
+    ///
+    /// The lifetime is a deployment setting, so the only honest source is the
+    /// response. Falling back to the plain noun rather than a guess: a screen with no
+    /// figure is vague, a screen with the wrong figure is a lie somebody acts on.
+    private var expiryPhrase: String {
+        guard let seconds = auth.codeExpiresIn else { return "a few minutes" }
+        if seconds < 60 { return "\(seconds) seconds" }
+        let minutes = seconds / 60
+        return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+    }
+
+    /// M:SS, so the wait keeps its shape if the cooldown is ever set past a minute.
+    private static func resendLabel(_ seconds: Int) -> String {
+        "Resend in \(seconds / 60):\(String(format: "%02d", seconds % 60))"
+    }
 
     private func submitCode() {
         let entered = code
@@ -510,16 +557,19 @@ private struct Mark: View {
 ///
 /// Drawn rather than an SF Symbol so it matches the design's proportions — a thin
 /// ring with a check inset well inside it, which `checkmark.circle` does not give.
+/// Drawn in `Palette.work`, the running-timer green, because that is the colour the
+/// design gives it. `Palette.accent` is near-white in dark and turns the ring into a
+/// washed-out echo of the header's own mark directly above it.
 private struct CheckMark: View {
     var body: some View {
         ZStack {
-            Circle().strokeBorder(Palette.accent, lineWidth: 1.8)
+            Circle().strokeBorder(Palette.work, lineWidth: 1.8)
             Path { path in
                 path.move(to: CGPoint(x: 0, y: 5))
                 path.addLine(to: CGPoint(x: 4.5, y: 9.5))
                 path.addLine(to: CGPoint(x: 13, y: 0))
             }
-            .stroke(Palette.accent, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+            .stroke(Palette.work, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
             .frame(width: 13, height: 9.5)
         }
         .frame(width: 38, height: 38)

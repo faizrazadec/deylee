@@ -54,6 +54,15 @@ final class AuthService: NSObject, ObservableObject {
     /// what the countdown is drawn from.
     @Published private(set) var resendAvailableAt: Date?
 
+    /// How long the code stays good, in seconds, as the server reported it.
+    ///
+    /// Read from the response rather than written into the screen, because the
+    /// lifetime is `SIGNUP_CODE_TTL_SECONDS` and lives on the server. A copy of that
+    /// number in the client is a second source of truth that drifts the moment the
+    /// deployment is tuned, and the screen would then confidently state the wrong
+    /// thing to somebody watching a code stop working early.
+    @Published private(set) var codeExpiresIn: Int?
+
     private let config: ClientConfig
     private let repo: Repository
     private var session: StoredSession?
@@ -121,12 +130,34 @@ final class AuthService: NSObject, ObservableObject {
     func signUp(email: String, password: String) async {
         state = .signingIn(via: .credentials)
         codeError = nil
-        guard await requestCode(email: email, password: password) else { return }
+
+        let outcome = await requestCode(email: email, password: password)
+        guard outcome != .failed else { return }
+
         // Held for a resend, which has to send the same credentials again. Cleared
         // the moment the code is accepted or the screen is abandoned.
         pendingSignup = (email: email, password: password)
         state = .awaitingCode(email: email)
+
+        // Coming back to a sign-up already in flight — the window was closed, or the
+        // app restarted, and the code screen went with it. The code that was mailed
+        // is still good and verification needs only the address and the digits, so
+        // this lands where that code can be typed rather than on a dead end.
+        if case .alreadySent(let message) = outcome {
+            codeError = message
+            // The cooldown is running and this reply does not carry how much is left.
+            // Assuming it has expired would light a Resend button the server refuses;
+            // the countdown corrects itself the moment a real send answers.
+            if resendAvailableAt == nil || resendAvailableAt! < Date() {
+                resendAvailableAt = Date().addingTimeInterval(Self.assumedResendCooldown)
+            }
+        }
     }
+
+    /// Used only when the server has told us a code is already out but not when the
+    /// next one may be sent. Deliberately generous: a countdown that finishes early
+    /// produces a button that fails, and one that finishes late costs a few seconds.
+    private static let assumedResendCooldown: TimeInterval = 60
 
     /// Step two: hand the code back and take the session it produces.
     func verifyCode(_ code: String) async {
@@ -186,7 +217,16 @@ final class AuthService: NSObject, ObservableObject {
     /// Returns whether a code actually went out, so the caller can decide what the
     /// state becomes — the first send moves to the code screen, a resend is already
     /// there and only restarts the countdown.
-    private func requestCode(email: String, password: String) async -> Bool {
+    /// What asking for a code produced.
+    enum CodeRequest: Equatable {
+        case sent
+        /// One was already sent and the cooldown has not run out. Not a failure: the
+        /// code is sitting in the person's inbox and is still good.
+        case alreadySent(String)
+        case failed
+    }
+
+    private func requestCode(email: String, password: String) async -> CodeRequest {
         struct Body: Encodable {
             let email: String
             let password: String
@@ -206,13 +246,18 @@ final class AuthService: NSObject, ObservableObject {
                 )
             )
             resendAvailableAt = Date().addingTimeInterval(TimeInterval(sent.resendIn))
-            return true
+            codeExpiresIn = sent.expiresIn
+            return .sent
+        } catch let failure as APIClient.HTTPFailure where failure.status == 429 {
+            // The server refused to send a second code so soon. The first one is
+            // still valid, so this ends on the code screen rather than the form.
+            return .alreadySent(failure.message)
         } catch let error as MutationError {
             report(error.message)
-            return false
+            return .failed
         } catch {
             report(Self.readable(error))
-            return false
+            return .failed
         }
     }
 

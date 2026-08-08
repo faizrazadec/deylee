@@ -81,9 +81,13 @@ enum Type {
     static let miniTimer = Font.system(size: 22, weight: .regular).monospacedDigit()
     static let monthTitle = Font.system(size: 17, weight: .medium)
     static let statValue = Font.system(size: 15, weight: .medium).monospacedDigit()
-    /// The six-digit sign-up code. Wide and tabular so the digits sit in fixed
-    /// columns — a code that reflows as it is typed is hard to check against the mail.
-    static let signupCode = Font.system(size: 24, weight: .regular).monospacedDigit()
+    /// The six-digit sign-up code. Monospaced so the digits sit in fixed columns —
+    /// a code that reflows as it is typed is hard to check against the mail.
+    ///
+    /// Only a little larger than `controlLarge`: this sits in a panel whose largest
+    /// text is 15 pt, and a display-sized field turns a caption-scaled screen into
+    /// one dominated by an empty box.
+    static let signupCode = Font.system(size: 17, weight: .medium, design: .monospaced)
     static let body = Font.system(size: 13)
     static let control = Font.system(size: 14)
     static let controlLarge = Font.system(size: 15)
