@@ -61,6 +61,13 @@ struct SignInView: View {
         return false
     }
 
+    /// Only the Google route hands the flow to a browser. Saying so during an email
+    /// sign-up would describe something that is not happening — there is no browser,
+    /// and the wait is one request this app is holding open.
+    private var isWaitingForBrowser: Bool {
+        auth.state == .signingIn(via: .browser)
+    }
+
     /// The account that has just been signed into, while its history question is
     /// unanswered. Nil at every other moment.
     private var confirmingTransferAs: String? {
@@ -166,9 +173,11 @@ struct SignInView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if isBusy {
-                // Replaces the buttons while the browser has the flow, so nothing
-                // looks clickable while it cannot be clicked.
+            if isWaitingForBrowser {
+                // Replaces the buttons only while the browser has the flow, so
+                // nothing looks clickable while it cannot be clicked. The email
+                // route keeps its buttons — it is waiting on one request, and the
+                // primary says so itself.
                 Text("Waiting for your browser…")
                     .font(Type.small)
                     .foregroundStyle(Palette.fgMuted)
@@ -402,19 +411,35 @@ struct SignInView: View {
         }
     }
 
+    /// Lit while it is working as well as while it is pressable. A control that has
+    /// just been pressed and is doing something must not look like one that has been
+    /// switched off — greying it out is how the disabled state reads.
+    private var primaryIsLit: Bool { canSubmit || isBusy }
+
     private var primaryButton: some View {
         Button(action: submit) {
-            Text(mode == .signUp ? "Create account" : "Continue")
-                .font(Type.body.weight(.medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Space.l)
+            ZStack {
+                // The label keeps its place in the layout while hidden, so the
+                // button does not change height under the pointer that pressed it.
+                Text(mode == .signUp ? "Create account" : "Continue")
+                    .opacity(isBusy ? 0 : 1)
+                if isBusy {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                        .tint(Palette.surface)
+                }
+            }
+            .font(Type.body.weight(.medium))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Space.l)
         }
         .buttonStyle(.plain)
-        .background(canSubmit ? Palette.accent : Palette.hover)
-        .foregroundStyle(canSubmit ? Palette.surface : Palette.fgFaint)
+        .background(primaryIsLit ? Palette.accent : Palette.hover)
+        .foregroundStyle(primaryIsLit ? Palette.surface : Palette.fgFaint)
         .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
         .disabled(!canSubmit)
-        .animation(.easeOut(duration: 0.18), value: canSubmit)
+        .animation(.easeOut(duration: 0.18), value: primaryIsLit)
     }
 
     private var orDivider: some View {
@@ -439,13 +464,17 @@ struct SignInView: View {
             .padding(.vertical, Space.l)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Palette.fg)
+        .foregroundStyle(isBusy ? Palette.fgFaint : Palette.fg)
         .background(Palette.raised)
         .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
                 .strokeBorder(Palette.border, lineWidth: 1)
         )
+        // It used to be removed from the screen while anything was in flight. Now
+        // that it stays up during an email sign-up it has to refuse the press
+        // itself, or a second flow starts on top of the first.
+        .disabled(isBusy)
     }
 
     private func submit() {

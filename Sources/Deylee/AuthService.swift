@@ -15,7 +15,11 @@ final class AuthService: NSObject, ObservableObject {
     /// What the rest of the app is allowed to know about sign-in state.
     enum State: Equatable {
         case signedOut
-        case signingIn
+        /// In flight, carrying which route it went down. The two wait on entirely
+        /// different things — one has handed control to a browser and cannot say how
+        /// long that will take, the other is a request this app made and is holding
+        /// open — so the screen cannot honestly describe them with one sentence.
+        case signingIn(via: Route)
         /// A code has been mailed and is waiting to be typed back. No account exists
         /// yet — it is built from the parked request when the code checks out.
         case awaitingCode(email: String)
@@ -25,6 +29,16 @@ final class AuthService: NSObject, ObservableObject {
         case needsTransferConfirmation(email: String)
         case signedIn(email: String, userID: String)
         case failed(String)
+    }
+
+    /// How a sign-in was started.
+    enum Route: Equatable {
+        /// Google, through `ASWebAuthenticationSession`. The flow is in a browser
+        /// this app does not control and may sit there for as long as somebody takes
+        /// to pick an account.
+        case browser
+        /// An address and password posted to the API. Bounded by one HTTP request.
+        case credentials
     }
 
     @Published private(set) var state: State = .signedOut
@@ -71,7 +85,7 @@ final class AuthService: NSObject, ObservableObject {
     // MARK: - Sign in
 
     func signIn() async {
-        state = .signingIn
+        state = .signingIn(via: .browser)
         do {
             let verifier = Self.makeCodeVerifier()
             let code = try await authorize(challenge: Self.challenge(for: verifier))
@@ -105,7 +119,7 @@ final class AuthService: NSObject, ObservableObject {
     /// parked on the server until the code comes back, which is what stops anybody
     /// registering a mailbox they do not own.
     func signUp(email: String, password: String) async {
-        state = .signingIn
+        state = .signingIn(via: .credentials)
         codeError = nil
         guard await requestCode(email: email, password: password) else { return }
         // Held for a resend, which has to send the same credentials again. Cleared
@@ -217,7 +231,7 @@ final class AuthService: NSObject, ObservableObject {
     }
 
     private func withPassword(path: String, email: String, password: String) async {
-        state = .signingIn
+        state = .signingIn(via: .credentials)
         struct Body: Encodable {
             let email: String
             let password: String
