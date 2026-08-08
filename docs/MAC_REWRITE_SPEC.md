@@ -46,13 +46,19 @@ survey; version is owned by release tooling, never hand-edited.
 - **Accounts and sync are optional, never required.** Signed out, the app behaves
   exactly as it always has: local SQLite, no network, no account. Signing in adds
   sync; it does not become a precondition for tracking time.
-- The network requests the app may make are: a preference-gated update check
-  against GitHub Releases (`https://github.com/faizrazadec/deylee-ios/releases`),
-  and — only when signing in or signed in — `POST /v1/auth/google`,
-  `/v1/auth/signup`, `/v1/auth/password`, `/v1/auth/refresh`,
-  `/v1/auth/set-password` and `POST /v1/sync`. That is the complete list; keep it
-  complete, because §5.5's Data copy is a promise made to somebody standing on the
-  screen where they check. Nothing downloads without an explicit user action.
+- The network requests the Swift app actually makes today are **only** these, and
+  only when signing in or signed in: `POST /v1/auth/google`, `/v1/auth/signup`,
+  `/v1/auth/password`, `/v1/auth/refresh`, `/v1/auth/set-password` and
+  `POST /v1/sync`. `URLSession` appears in `APIClient.swift` and `AuthService.swift`
+  and nowhere else. **Signed out, the app makes no network request whatsoever.**
+- The update check described in §5.5 #14–15 is **specified but not implemented**:
+  `SettingsUpdateModel.onCheckForUpdates` is declared and invoked, never assigned, so
+  "Check now" calls nothing and no release feed is ever contacted. Wiring it adds the
+  first request the app would make while signed out, which changes the sentence above
+  and the privacy page on the website. Do both in that commit or leave it unwired.
+- Keep the two bullets above exhaustive. §5.5's Data copy is a promise made to
+  somebody standing on the screen where they check, and the website repeats it to
+  people who cannot read this file. Nothing downloads without an explicit user action.
 - **Only hours ever leave the machine.** Segments, days and their timestamps sync;
   nothing else does. No window titles, no document names, no application names, no
   screenshots, no keystroke or mouse activity, no productivity score. This is the
@@ -1395,8 +1401,12 @@ smaller ones fall out of it.**
 8. If the Swift app later migrates the schema past v1, is bidirectional
    compatibility with the Electron app required (which refuses anything > 1 by
    design), or is import one-way?
-9. Minimum macOS version: the native addon targeted 11.0, but SMAppService
-   needs 13+. Target 13+, or implement a legacy login-item fallback for 11–12?
+9. ~~Minimum macOS version~~ — **settled: macOS 14.** `Package.swift` declares
+   `platforms: [.macOS(.v14)]` and `Resources/Info.plist` sets
+   `LSMinimumSystemVersion` to `14.0`, so SMAppService is available unconditionally
+   and no legacy login-item fallback is needed. The website states "macOS 14
+   (Sonoma) and newer" on the strength of these two values; move them together or
+   it becomes wrong.
 
 **Behavioral parity judgment calls**
 
