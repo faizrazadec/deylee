@@ -180,6 +180,16 @@ struct SyncController: Sendable {
                 // so this is also what "already running elsewhere" looks like.
                 return ("overlap", "That time overlaps a segment already recorded.")
             case "23514":
+                // The integrity bounds raise through this class on purpose — it is
+                // already a per-row rejection, and never class 28 (see the
+                // sign_in_error_code migration for what that class costs).
+                let message = psql.serverInfo?[.message] ?? ""
+                if message == "in-the-future" {
+                    return ("invalid-shape", "That time has not happened yet.")
+                }
+                if message.contains("segments_duration_sane") {
+                    return ("invalid-shape", "A segment cannot be longer than sixteen hours.")
+                }
                 return ("invalid-shape", "A field failed validation.")
             case "23503":
                 return ("invalid-shape", "That row refers to something that does not exist.")
