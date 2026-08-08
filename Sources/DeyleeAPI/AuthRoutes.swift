@@ -408,6 +408,13 @@ struct AuthController: Sendable {
     /// Wrong password and unknown address both become the same sentence on purpose:
     /// distinguishing them would let anyone test which addresses are registered.
     private static func mapped(_ error: any Error) -> HTTPError {
+        // 503 rather than 500, because this one is worth retrying and the other is
+        // not. The distinction is the whole reason the deadline exists: without it
+        // the request would still be waiting, and a client cannot retry something
+        // that has not finished failing.
+        if case StoreError.timedOut = error {
+            return HTTPError(.serviceUnavailable, message: StoreError.unavailableMessage)
+        }
         guard let psql = error as? PSQLError,
               let message = psql.serverInfo?[.message]
         else {
@@ -422,6 +429,14 @@ struct AuthController: Sendable {
             )
         case "weak-password":
             return HTTPError(.badRequest, message: "Passwords must be 8 to 72 characters.")
+        case "resend-too-soon":
+            // Not a failure from where the person is standing: a code is already in
+            // their inbox and still good. Answering 429 rather than 500 is what lets
+            // the client take them to the code screen instead of a dead end.
+            return HTTPError(
+                .tooManyRequests,
+                message: "A code was already sent to that address. Check your email."
+            )
         case "unverified-email":
             return HTTPError(.unauthorized, message: "Google has not verified that address.")
         case "invalid-credentials":
