@@ -20,6 +20,15 @@ struct ErrorLogging<Context: RequestContext>: RouterMiddleware {
             return try await next(request, context)
         } catch let error as HTTPError {
             throw error
+        } catch StoreError.timedOut {
+            // Deliberate, so it is answered rather than logged as a bug — but a real
+            // fault, so it is said out loud at warning level. The auth routes map
+            // this themselves; this covers everything else, sync included.
+            logger.warning("database deadline exceeded", metadata: [
+                "method": .string(request.method.rawValue),
+                "path": .string(request.uri.path),
+            ])
+            throw HTTPError(.serviceUnavailable, message: StoreError.unavailableMessage)
         } catch {
             logger.error("unhandled error", metadata: [
                 "method": .string(request.method.rawValue),
