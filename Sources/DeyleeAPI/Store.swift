@@ -20,14 +20,15 @@ struct Store: Sendable {
     let client: PostgresClient
     let logger: Logger
 
-    init(url: String, caCertificatePath: String?, logger: Logger) throws {
+    init(url: String, tls useTLS: Bool = true, caCertificatePath: String?, logger: Logger) throws {
         self.client = PostgresClient(
-            configuration: try Store.configuration(from: url, caCertificatePath: caCertificatePath)
+            configuration: try Store.configuration(
+                from: url, tls: useTLS, caCertificatePath: caCertificatePath
+            )
         )
         self.logger = logger
 
-        if caCertificatePath == nil, let host = URLComponents(string: url)?.host,
-           !(host == "localhost" || host == "127.0.0.1") {
+        if useTLS, caCertificatePath == nil {
             logger.warning("""
                 database TLS is encrypted but UNVERIFIED — set DEYLEE_DB_CA_CERT to \
                 Supabase's CA certificate to authenticate the server
@@ -43,7 +44,7 @@ struct Store: Sendable {
     /// through would fail authentication with a message about the password being
     /// wrong — which it technically would be.
     static func configuration(
-        from url: String, caCertificatePath: String? = nil
+        from url: String, tls useTLS: Bool = true, caCertificatePath: String? = nil
     ) throws -> PostgresClient.Configuration {
         guard let components = URLComponents(string: url),
               let host = components.host,
@@ -72,7 +73,7 @@ struct Store: Sendable {
         // everything. The fallback exists so this runs out of the box; the warning
         // in `init` exists so nobody ships it that way by accident.
         var tls = PostgresClient.Configuration.TLS.disable
-        if !(host == "localhost" || host == "127.0.0.1") {
+        if useTLS {
             var tlsConfig = TLSConfiguration.makeClientConfiguration()
             if let caCertificatePath {
                 tlsConfig.trustRoots = .file(caCertificatePath)

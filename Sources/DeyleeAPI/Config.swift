@@ -31,6 +31,14 @@ struct Config: Sendable {
     /// row-level security, which is the entire reason it exists.
     let databaseURL: String
 
+    /// Whether to encrypt the database connection at all.
+    ///
+    /// Defaults to requiring it. A development database in a container on a private
+    /// network offers no TLS, and this used to be inferred from the hostname being
+    /// `localhost` — which is wrong the moment that database is a container reached
+    /// by name, the ordinary way to run one.
+    let databaseTLS: Bool
+
     /// PEM of the CA that signed the database server's certificate.
     ///
     /// Supabase signs with its own CA rather than a publicly-trusted one, so
@@ -122,6 +130,7 @@ extension Config {
             accessTokenTTL: TimeInterval(optional("ACCESS_TOKEN_TTL_SECONDS").flatMap(Int.init) ?? 3600),
             refreshTokenTTL: TimeInterval(optional("REFRESH_TOKEN_TTL_DAYS").flatMap(Int.init) ?? 90) * 86_400,
             databaseURL: try required("DEYLEE_DB_URL"),
+            databaseTLS: (optional("DEYLEE_DB_TLS") ?? "require").lowercased() != "disable",
             databaseCACertificatePath: optional("DEYLEE_DB_CA_CERT"),
             port: optional("PORT").flatMap(Int.init) ?? 8080,
             host: optional("HOST") ?? "127.0.0.1"

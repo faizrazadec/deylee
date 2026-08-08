@@ -31,6 +31,7 @@ let store: Store
 do {
     store = try Store(
         url: config.databaseURL,
+        tls: config.databaseTLS,
         caCertificatePath: config.databaseCACertificatePath,
         logger: logger
     )
