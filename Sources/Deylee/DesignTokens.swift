@@ -81,6 +81,9 @@ enum Type {
     static let miniTimer = Font.system(size: 22, weight: .regular).monospacedDigit()
     static let monthTitle = Font.system(size: 17, weight: .medium)
     static let statValue = Font.system(size: 15, weight: .medium).monospacedDigit()
+    /// The six-digit sign-up code. Wide and tabular so the digits sit in fixed
+    /// columns — a code that reflows as it is typed is hard to check against the mail.
+    static let signupCode = Font.system(size: 24, weight: .regular).monospacedDigit()
     static let body = Font.system(size: 13)
     static let control = Font.system(size: 14)
     static let controlLarge = Font.system(size: 15)

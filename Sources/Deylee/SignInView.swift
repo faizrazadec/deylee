@@ -29,9 +29,15 @@ struct SignInView: View {
 
     @State private var email = ""
     @State private var password = ""
+    @State private var code = ""
     @State private var mode: Mode = .signIn
     @State private var error: String?
     @State private var offlineOffered = false
+    /// Seconds left on the resend cooldown, recomputed on the tick rather than
+    /// decremented, so a sleeping laptop resumes with the right number.
+    @State private var resendSeconds = 0
+
+    private let countdown = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private enum Mode: String, CaseIterable {
         case signIn = "Sign in"
@@ -62,12 +68,20 @@ struct SignInView: View {
         return nil
     }
 
+    /// The address a code has gone to, while it is waiting to be typed back.
+    private var awaitingCodeFor: String? {
+        if case .awaitingCode(let email) = auth.state { return email }
+        return nil
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider().overlay(Palette.border)
             if let email = confirmingTransferAs {
                 transferConfirmation(as: email)
+            } else if let email = awaitingCodeFor {
+                codeEntry(for: email)
             } else {
                 form
             }
@@ -185,6 +199,127 @@ struct SignInView: View {
         .padding(.horizontal, Space.x5l)
         .padding(.top, Space.x4l)
         .padding(.bottom, Space.x5l)
+    }
+
+    // MARK: Code entry
+
+    /// The design's "Check your email", with the code field it did not have.
+    ///
+    /// The design specified a sign-in link, so the screen was purely informational —
+    /// a tick, a sentence, "Use another email" and a resend countdown. The structure
+    /// and the copy carry over unchanged; only the field and its primary are new, and
+    /// they sit where the link's absence left a gap.
+    private func codeEntry(for email: String) -> some View {
+        VStack(alignment: .center, spacing: Space.x3l) {
+            VStack(spacing: Space.l) {
+                CheckMark()
+                VStack(spacing: Space.xs) {
+                    Text("Check your email")
+                        .font(Type.controlLarge.weight(.medium))
+                        .foregroundStyle(Palette.fg)
+                    // The address is repeated back because a typo in it is the
+                    // likeliest reason no mail arrives, and it is the one mistake the
+                    // person can see from here.
+                    Text("We sent a code to \(email). It expires in 10 minutes.")
+                        .font(Type.small)
+                        .foregroundStyle(Palette.fgMuted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            VStack(spacing: Space.l) {
+                TextField("000000", text: $code)
+                    .textFieldStyle(.plain)
+                    .font(Type.signupCode)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(Palette.fg)
+                    .disabled(isBusy)
+                    .onSubmit { if canSubmitCode { submitCode() } }
+                    .onChange(of: code) { _, entered in
+                        // Digits only, six of them. People paste the code out of the
+                        // mail with a space or a stray newline attached, and a field
+                        // that silently rejects that looks broken.
+                        let digits = entered.filter(\.isNumber)
+                        let trimmed = String(digits.prefix(6))
+                        if trimmed != entered { code = trimmed }
+                        // Typing the last digit submits. Nobody wants to reach for a
+                        // button after entering a code they just read.
+                        if trimmed.count == 6, !isBusy { submitCode() }
+                    }
+                    .padding(.vertical, Space.l)
+                    .background(Palette.raised)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                            .strokeBorder(Palette.border, lineWidth: 1)
+                    )
+
+                if let message = auth.codeError {
+                    Text(message)
+                        .font(Type.meta)
+                        .foregroundStyle(Palette.breakColor)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button(action: submitCode) {
+                    Text(isBusy ? "Checking…" : "Continue")
+                        .font(Type.body.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Space.l)
+                }
+                .buttonStyle(.plain)
+                .background(canSubmitCode ? Palette.accent : Palette.hover)
+                .foregroundStyle(canSubmitCode ? Palette.surface : Palette.fgFaint)
+                .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+                .disabled(!canSubmitCode)
+                .animation(.easeOut(duration: 0.18), value: canSubmitCode)
+            }
+
+            HStack(spacing: Space.l) {
+                Button("Use another email") {
+                    code = ""
+                    auth.useAnotherEmail()
+                }
+                .buttonStyle(.link)
+                .font(Type.small)
+
+                if resendSeconds > 0 {
+                    // Counts down rather than disabling silently, so the wait reads as
+                    // a rule rather than a broken button.
+                    Text("Resend in 0:\(String(format: "%02d", resendSeconds))")
+                        .font(Type.small)
+                        .foregroundStyle(Palette.fgFaint)
+                        .monospacedDigit()
+                } else {
+                    Button("Resend") {
+                        code = ""
+                        Task { await auth.resendCode() }
+                    }
+                    .buttonStyle(.link)
+                    .font(Type.small)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .padding(.horizontal, Space.x5l)
+        .padding(.top, Space.x4l)
+        .padding(.bottom, Space.x5l)
+        .onReceive(countdown) { _ in refreshResendCountdown() }
+        .onAppear { refreshResendCountdown() }
+    }
+
+    private var canSubmitCode: Bool { code.count == 6 && !isBusy }
+
+    private func submitCode() {
+        let entered = code
+        Task { await auth.verifyCode(entered) }
+    }
+
+    private func refreshResendCountdown() {
+        guard let at = auth.resendAvailableAt else { resendSeconds = 0; return }
+        resendSeconds = max(0, Int(at.timeIntervalSinceNow.rounded(.up)))
     }
 
     // MARK: Transfer
@@ -339,6 +474,26 @@ private struct Mark: View {
                 .offset(y: -4.5)
         }
         .frame(width: 34, height: 34)
+    }
+}
+
+/// The tick that heads the code screen, from the design's "Check your email".
+///
+/// Drawn rather than an SF Symbol so it matches the design's proportions — a thin
+/// ring with a check inset well inside it, which `checkmark.circle` does not give.
+private struct CheckMark: View {
+    var body: some View {
+        ZStack {
+            Circle().strokeBorder(Palette.accent, lineWidth: 1.8)
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: 5))
+                path.addLine(to: CGPoint(x: 4.5, y: 9.5))
+                path.addLine(to: CGPoint(x: 13, y: 0))
+            }
+            .stroke(Palette.accent, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+            .frame(width: 13, height: 9.5)
+        }
+        .frame(width: 38, height: 38)
     }
 }
 

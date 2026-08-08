@@ -16,6 +16,9 @@ final class AuthService: NSObject, ObservableObject {
     enum State: Equatable {
         case signedOut
         case signingIn
+        /// A code has been mailed and is waiting to be typed back. No account exists
+        /// yet — it is built from the parked request when the code checks out.
+        case awaitingCode(email: String)
         /// Signed in as far as the server is concerned, but this machine's history
         /// belongs to somebody else and nothing has been written yet. Waiting on
         /// `confirmTransfer()` or `cancelTransfer()`.
@@ -26,12 +29,28 @@ final class AuthService: NSObject, ObservableObject {
 
     @Published private(set) var state: State = .signedOut
 
+    /// A rejected code, shown under the code field.
+    ///
+    /// Kept apart from `.failed` on purpose. Moving to `.failed` would take the code
+    /// screen off the display and drop the person back at the form, having to start
+    /// the whole sign-up again because they mistyped one digit.
+    @Published private(set) var codeError: String?
+
+    /// When another code may be asked for. The server owns the cooldown; this is only
+    /// what the countdown is drawn from.
+    @Published private(set) var resendAvailableAt: Date?
+
     private let config: ClientConfig
     private let repo: Repository
     private var session: StoredSession?
     /// A session issued but not yet written, held only while the transfer question
     /// is on screen. Never reaches the keychain unless the answer is yes.
     private var pendingTransfer: StoredSession?
+    /// The sign-up waiting on a code. Held in memory only, for the length of one
+    /// screen, because a resend has to send the same credentials again — the server
+    /// stores a digest and cannot reconstruct them. Dropped on success or cancel,
+    /// and never written to disk.
+    private var pendingSignup: (email: String, password: String)?
     private var webAuthSession: ASWebAuthenticationSession?
 
     init(config: ClientConfig, repo: Repository) {
@@ -80,8 +99,117 @@ final class AuthService: NSObject, ObservableObject {
 
     // MARK: - Email and password
 
+    /// Step one of sign-up: ask the server to mail a code.
+    ///
+    /// Nothing exists as an account when this returns. The address and password are
+    /// parked on the server until the code comes back, which is what stops anybody
+    /// registering a mailbox they do not own.
     func signUp(email: String, password: String) async {
-        await withPassword(path: "/v1/auth/signup", email: email, password: password)
+        state = .signingIn
+        codeError = nil
+        guard await requestCode(email: email, password: password) else { return }
+        // Held for a resend, which has to send the same credentials again. Cleared
+        // the moment the code is accepted or the screen is abandoned.
+        pendingSignup = (email: email, password: password)
+        state = .awaitingCode(email: email)
+    }
+
+    /// Step two: hand the code back and take the session it produces.
+    func verifyCode(_ code: String) async {
+        guard case .awaitingCode(let email) = state else { return }
+        codeError = nil
+        struct Body: Encodable {
+            let email: String
+            let code: String
+            let deviceId: String?
+            let timezone: String
+        }
+        do {
+            let response: SessionResponseDTO = try await APIClient.post(
+                config.apiBaseURL.appending(path: "/v1/auth/signup/verify"),
+                body: Body(
+                    email: email,
+                    code: code.trimmingCharacters(in: .whitespaces),
+                    deviceId: try? repo.syncState().deviceID,
+                    timezone: TimeZone.current.identifier
+                )
+            )
+            pendingSignup = nil
+            resendAvailableAt = nil
+            try adopt(response.stored(provider: "Email"))
+        } catch let error as MutationError {
+            codeError = error.message
+        } catch {
+            // Stays on the code screen: a wrong digit is not a reason to throw away
+            // a code that is still good for another try.
+            codeError = Self.readable(error)
+        }
+    }
+
+    /// Ask for another code. The server enforces the cooldown; this only avoids
+    /// spending a request it is certain to refuse.
+    func resendCode() async {
+        guard case .awaitingCode = state, let pending = pendingSignup else { return }
+        if let at = resendAvailableAt, at > Date() { return }
+        codeError = nil
+        _ = await requestCode(email: pending.email, password: pending.password)
+    }
+
+    /// Abandon a half-finished sign-up and go back to the form.
+    ///
+    /// The parked request is left on the server to expire on its own. There is no
+    /// endpoint to cancel it, and adding one that deletes by address alone would let
+    /// anyone wipe a stranger's pending sign-up.
+    func useAnotherEmail() {
+        pendingSignup = nil
+        resendAvailableAt = nil
+        codeError = nil
+        state = .signedOut
+    }
+
+    /// Shared by the first send and every resend.
+    ///
+    /// Returns whether a code actually went out, so the caller can decide what the
+    /// state becomes — the first send moves to the code screen, a resend is already
+    /// there and only restarts the countdown.
+    private func requestCode(email: String, password: String) async -> Bool {
+        struct Body: Encodable {
+            let email: String
+            let password: String
+            let displayName: String?
+            let timezone: String
+        }
+        struct CodeSent: Decodable {
+            let expiresIn: Int
+            let resendIn: Int
+        }
+        do {
+            let sent: CodeSent = try await APIClient.post(
+                config.apiBaseURL.appending(path: "/v1/auth/signup"),
+                body: Body(
+                    email: email, password: password, displayName: nil,
+                    timezone: TimeZone.current.identifier
+                )
+            )
+            resendAvailableAt = Date().addingTimeInterval(TimeInterval(sent.resendIn))
+            return true
+        } catch let error as MutationError {
+            report(error.message)
+            return false
+        } catch {
+            report(Self.readable(error))
+            return false
+        }
+    }
+
+    /// A failure before the code screen is a dead end and belongs on the form; one
+    /// raised while the screen is up belongs under the code field.
+    private func report(_ message: String) {
+        if case .awaitingCode = state {
+            codeError = message
+        } else {
+            state = .failed(message)
+        }
     }
 
     func signInWithPassword(email: String, password: String) async {

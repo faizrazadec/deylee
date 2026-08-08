@@ -40,6 +40,18 @@ struct AccountSection: View {
                     action: "Cancel",
                     perform: auth.cancelSignIn
                 )
+            case .awaitingCode(let email):
+                // Same rule as the credentials and the transfer question: the code is
+                // typed in the sign-in window, never here. This row says a sign-up is
+                // half-finished and puts that window back in front.
+                AccountRow(
+                    initial: nil,
+                    title: "Waiting for your code",
+                    detail: "Sent to \(email)",
+                    action: "Enter code",
+                    prominent: true,
+                    perform: presentSignIn
+                )
             case .needsTransferConfirmation(let email):
                 // The question itself is asked in the sign-in window, never here —
                 // same rule as the credentials, and for the same reason. This row
