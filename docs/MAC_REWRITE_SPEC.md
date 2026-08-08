@@ -48,12 +48,18 @@ survey; version is owned by release tooling, never hand-edited.
   sync; it does not become a precondition for tracking time.
 - The network requests the app may make are: a preference-gated update check
   against GitHub Releases (`https://github.com/faizrazadec/deylee-ios/releases`),
-  and — only when signed in — Google sign-in and `POST /v1/sync`. Nothing
-  downloads without an explicit user action.
+  and — only when signing in or signed in — `POST /v1/auth/google`,
+  `/v1/auth/signup`, `/v1/auth/password`, `/v1/auth/refresh`,
+  `/v1/auth/set-password` and `POST /v1/sync`. That is the complete list; keep it
+  complete, because §5.5's Data copy is a promise made to somebody standing on the
+  screen where they check. Nothing downloads without an explicit user action.
+- **Only hours ever leave the machine.** Segments, days and their timestamps sync;
+  nothing else does. No window titles, no document names, no application names, no
+  screenshots, no keystroke or mouse activity, no productivity score. This is the
+  load-bearing claim of the product (see `PRODUCT.md`) and no feature may weaken it.
 - No stored totals or status columns anywhere — totals are always summed from
   segments at read time. This holds on the server too: nothing aggregated is ever
   transmitted or persisted.
-- No multiple projects/tags/clients. One timeline of `work`/`break` segments.
 - The UI never mutates optimistically. It waits for the engine's next snapshot,
   and sync never writes to the UI's view of the world directly.
 
@@ -69,6 +75,14 @@ change is visible rather than silently rewritten:
   Android and a browser extension are all planned. They are thin clients against
   `SYNC_PROTOCOL.md`; the invariants live on the server precisely so six
   implementations cannot disagree about them.
+- *"No multiple projects/tags/clients. One timeline of `work`/`break` segments."* —
+  **deferred, not abandoned.** It describes what ships today and it is still the
+  right default: one timer, one day, nothing to configure before the first start.
+  But a company cannot allocate cost or invoice against an unlabelled timeline, so
+  an optional project (and later a billable rate) is a committed part of the
+  commercial feature set — after sync is proven, per `SYNC_PROTOCOL.md`. Read this
+  row as "not yet", never as "no": nothing here licenses a design that would make
+  attributing a segment to a project impossible to add.
 
 ---
 
@@ -1000,6 +1014,34 @@ hairline-divided rows (px 8 / py 8 rhythm).
 
 Sections, rows, and exact copy (top to bottom):
 
+**Account** — "Sign in to keep your hours on every device. Deylee works fully
+without it." The first group, reachable whether or not sign-in was skipped at
+launch. Always **one row, one trailing button**, in four states of the same shape so
+the row never jumps as it moves between them; the Sign in button raises the same
+window credentials are typed in (§11 of the UI spec) — there is never a second,
+smaller form to maintain.
+
+| State | Title | Detail | Action |
+|---|---|---|---|
+| signed out / failed | `Not signed in` | `Log stays on this machine only` | `Sign in` (prominent) |
+| signing in | `Waiting for your browser…` | `Finish in the window that opened` | `Cancel` |
+| needs transfer confirmation | the email | `Confirm moving this machine's history over` | `Review` (prominent) |
+| signed in | the email | sync detail, below | `Sign out` |
+
+Sync detail, signed in — `{state} · {provider}`, provider falling back to
+`Account`: idle → `Waiting for the next check`; syncing → `Syncing…`; succeeded →
+`Synced {relative} ago`; failed → `Sync paused`; rejected → the single reason
+verbatim, or `{n} changes were refused`. The provider is named because somebody
+with both a Google and a password route needs to know which one this session came
+from.
+
+A **second row appears only while sync is actually failing** — title `Sync paused —
+offline` when the reason mentions offline/connect, else `Sync paused`; detail
+`Tracking continues; will catch up`; warning tone; action `Retry`. It is a separate
+row deliberately: "your account" and "sync is behind" are different facts, and
+burying the second inside the first is how people miss it. When sync is healthy the
+row is absent rather than present-and-empty.
+
 **General** — "How Deylee starts up and how it looks."
 1. **Launch at login** (toggle, `launchAtLogin`, default off) — "Starts Deylee in
    the background when you sign in." Semantics: OS registration
@@ -1050,8 +1092,14 @@ counting."
     One field writes two preferences (`reminderHour` then `reminderMinute`,
     sequentially); incomplete mid-edit values are ignored, never half-written.
 
-**Data** — "Everything Deylee records stays on this machine. Nothing is ever
-uploaded."
+**Data** — "Your database lives on this machine. Signed out, it goes nowhere;
+signed in, your hours sync to your account and nothing else does."
+
+(This copy was *"Everything Deylee records stays on this machine. Nothing is ever
+uploaded."* It stopped being true the moment sync existed and is recorded here
+because this is the screen where somebody checks. Copy that quietly contradicts the
+software is worse than no copy at all. If a future feature widens what leaves the
+machine, this string changes in the same commit — not after.)
 12. **Data folder** info block — title "Data folder", description "Your
     database and preferences live here.", then the absolute folder path in a
     selectable monospace 12 px box (truncated, full path in tooltip;
