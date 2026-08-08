@@ -14,17 +14,30 @@ import Foundation
 final class SyncCoordinator {
     let auth: AuthService
     let sync: SyncService
+    let heartbeat: HeartbeatService
 
     /// Raises the sign-in window. Set by the app, because the window's lifetime and
     /// its effect on the activation policy belong there rather than here.
     var presentSignIn: (() -> Void)?
 
+    /// Whether a work segment is open right now. Set by the app from the model,
+    /// because the coordinator deliberately knows nothing about timer state — it
+    /// only asks this at each beat, so a paused or ended day goes silent within
+    /// half a minute of becoming one.
+    var timerIsRunning: () -> Bool = { false }
+
     private var timer: Timer?
+    private var beatTimer: Timer?
     private var observers: [any NSObjectProtocol] = []
 
     /// Quiet enough not to matter on a laptop battery, frequent enough that another
     /// device's edits show up while you are still looking at the window.
     private static let interval: TimeInterval = 120
+
+    /// Matched to the server's witness maths: each beat vouches for at most 45
+    /// seconds back, so thirty-second spacing keeps a running timer continuously
+    /// witnessed with headroom for a slow request.
+    private static let beatInterval: TimeInterval = 30
 
     init?(repo: Repository) {
         // A build with no API configured is a valid build — the app is local-first
@@ -32,11 +45,20 @@ final class SyncCoordinator {
         guard let config = ClientConfig.fromBundle() else { return nil }
         auth = AuthService(config: config, repo: repo)
         sync = SyncService(config: config, repo: repo, auth: auth)
+        heartbeat = HeartbeatService(config: config, repo: repo, auth: auth)
     }
 
     func start() {
         timer = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.sync.syncNow() }
+        }
+        beatTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.beatInterval, repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.timerIsRunning() else { return }
+                await self.heartbeat.beat()
+            }
         }
 
         // Waking is the moment a device is most likely to be behind: the laptop was
@@ -63,6 +85,8 @@ final class SyncCoordinator {
     func stop() {
         timer?.invalidate()
         timer = nil
+        beatTimer?.invalidate()
+        beatTimer = nil
         for observer in observers {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
             NotificationCenter.default.removeObserver(observer)

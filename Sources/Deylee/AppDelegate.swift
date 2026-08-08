@@ -92,6 +92,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // and the app is unchanged in every other respect.
         let coordinator = SyncCoordinator(repo: repo)
         self.syncCoordinator = coordinator
+        // Weak, because the model outlives nothing here but the closure is stored
+        // for the coordinator's lifetime. Only `.running` beats: a break or a
+        // paused day is not witnessed work.
+        coordinator?.timerIsRunning = { [weak model] in
+            model?.snapshot.state == .running
+        }
         coordinator?.start()
 
         let settingsModel = SettingsModel(store: prefs)
