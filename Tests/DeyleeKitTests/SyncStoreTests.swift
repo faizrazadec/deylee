@@ -339,3 +339,132 @@ private final class Harness {
         #expect(count == 1)
     }
 }
+
+/// A day arriving under a name this device does not use for that date.
+///
+/// `days.date` is unique locally, so two ids for one calendar day cannot both be
+/// stored. Before the reconciliation below, the insert raised SQLITE_CONSTRAINT,
+/// which threw out of the batch transaction and rolled back the whole page — every
+/// day and segment in it. The cursor stays put when a page fails, quite correctly,
+/// so the next sync fetched the same page, hit the same row and failed again, every
+/// two minutes, for ever.
+@Suite struct RemoteDayDateReconciliation {
+    private func seedLocalDay(_ h: Harness, date: String, uuid: String) throws -> Int64 {
+        try h.db.run(
+            """
+            INSERT INTO days (uuid, date, created_at, target_minutes, updated_at, dirty)
+            VALUES (?, ?, 1000, 480, 1000, 1)
+            """,
+            [.text(uuid), .text(date)]
+        )
+        return h.db.lastInsertRowID
+    }
+
+    private func remoteDay(_ uuid: String, _ date: String, updatedAt: EpochMs = 9_000) -> SyncDay {
+        SyncDay(uuid: uuid, date: DateKey(date)!, targetMinutes: 480, endedAt: nil,
+                createdAt: 1_000, updatedAt: updatedAt, deletedAt: nil)
+    }
+
+    @Test func aDayUnderAnotherIdIsAdoptedRatherThanRefused() throws {
+        let h = try Harness()
+        let localID = try seedLocalDay(h, date: "2026-08-08", uuid: "local-id")
+
+        let refused = try h.repo.applyRemote(
+            days: [remoteDay("server-id", "2026-08-08")], segments: [], serverSeq: 7
+        )
+
+        #expect(refused == 0, "the page must apply")
+        let rows = try h.db.query("SELECT id, uuid FROM days WHERE date = '2026-08-08'") {
+            ($0.int64(0), $0.text(1))
+        }
+        #expect(rows.count == 1, "one calendar day, one row — not two")
+        #expect(rows.first?.0 == localID, "the local row is kept, so its segments stay attached")
+        #expect(rows.first?.1 == "server-id", "and it takes the identity the server uses")
+    }
+
+    /// The point of keeping the local row rather than replacing it.
+    @Test func segmentsStayAttachedThroughTheRename() throws {
+        let h = try Harness()
+        let localID = try seedLocalDay(h, date: "2026-08-08", uuid: "local-id")
+        try h.db.run(
+            """
+            INSERT INTO segments (uuid, day_id, type, started_at, ended_at, created_at, updated_at, dirty)
+            VALUES ('seg-1', ?, 'work', 1000, 5000, 1000, 1000, 1)
+            """,
+            [.integer(localID)]
+        )
+
+        _ = try h.repo.applyRemote(
+            days: [remoteDay("server-id", "2026-08-08")], segments: [], serverSeq: 7
+        )
+
+        let dayID = try h.db.queryOne("SELECT day_id FROM segments WHERE uuid = 'seg-1'") { $0.int64(0) }
+        #expect(dayID == localID, "the segment must still point at its day")
+        #expect(try h.repo.listSegments(dayId: localID).count == 1)
+    }
+
+    /// The wedge was never about one row — it took the page down with it.
+    @Test func therestOfThePageStillApplies() throws {
+        let h = try Harness()
+        _ = try seedLocalDay(h, date: "2026-08-08", uuid: "local-id")
+
+        let refused = try h.repo.applyRemote(
+            days: [remoteDay("server-id", "2026-08-08"), remoteDay("other-id", "2026-08-09")],
+            segments: [], serverSeq: 7
+        )
+
+        #expect(refused == 0)
+        #expect(try h.count("days") == 2, "the untouched day in the same page must land")
+        #expect(try h.count("days WHERE uuid = 'other-id'") == 1)
+    }
+
+    /// The path `transferLocalData` builds: every local row re-identified, the cursor
+    /// reset, and the whole account then delivered under ids this machine has never
+    /// seen. If the two accounts share a single date, the first pull used to fail and
+    /// never succeed again.
+    @Test func aStoreJustTransferredCanPullTheAccountItJoined() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-08-08", startedAt: 1_000, endedAt: 2_000)
+        try h.repo.claimLocalData(forUserID: "user-a")
+        try h.repo.transferLocalData(toUserID: "user-b")
+
+        // user-b's own history, arriving from seq 0, overlapping on one date.
+        let refused = try h.repo.applyRemote(
+            days: [remoteDay("b-day-1", "2026-08-08"), remoteDay("b-day-2", "2026-08-10")],
+            segments: [], serverSeq: 12
+        )
+
+        #expect(refused == 0, "the first pull after a transfer must not wedge")
+        #expect(try h.count("days WHERE date = '2026-08-08'") == 1)
+    }
+
+    /// A tombstone for a row this device never held is nothing to do — and inserting
+    /// it would put a deleted day in the way of the live one for that date.
+    @Test func aTombstoneForAnUnknownDayIsIgnored() throws {
+        let h = try Harness()
+        _ = try seedLocalDay(h, date: "2026-08-08", uuid: "local-id")
+
+        let gone = SyncDay(uuid: "never-seen", date: DateKey("2026-08-08")!, targetMinutes: 480,
+                           endedAt: nil, createdAt: 1_000, updatedAt: 9_000, deletedAt: 9_000)
+        let refused = try h.repo.applyRemote(days: [gone], segments: [], serverSeq: 7)
+
+        #expect(refused == 0)
+        #expect(try h.count("days") == 1, "no phantom deleted day was created")
+        #expect(try h.count("days WHERE uuid = 'local-id'") == 1, "and the live day is untouched")
+    }
+
+    /// Adoption must not trade a date collision for a uuid one.
+    @Test func aDayWhoseIdIsAlreadyHeldElsewhereIsNotRenamedOntoIt() throws {
+        let h = try Harness()
+        _ = try seedLocalDay(h, date: "2026-08-07", uuid: "server-id")
+        _ = try seedLocalDay(h, date: "2026-08-08", uuid: "local-id")
+
+        // Nothing is renamed, because `server-id` is already in use on another row.
+        let refused = try h.repo.applyRemote(
+            days: [remoteDay("server-id", "2026-08-07")], segments: [], serverSeq: 7
+        )
+        #expect(refused == 0)
+        #expect(try h.count("days WHERE uuid = 'local-id'") == 1)
+        #expect(try h.count("days WHERE uuid = 'server-id'") == 1)
+    }
+}

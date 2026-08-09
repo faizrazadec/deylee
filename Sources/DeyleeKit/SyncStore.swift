@@ -276,10 +276,81 @@ extension Repository {
     /// Last-write-wins is applied here as well as on the server, because a client
     /// must not let an older remote row overwrite a newer local edit made while the
     /// response was in flight.
-    public func applyRemote(days: [SyncDay], segments: [SyncSegment], serverSeq: Int64) throws {
+    /// Returns the number of rows it could not apply. Zero is the only healthy answer;
+    /// anything else means the local schema refused something the server considers
+    /// current, and that row is now missing until the server sends it again.
+    @discardableResult
+    public func applyRemote(days: [SyncDay], segments: [SyncSegment], serverSeq: Int64) throws -> Int {
+        var refused = 0
         try db.transaction {
             for day in days {
-                try db.run(
+                // Each row in its own savepoint, as the server already does per change.
+                // A page applied all-or-nothing is what turns one unusable row into a
+                // permanent stall: the batch rolls back, the cursor stays put — quite
+                // correctly, since nothing was applied — and the next sync fetches the
+                // same page, fails on the same row, and repeats every two minutes for
+                // ever. Losing one row is bad; losing sync is worse.
+                do {
+                    try db.transaction {
+                        // A tombstone for a row this device has never held is nothing to
+                        // do. Inserting it would materialise a deleted day that only
+                        // stands in the way of the live one for the same date.
+                        if day.deletedAt != nil, try !knowsDay(uuid: day.uuid) { return }
+                        try adoptServerDayIdentity(day)
+                        try upsert(day, serverSeq: serverSeq)
+                    }
+                } catch {
+                    refused += 1
+                }
+            }
+
+            for segment in segments {
+                do {
+                    try db.transaction { try upsert(segment, serverSeq: serverSeq) }
+                } catch {
+                    refused += 1
+                }
+            }
+        }
+        return refused
+    }
+
+    private func knowsDay(uuid: String) throws -> Bool {
+        try db.queryOne("SELECT 1 FROM days WHERE uuid = ?", [.text(uuid)]) { _ in true } ?? false
+    }
+
+    /// Give the local row for this date the identity the server uses for it.
+    ///
+    /// `days.date` is unique locally, so a day arriving under a uuid this device has
+    /// never seen — for a date it already has under a different one — cannot simply be
+    /// inserted. Both rows are the same calendar day; only the names differ.
+    ///
+    /// The two names arise constantly. Two devices offline on the same morning each
+    /// mint their own id for it. `transferLocalData` re-issues every local row, then
+    /// resets the cursor, so the next pull delivers the whole account under ids this
+    /// machine has never seen. A segment arriving before its day makes a placeholder
+    /// with an invented id, which the real day then contradicts.
+    ///
+    /// Adopting rather than choosing: the server has already decided which uuid owns
+    /// this date, and following that is what makes every device agree. The local row
+    /// keeps its integer id, so its segments stay attached without being re-pointed.
+    private func adoptServerDayIdentity(_ day: SyncDay) throws {
+        // Only a live row lays claim to a date, and only when this device does not
+        // already hold that uuid somewhere — renaming onto a name already in use
+        // trades this collision for one on the uuid index.
+        try db.run(
+            """
+            UPDATE days SET uuid = ?
+             WHERE date = ?
+               AND (uuid IS NULL OR uuid <> ?)
+               AND NOT EXISTS (SELECT 1 FROM days other WHERE other.uuid = ?)
+            """,
+            [.text(day.uuid), .text(day.date.description), .text(day.uuid), .text(day.uuid)]
+        )
+    }
+
+    private func upsert(_ day: SyncDay, serverSeq: Int64) throws {
+        try db.run(
                     """
                     INSERT INTO days (uuid, date, created_at, ended_at, target_minutes,
                                       updated_at, deleted_at, dirty, server_seq)
@@ -299,9 +370,9 @@ extension Repository {
                      .integer(day.updatedAt), day.deletedAt.map { .integer($0) } ?? .null,
                      .integer(serverSeq)]
                 )
-            }
+    }
 
-            for segment in segments {
+    private func upsert(_ segment: SyncSegment, serverSeq: Int64) throws {
                 // A segment can arrive before the day it belongs to — the protocol
                 // delivers commit order, not dependency order — so the day is created
                 // on demand rather than assumed. It is not marked dirty: a day the
@@ -330,8 +401,6 @@ extension Repository {
                      .integer(segment.updatedAt), segment.deletedAt.map { .integer($0) } ?? .null,
                      .integer(serverSeq)]
                 )
-            }
-        }
     }
 
     /// The local row id for a calendar day, creating it if this device has never
