@@ -50,8 +50,8 @@ private func uuids(_ db: Database, _ table: String, orderBy: String) throws -> [
 
         try runMigrations(db)
 
-        #expect(try readSchemaVersion(db) == 2)
-        #expect(CURRENT_SCHEMA_VERSION == 2)
+        #expect(try readSchemaVersion(db) == CURRENT_SCHEMA_VERSION)
+        #expect(CURRENT_SCHEMA_VERSION == 3)
     }
 
     @Test func backfillsAUuidOnEveryExistingRow() throws {
@@ -192,7 +192,7 @@ private func uuids(_ db: Database, _ table: String, orderBy: String) throws -> [
 
         #expect(before == after)
         #expect(deviceBefore == deviceAfter)
-        #expect(try readSchemaVersion(db) == 2)
+        #expect(try readSchemaVersion(db) == CURRENT_SCHEMA_VERSION)
     }
 
     @Test func upgradesAnEmptyStoreFromScratch() throws {
@@ -201,7 +201,7 @@ private func uuids(_ db: Database, _ table: String, orderBy: String) throws -> [
 
         try runMigrations(db)
 
-        #expect(try readSchemaVersion(db) == 2)
+        #expect(try readSchemaVersion(db) == CURRENT_SCHEMA_VERSION)
         let count = try db.queryOne("SELECT count(*) FROM sync_state") { $0.int(0) }
         #expect(count == 1)
     }
@@ -217,5 +217,83 @@ private func uuids(_ db: Database, _ table: String, orderBy: String) throws -> [
         #expect(throws: SchemaTooNewError.self) {
             try runMigrations(db)
         }
+    }
+}
+
+/// Migration 3 — history stranded by a writer that never minted ids.
+///
+/// Migration 2 backfilled what existed when it ran, and the inserts in `Repository`
+/// were supposed to mint their own from then on. They did not name the column, so
+/// every row created in between carries `uuid = NULL` — queued by `dirty` and skipped
+/// by `pendingPush`, which requires both. This is the rescue for those rows, and it
+/// runs against files holding somebody's real hours.
+@Suite struct StrandedRowBackfill {
+    /// A store already at v2 — so migration 2's own backfill has been and gone — with
+    /// rows added afterwards by the writer that forgot the column. Exactly the shape
+    /// of every installed store before the fix.
+    private func openV2StoreWithStrandedRows() throws -> Database {
+        let db = try Database(path: ":memory:")
+        try db.execute("PRAGMA foreign_keys = ON")
+        try db.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+        try migrations[0].up(db)
+        try migrations[1].up(db)
+        try db.run("INSERT INTO schema_version (version) VALUES (2)")
+
+        // Written the way the old writer wrote: no uuid named at all.
+        try db.run(
+            "INSERT INTO days (date, created_at, target_minutes) VALUES ('2026-08-01', 1000, 480)")
+        let dayID = db.lastInsertRowID
+        try db.run(
+            """
+            INSERT INTO segments (day_id, type, started_at, ended_at, created_at, updated_at)
+            VALUES (?, 'work', 2000, 5000, 2000, 2000)
+            """,
+            [.integer(dayID)]
+        )
+        return db
+    }
+
+    @Test func strandedRowsGetAnIdentityAndAreQueued() throws {
+        let db = try openV2StoreWithStrandedRows()
+        #expect(try db.queryOne("SELECT count(*) FROM days WHERE uuid IS NULL") { $0.int(0) } == 1)
+        #expect(try db.queryOne("SELECT count(*) FROM segments WHERE uuid IS NULL") { $0.int(0) } == 1)
+
+        try runMigrations(db)
+
+        #expect(try db.queryOne("SELECT count(*) FROM days WHERE uuid IS NULL") { $0.int(0) } == 0)
+        #expect(try db.queryOne("SELECT count(*) FROM segments WHERE uuid IS NULL") { $0.int(0) } == 0)
+        // Stranded rows were never sendable, so they cannot have been acknowledged —
+        // whatever `dirty` said before, every one of them still has to go up.
+        #expect(try db.queryOne("SELECT count(*) FROM days WHERE dirty = 1") { $0.int(0) } == 1)
+        #expect(try db.queryOne("SELECT count(*) FROM segments WHERE dirty = 1") { $0.int(0) } == 1)
+    }
+
+    /// Seeded from each row's own `created_at`, as migration 2 does, so a lifetime of
+    /// rescued history reaches the server in the order it was lived rather than all
+    /// bearing the instant of the upgrade.
+    @Test func backfilledIdsSortInTheOrderTheRowsWereMade() throws {
+        let db = try openV2StoreWithStrandedRows()
+        try db.run(
+            "INSERT INTO days (date, created_at, target_minutes) VALUES ('2026-07-01', 500, 480)")
+        try runMigrations(db)
+
+        let ordered = try db.query("SELECT uuid FROM days ORDER BY created_at") { $0.text(0) }
+        #expect(ordered.count == 2)
+        #expect(ordered == ordered.sorted(), "UUIDv7 ids must sort with their timestamps")
+    }
+
+    /// A row the server has already acknowledged must not be dragged back into the
+    /// queue by the rescue — it would be pushed a second time for no reason.
+    @Test func rowsTheServerAlreadyKnowsAreLeftAlone() throws {
+        let db = try openV2StoreWithStrandedRows()
+        try db.run("UPDATE days SET uuid = 'known', server_seq = 42, dirty = 0")
+
+        try runMigrations(db)
+
+        let (uuid, dirty) = try #require(
+            db.queryOne("SELECT uuid, dirty FROM days") { ($0.text(0), $0.int(1)) }
+        )
+        #expect(uuid == "known", "an acknowledged row must keep its identity")
+        #expect(dirty == 0, "and must not be queued again")
     }
 }

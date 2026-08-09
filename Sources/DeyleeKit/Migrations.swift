@@ -16,7 +16,7 @@ import Foundation
 /// a file from a newer build outright.
 
 /// Bump this in lock-step with a new entry in `migrations`.
-public let CURRENT_SCHEMA_VERSION = 2
+public let CURRENT_SCHEMA_VERSION = 3
 
 /// The database on disk was written by a newer build of Deylee than this one.
 ///
@@ -150,6 +150,32 @@ let migrations: [Migration] = [
             INSERT OR IGNORE INTO sync_state (id, device_id, cursor)
             VALUES (1, \(uuidV7SQL(millis: "(strftime('%s','now') * 1000)")), 0)
             """)
+    },
+
+    // Give an identity to everything written while the writer was not giving one.
+    //
+    // Migration 2 backfilled the rows that existed when it ran, and from then on the
+    // inserts in `Repository` were supposed to mint their own. They did not name the
+    // column at all, so every row created since — every day and segment anybody has
+    // tracked — carries `uuid = NULL`. `pendingPush` selects
+    // `WHERE dirty = 1 AND uuid IS NOT NULL`, so those rows sit queued and unsendable
+    // at the same time: marked pending for ever, never offered to the server, and
+    // invisible on every other device.
+    //
+    // The writer mints ids now. This is for the history already on disk, which would
+    // otherwise stay stranded no matter how long sync ran.
+    Migration(version: 3) { db in
+        // Seeded from each row's own created_at, exactly as migration 2 does, so a
+        // lifetime of backfilled history reaches the server already in order rather
+        // than all bearing the instant of this upgrade.
+        try db.run("UPDATE days     SET uuid = \(uuidV7SQL(millis: "created_at")) WHERE uuid IS NULL")
+        try db.run("UPDATE segments SET uuid = \(uuidV7SQL(millis: "created_at")) WHERE uuid IS NULL")
+
+        // Every one of them still needs sending. A row that was never sendable cannot
+        // have been acknowledged, whatever `dirty` happens to say — and `markPushed`
+        // only ever clears the flag for a uuid the server named back.
+        try db.run("UPDATE days     SET dirty = 1 WHERE server_seq IS NULL")
+        try db.run("UPDATE segments SET dirty = 1 WHERE server_seq IS NULL")
     },
 ]
 
