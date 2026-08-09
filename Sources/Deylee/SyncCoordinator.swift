@@ -30,6 +30,14 @@ final class SyncCoordinator {
     private var beatTimer: Timer?
     private var observers: [any NSObjectProtocol] = []
 
+    /// Consecutive failures, and the moment the next attempt is allowed.
+    ///
+    /// Every trigger goes through the same gate — the timer, waking, and activating —
+    /// because an outage that fails the timer fails the other two just as reliably, and
+    /// activation is the one a person can produce fifty times in a minute.
+    private var consecutiveFailures = 0
+    private var nextAttemptAt: Date?
+
     /// Quiet enough not to matter on a laptop battery, frequent enough that another
     /// device's edits show up while you are still looking at the window.
     private static let interval: TimeInterval = 120
@@ -48,9 +56,34 @@ final class SyncCoordinator {
         heartbeat = HeartbeatService(config: config, repo: repo, auth: auth)
     }
 
+    /// Sync, unless a previous failure asked for room.
+    ///
+    /// Without this the schedule was a flat 120 seconds whatever happened, plus every
+    /// wake and every activation — a client hammering a server that is down for as
+    /// long as the outage lasts, times every install.
+    ///
+    /// Only `.failed` counts. `.rejected` means the exchange worked and the server
+    /// declined particular rows, which backing off would not help with and which is
+    /// already handled by marking those rows.
+    private func syncIfDue(now: Date = Date()) async {
+        if let nextAttemptAt, now < nextAttemptAt { return }
+
+        await sync.syncNow()
+
+        if case .failed = sync.status {
+            consecutiveFailures += 1
+            nextAttemptAt = now.addingTimeInterval(
+                syncRetryDelay(afterFailures: consecutiveFailures)
+            )
+        } else {
+            consecutiveFailures = 0
+            nextAttemptAt = nil
+        }
+    }
+
     func start() {
         timer = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.sync.syncNow() }
+            Task { @MainActor in await self?.syncIfDue() }
         }
         beatTimer = Timer.scheduledTimer(
             withTimeInterval: Self.beatInterval, repeats: true
@@ -68,18 +101,20 @@ final class SyncCoordinator {
         let wake = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in await self?.sync.syncNow() }
+            Task { @MainActor in await self?.syncIfDue() }
         }
         // Likewise on activation: the user has come back to the app and is about to
         // look at numbers that may be stale.
         let active = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in await self?.sync.syncNow() }
+            Task { @MainActor in await self?.syncIfDue() }
         }
         observers = [wake, active]
 
-        Task { await sync.syncNow() }
+        // Through the same gate, though nothing can be owed yet: a launch that fails
+        // should start the count, or the first failure would be the one that is free.
+        Task { await syncIfDue() }
     }
 
     func stop() {

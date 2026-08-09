@@ -476,3 +476,39 @@ private func k(_ s: String) -> DateKey {
         #expect(fromTimeInputValue(date: k("2025-08-04"), time: ":30", in: berlin) == nil)
     }
 }
+
+@Suite struct SyncRetryDelay {
+    /// Deterministic: take the top of the jitter range, so the schedule underneath is
+    /// what is being asserted.
+    private func top(_ failures: Int) -> TimeInterval {
+        syncRetryDelay(afterFailures: failures, random: { $0.upperBound })
+    }
+
+    @Test func doublesFromTheOrdinaryIntervalAndStops() {
+        #expect(top(1) == 120)
+        #expect(top(2) == 240)
+        #expect(top(3) == 480)
+        #expect(top(4) == 600, "capped")
+        #expect(top(50) == 600)
+    }
+
+    /// A client left running through a long outage reaches failure counts that would
+    /// overflow a shift, which is a trap rather than a large number.
+    @Test func survivesAnAbsurdFailureCount() {
+        #expect(top(1_000) == 600)
+        #expect(top(Int.max) == 600)
+    }
+
+    /// Success resets, so nothing is owed before the first failure.
+    @Test func nothingIsWaitedBeforeAFailure() {
+        #expect(top(0) == 0)
+        #expect(top(-1) == 0)
+    }
+
+    /// Full jitter: the whole range is in play. An outage stops every client at once,
+    /// and without this they all return in the same instant.
+    @Test func jitterSpreadsAcrossTheWholeRange() {
+        #expect(syncRetryDelay(afterFailures: 3, random: { $0.lowerBound }) == 0)
+        #expect(syncRetryDelay(afterFailures: 3, random: { ($0.lowerBound + $0.upperBound) / 2 }) == 240)
+    }
+}
