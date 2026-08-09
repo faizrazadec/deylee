@@ -98,8 +98,8 @@ struct SyncController: Sendable {
         // committed yet and never come back for it.
         return try await store.withUser(userID, lockForWrite: true) { connection in
             var results: [ChangeResult] = []
-            for change in body.changes {
-                results.append(await apply(change, userID: userID, on: connection))
+            for (index, change) in body.changes.enumerated() {
+                results.append(await apply(change, at: index, userID: userID, on: connection))
             }
 
             var pulled = try await self.pull(after: body.cursor, userID: userID, on: connection)
@@ -141,10 +141,21 @@ struct SyncController: Sendable {
     /// A rejection must not take the rest of the batch down with it. A client
     /// holding one corrupt row would otherwise be unable to sync anything, ever —
     /// the failure would be permanent and total rather than local to the row.
+    /// The name comes from the row's position in the batch, which is unique by
+    /// construction and cannot trap.
+    ///
+    /// It used to be `abs(row.id.hashValue)`, which was wrong twice. `abs(Int.min)` is
+    /// a runtime trap in Swift, and a trap here takes the process down with every
+    /// in-flight sync on it, not just the request that caused it — the house rule that
+    /// arithmetic reaching disk saturates rather than traps exists for exactly this.
+    /// And two ids colliding inside one batch produced the same name, so a release
+    /// freed the earlier savepoint and a later rollback unwound a row that had already
+    /// been applied. Both are long odds; one is a crash and the other is silent
+    /// corruption, and an index costs nothing.
     private func apply(
-        _ change: SyncChange, userID: UUID, on connection: PostgresConnection
+        _ change: SyncChange, at index: Int, userID: UUID, on connection: PostgresConnection
     ) async -> ChangeResult {
-        let name = "sp_\(abs(change.row.id.hashValue))"
+        let name = "sp_\(index)"
         do {
             _ = try await connection.query(PostgresQuery(unsafeSQL: "SAVEPOINT \(name)"), logger: logger)
             switch (change.table, change.op) {
