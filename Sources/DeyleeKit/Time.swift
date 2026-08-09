@@ -220,16 +220,20 @@ public func fromTimeInputValue(
     let mm = parts[1]
     let ss = parts.count == 3 ? parts[2] : "0"
     // One or two plain digits — no sign, no radix prefix, no exponent, no whitespace.
-    for component in [hh, mm, ss] where component.wholeMatch(of: /\d{1,2}/) == nil {
+    //
+    // `[0-9]` rather than `\d`: Swift's `\d` matches the whole Unicode `Nd` category
+    // and `Int(_:)` parses ASCII only, so "٠٩:٣٠" pasted into a time field passed this
+    // guard and force-unwrapped nil on the next line. Every unwrap below is now a
+    // `guard let` — this reads a string a person typed, and it already returns nil for
+    // everything else it cannot make sense of.
+    for component in [hh, mm, ss] where component.wholeMatch(of: /[0-9]{1,2}/) == nil {
         return nil
     }
-    let h = Int(hh)!
-    let m = Int(mm)!
-    let s = Int(ss)!
+    guard let h = Int(hh), let m = Int(mm), let s = Int(ss) else { return nil }
     guard h <= 23, m <= 59, s <= 59 else { return nil }
     let comps = DateComponents(
         year: date.year, month: date.month, day: date.day,
         hour: h, minute: m, second: s
     )
-    return calendar(in: zone).date(from: comps)!.epochMs
+    return calendar(in: zone).date(from: comps)?.epochMs
 }

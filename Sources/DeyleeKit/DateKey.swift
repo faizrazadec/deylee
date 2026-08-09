@@ -15,9 +15,18 @@ public struct DateKey: Hashable, Comparable, Sendable, CustomStringConvertible {
     }
 
     /// Accepts only `YYYY-MM-DD` naming a real calendar date, like `isDateKey`.
+    ///
+    /// `[0-9]` rather than `\d`, which matters more than it looks. Swift's `\d` matches
+    /// the whole Unicode `Nd` category while `Int(_:)` parses ASCII only, so a date in
+    /// Arabic-Indic digits passed the guard and then force-unwrapped nil — a crash, on
+    /// a value that arrives straight out of the server's JSON.
+    ///
+    /// The `compactMap` is the belt to that brace. This is a failable initialiser on
+    /// data from the wire; anything it cannot read is a nil, never a trap.
     public init?(_ string: String) {
-        guard string.wholeMatch(of: /\d{4}-\d{2}-\d{2}/) != nil else { return nil }
-        let parts = string.split(separator: "-").map { Int($0)! }
+        guard string.wholeMatch(of: /[0-9]{4}-[0-9]{2}-[0-9]{2}/) != nil else { return nil }
+        let parts = string.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
         self.init(year: parts[0], month: parts[1], day: parts[2])
     }
 

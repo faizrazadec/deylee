@@ -93,6 +93,19 @@ private func k(_ s: String) -> DateKey {
         #expect(!isDateKey("2025-02-30"))
         #expect(!isDateKey("2025-04-31"))
     }
+
+    /// Swift's `\d` matches the whole Unicode `Nd` category; `Int(_:)` parses ASCII
+    /// only. The two disagreeing is how a date in Arabic-Indic digits used to get past
+    /// the shape check and then crash on the force-unwrap behind it — from the server's
+    /// JSON, so any response the app would accept could take it down.
+    ///
+    /// A nil, not a trap, is the whole assertion.
+    @Test func rejectsDigitsThatAreNotAscii() {
+        #expect(DateKey("٢٠٢٦-٠٨-٠٨") == nil, "Arabic-Indic")
+        #expect(DateKey("२०२६-०८-०८") == nil, "Devanagari")
+        #expect(DateKey("２０２６-０８-０８") == nil, "fullwidth")
+        #expect(!isDateKey("٢٠٢٦-٠٨-٠٨"))
+    }
 }
 
 @Suite struct StartAndEndOfDay {
@@ -394,6 +407,14 @@ private func k(_ s: String) -> DateKey {
     @Test func acceptsOptionalSecondsAndZeroesMilliseconds() {
         #expect(fromTimeInputValue(date: k("2025-08-04"), time: "09:30:45", in: berlin) == local(2025, 8, 4, 9, 30, 45))
         #expect(fromTimeInputValue(date: k("2025-08-04"), time: "09:30", in: berlin) == local(2025, 8, 4, 9, 30, 0, 0))
+    }
+
+    /// The same `\d`-versus-`Int()` mismatch as `DateKey`, and reachable without a
+    /// server at all: this parses what somebody types or pastes into the time field.
+    @Test func rejectsDigitsThatAreNotAscii() {
+        #expect(fromTimeInputValue(date: k("2025-08-04"), time: "٠٩:٣٠", in: berlin) == nil)
+        #expect(fromTimeInputValue(date: k("2025-08-04"), time: "09:٣٠", in: berlin) == nil)
+        #expect(fromTimeInputValue(date: k("2025-08-04"), time: "09:30:٤٥", in: berlin) == nil)
     }
 
     @Test func roundTripsThroughToTimeInputValue() throws {
