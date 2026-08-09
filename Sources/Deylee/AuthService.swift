@@ -97,9 +97,15 @@ final class AuthService: NSObject, ObservableObject {
         state = .signingIn(via: .browser)
         do {
             let verifier = Self.makeCodeVerifier()
-            let code = try await authorize(challenge: Self.challenge(for: verifier))
+            // Same CSPRNG as the verifier, and three independent values: one proves
+            // the exchange, one binds the callback, one binds the token.
+            let state = Self.makeCodeVerifier()
+            let nonce = Self.makeCodeVerifier()
+            let code = try await authorize(
+                challenge: Self.challenge(for: verifier), state: state, nonce: nonce
+            )
             let idToken = try await exchange(code: code, verifier: verifier)
-            let session = try await establishSession(idToken: idToken)
+            let session = try await establishSession(idToken: idToken, nonce: nonce)
 
             // `adopt` claims history written before anyone signed in — everything
             // local is already dirty, so recording the user carries all of it up on
@@ -457,7 +463,19 @@ final class AuthService: NSObject, ObservableObject {
     // MARK: - OAuth
 
     /// Open Google's consent screen and return the authorization code.
-    private func authorize(challenge: String) async throws -> String {
+    ///
+    /// `state` and `nonce` are separate protections and PKCE replaces neither.
+    ///
+    /// PKCE makes an intercepted code useless without the verifier. `state` answers a
+    /// different question — whether this callback belongs to the request that started
+    /// it. A custom-scheme redirect on macOS is claimable by any app registering the
+    /// same scheme, and without `state` an attacker-supplied code arriving here is
+    /// exchanged as if it were the user's.
+    ///
+    /// `nonce` binds the ID token to this authorization request, so a token minted
+    /// elsewhere for the same `aud` cannot be replayed into a sign-in here. The server
+    /// checks it alongside `iss`, `aud` and `email_verified`.
+    private func authorize(challenge: String, state: String, nonce: String) async throws -> String {
         var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
         components.queryItems = [
             .init(name: "client_id", value: config.googleClientID),
@@ -466,6 +484,8 @@ final class AuthService: NSObject, ObservableObject {
             .init(name: "scope", value: "openid email profile"),
             .init(name: "code_challenge", value: challenge),
             .init(name: "code_challenge_method", value: "S256"),
+            .init(name: "state", value: state),
+            .init(name: "nonce", value: nonce),
         ]
 
         let callback: URL = try await withCheckedThrowingContinuation { continuation in
@@ -499,12 +519,31 @@ final class AuthService: NSObject, ObservableObject {
         }
         webAuthSession = nil
 
-        guard let code = URLComponents(url: callback, resolvingAgainstBaseURL: false)?
-            .queryItems?.first(where: { $0.name == "code" })?.value
+        let returned = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems
+
+        // Before the code is so much as read. A callback that cannot prove it belongs
+        // to this request is not one to act on, whatever else it carries.
+        guard let echoed = returned?.first(where: { $0.name == "state" })?.value,
+              Self.constantTimeEquals(echoed, state)
         else {
+            throw AuthError.stateMismatch
+        }
+
+        guard let code = returned?.first(where: { $0.name == "code" })?.value else {
             throw AuthError.noAuthorizationCode
         }
         return code
+    }
+
+    /// Compared without an early exit. `state` is a secret this process chose and the
+    /// callback is attacker-influenced; there is no reason to leak its prefix through
+    /// how long the comparison takes.
+    private static func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {
+        let a = Array(lhs.utf8), b = Array(rhs.utf8)
+        guard a.count == b.count else { return false }
+        var difference: UInt8 = 0
+        for (x, y) in zip(a, b) { difference |= x ^ y }
+        return difference == 0
     }
 
     /// Trade the code for an ID token, directly with Google.
@@ -535,11 +574,15 @@ final class AuthService: NSObject, ObservableObject {
     }
 
     /// Hand the ID token to our API and take back a session of ours.
-    private func establishSession(idToken: String) async throws -> StoredSession {
+    private func establishSession(idToken: String, nonce: String) async throws -> StoredSession {
         struct Body: Encodable {
             let idToken: String
             let deviceId: String?
             let timezone: String
+            /// Sent so the server can check the token was minted for *this* request.
+            /// The client could compare it itself, but the client is the party being
+            /// impersonated — the check belongs where the token is trusted.
+            let nonce: String
         }
         let deviceID = try? repo.syncState().deviceID
         let response: SessionResponseDTO = try await APIClient.post(
@@ -549,7 +592,8 @@ final class AuthService: NSObject, ObservableObject {
                 deviceId: deviceID,
                 // The server needs this to attribute a day correctly for anyone
                 // whose day does not start when the server's does.
-                timezone: TimeZone.current.identifier
+                timezone: TimeZone.current.identifier,
+                nonce: nonce
             )
         )
         return response.stored()
@@ -579,12 +623,15 @@ final class AuthService: NSObject, ObservableObject {
 
 enum AuthError: Error, CustomStringConvertible {
     case noAuthorizationCode
+    case stateMismatch
     case googleRejectedTheExchange(String)
 
     var description: String {
         switch self {
         case .noAuthorizationCode:
             "Google did not return an authorization code."
+        case .stateMismatch:
+            "That sign-in did not come back from the request that started it."
         case .googleRejectedTheExchange(let detail):
             "Google refused the token exchange: \(detail)"
         }
