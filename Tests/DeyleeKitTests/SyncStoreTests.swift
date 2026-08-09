@@ -608,3 +608,31 @@ private final class Harness {
         #expect(try h.repo.quarantined().isEmpty)
     }
 }
+
+/// Going backwards, in the one case where backwards is right.
+@Suite struct CursorRewind {
+    /// `advanceCursor` is `MAX(cursor, ?)` — correct, and the reason the 409 recovery
+    /// path did nothing. It called `advanceCursor(to: 0)`, which is `MAX(cursor, 0)`.
+    /// Even once the server started returning the 409 the protocol documents, the
+    /// client would have asked for the same impossible cursor for ever.
+    @Test func advancingToZeroDoesNotRewind() throws {
+        let h = try Harness()
+        try h.repo.advanceCursor(to: 500, at: 1_000)
+        try h.repo.advanceCursor(to: 0, at: 2_000)
+        #expect(try h.repo.syncState().cursor == 500, "monotonic, as it should be")
+    }
+
+    /// The server was restored from a backup: its sequence rewound and this cursor is
+    /// ahead of every row it can offer, so `WHERE seq > cursor` matches nothing for
+    /// ever. Re-delivery is safe — rows are matched by uuid and upserted.
+    @Test func rewindingStartsFromTheBeginningAgain() throws {
+        let h = try Harness()
+        try h.repo.advanceCursor(to: 500, at: 1_000)
+        try h.repo.rewindCursor(at: 2_000)
+        #expect(try h.repo.syncState().cursor == 0)
+
+        // And the cursor still climbs normally afterwards.
+        try h.repo.advanceCursor(to: 7, at: 3_000)
+        #expect(try h.repo.syncState().cursor == 7)
+    }
+}

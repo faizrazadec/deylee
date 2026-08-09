@@ -206,6 +206,22 @@ extension Repository {
         )
     }
 
+    /// Rewind to the start and pull everything again.
+    ///
+    /// The one case where going backwards is right: the server has been restored from
+    /// a backup, its sequence has rewound, and this device's cursor is ahead of any
+    /// row the server can offer. `WHERE seq > cursor` then matches nothing for ever —
+    /// a client that pulls silently and indefinitely nothing at all.
+    ///
+    /// Deliberately not `advanceCursor(to: 0)`, which is `MAX(cursor, 0)` and does
+    /// nothing whatsoever. Re-delivery is safe: rows are matched by uuid and upserted.
+    public func rewindCursor(at now: EpochMs) throws {
+        try db.run(
+            "UPDATE sync_state SET cursor = 0, last_synced_at = ? WHERE id = 1",
+            [.integer(now)]
+        )
+    }
+
     // MARK: Push
 
     /// Rows this device has that the server has not acknowledged.

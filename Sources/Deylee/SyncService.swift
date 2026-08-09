@@ -120,7 +120,7 @@ final class SyncService: ObservableObject {
             // The client is ahead of the server — it is talking to a restored
             // backup. Rewinding to zero re-delivers everything; rows already held
             // are matched by uuid and upserted, so nothing duplicates.
-            try? repo.advanceCursor(to: 0, at: now())
+            try? repo.rewindCursor(at: now())
             status = .failed("The server was restored from a backup; resyncing from the start.")
         } catch let failure as APIClient.HTTPFailure where failure.isUnauthorized {
             status = .failed("Signed out. Sign in again to resume syncing.")
