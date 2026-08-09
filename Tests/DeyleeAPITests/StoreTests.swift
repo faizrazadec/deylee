@@ -17,7 +17,9 @@ import Testing
     /// quiet spell paid to build a connection from nothing. On a database across an
     /// ocean that made the first sign-in of the day the one that stalled.
     @Test func keepsConnectionsWarm() throws {
-        let configuration = try Store.configuration(from: Self.url)
+        let configuration = try Store.configuration(
+            from: Self.url, tls: false, caCertificatePath: nil
+        )
         #expect(configuration.options.minimumConnections > 0)
     }
 
@@ -25,7 +27,9 @@ import Testing
     /// pool never gets to try a second connection before the deadline takes the whole
     /// request down.
     @Test func boundsOneAttemptWellInsideTheRequestDeadline() throws {
-        let configuration = try Store.configuration(from: Self.url)
+        let configuration = try Store.configuration(
+            from: Self.url, tls: false, caCertificatePath: nil
+        )
         #expect(configuration.options.connectTimeout < Store.deadline)
     }
 
@@ -41,14 +45,47 @@ import Testing
     /// through fails authentication with a message about the password being wrong.
     @Test func decodesAPercentEscapedPassword() throws {
         let configuration = try Store.configuration(
-            from: "postgresql://someone:p%40ss%2Fword@db.example.invalid:5432/postgres"
+            from: "postgresql://someone:p%40ss%2Fword@db.example.invalid:5432/postgres",
+            tls: false, caCertificatePath: nil
         )
         #expect(configuration.password == "p@ss/word")
     }
 
+    /// TLS with nothing to verify against used to degrade to
+    /// `certificateVerification = .none` and log a warning. A warning is not a control:
+    /// one line in a log on a deploy that otherwise succeeds, guarding a failure that
+    /// is silent by construction. Anything answering on that host and port would have
+    /// received the API's database credentials.
+    @Test func refusesEncryptedButUnverifiedTLS() {
+        #expect(throws: StoreError.self) {
+            _ = try Store.configuration(from: Self.url, tls: true, caCertificatePath: nil)
+        }
+    }
+
+    /// A path that is not there is caught at boot rather than at the first handshake,
+    /// where it surfaces as a connection failure with nothing pointing at the cause.
+    @Test func refusesACaCertificateThatIsNotThere() {
+        #expect(throws: StoreError.self) {
+            _ = try Store.configuration(
+                from: Self.url, tls: true, caCertificatePath: "/no/such/ca.crt"
+            )
+        }
+    }
+
+    /// The escape hatch the fallback was really built for: the local development
+    /// container, where there is no certificate and nothing on the wire to protect.
+    @Test func tlsDisabledNeedsNoCertificate() throws {
+        let configuration = try Store.configuration(
+            from: Self.url, tls: false, caCertificatePath: nil
+        )
+        #expect(configuration.options.minimumConnections > 0)
+    }
+
     @Test func refusesAUrlThatIsNotPostgres() {
         #expect(throws: StoreError.self) {
-            _ = try Store.configuration(from: "not a url at all")
+            _ = try Store.configuration(
+                from: "not a url at all", tls: false, caCertificatePath: nil
+            )
         }
     }
 }

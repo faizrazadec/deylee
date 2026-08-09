@@ -32,13 +32,6 @@ struct Store: Sendable {
             backgroundLogger: logger
         )
         self.logger = logger
-
-        if useTLS, caCertificatePath == nil {
-            logger.warning("""
-                database TLS is encrypted but UNVERIFIED — set DEYLEE_DB_CA_CERT to \
-                Supabase's CA certificate to authenticate the server
-                """)
-        }
     }
 
     /// Parse a `postgresql://user:password@host:port/database` URL.
@@ -48,8 +41,11 @@ struct Store: Sendable {
     /// characters that must be escaped in a URL, and passing the escaped form
     /// through would fail authentication with a message about the password being
     /// wrong — which it technically would be.
+    /// No defaults on the TLS arguments, deliberately. `caCertificatePath: nil` used to
+    /// be the quiet way to get an unverified connection; making every caller say what
+    /// it wants is what stops that from being the path of least resistance again.
     static func configuration(
-        from url: String, tls useTLS: Bool = true, caCertificatePath: String? = nil
+        from url: String, tls useTLS: Bool, caCertificatePath: String?
     ) throws -> PostgresClient.Configuration {
         guard let components = URLComponents(string: url),
               let host = components.host,
@@ -72,19 +68,29 @@ struct Store: Sendable {
         // verifying) while a verifying client does not.
         //
         // Point DEYLEE_DB_CA_CERT at the CA certificate from the Supabase dashboard
-        // and the connection is both encrypted and authenticated. Without it the
-        // traffic is still encrypted, but nothing proves the far end is actually
-        // your database, which leaves a machine-in-the-middle able to read
-        // everything. The fallback exists so this runs out of the box; the warning
-        // in `init` exists so nobody ships it that way by accident.
+        // and the connection is both encrypted and authenticated.
+        //
+        // Without it there is no configuration to fall back to that is worth having.
+        // Encrypted-but-unverified means anything that can answer on that host and
+        // port — a hijacked DNS record, a compromised path — receives the API's
+        // database credentials and serves back whatever rows it likes. This used to
+        // degrade to `certificateVerification = .none` and log a warning, which is not
+        // a control: one line in a log on a deploy that otherwise succeeds, guarding a
+        // failure that is silent by construction.
+        //
+        // `DEYLEE_DB_TLS=disable` is the escape hatch, and it is the honest one — the
+        // local development container, where there is no certificate and nothing to
+        // protect. The Dockerfile sets the path for every real deployment.
         var tls = PostgresClient.Configuration.TLS.disable
         if useTLS {
-            var tlsConfig = TLSConfiguration.makeClientConfiguration()
-            if let caCertificatePath {
-                tlsConfig.trustRoots = .file(caCertificatePath)
-            } else {
-                tlsConfig.certificateVerification = .none
+            guard let caCertificatePath else { throw StoreError.unverifiableTLS }
+            guard FileManager.default.fileExists(atPath: caCertificatePath) else {
+                // Checked at boot rather than left to the first handshake, where it
+                // surfaces as a connection failure with nothing pointing at the cause.
+                throw StoreError.missingCACertificate(path: caCertificatePath)
             }
+            var tlsConfig = TLSConfiguration.makeClientConfiguration()
+            tlsConfig.trustRoots = .file(caCertificatePath)
             tls = .require(tlsConfig)
         }
 
@@ -278,6 +284,11 @@ enum StoreError: Error, CustomStringConvertible {
     /// The connected role skips row-level security, so every tenancy policy in the
     /// schema is inert. Refused at boot rather than served.
     case bypassesRowLevelSecurity(role: String)
+    /// TLS is on with nothing to verify the far end against. Refused at boot: an
+    /// encrypted connection to whoever answers is not a secure one.
+    case unverifiableTLS
+    /// `DEYLEE_DB_CA_CERT` names a file that is not there.
+    case missingCACertificate(path: String)
 
     /// What a client is told when the deadline is hit. Kept here because two layers
     /// translate this error — the auth routes, which swallow everything into an
@@ -299,6 +310,16 @@ enum StoreError: Error, CustomStringConvertible {
             another's hours. Point it at the restricted login (deylee_api), not \
             SUPABASE_DB_URL.
             """
+        case .unverifiableTLS:
+            """
+            DEYLEE_DB_TLS is on but DEYLEE_DB_CA_CERT is unset, so the database \
+            connection would be encrypted to whoever answers rather than to your \
+            database. Point it at Supabase's CA certificate — the repository ships one \
+            at server/certs/ and the Dockerfile already sets this. For the local \
+            development container, set DEYLEE_DB_TLS=disable instead.
+            """
+        case .missingCACertificate(let path):
+            "DEYLEE_DB_CA_CERT points at '\(path)', which does not exist."
         }
     }
 }
