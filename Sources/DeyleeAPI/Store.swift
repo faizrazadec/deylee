@@ -275,6 +275,9 @@ enum StoreError: Error, CustomStringConvertible {
     /// The database did not answer inside ``Store/deadline``. A refusal the caller
     /// can show, rather than a request that never comes back.
     case timedOut
+    /// The connected role skips row-level security, so every tenancy policy in the
+    /// schema is inert. Refused at boot rather than served.
+    case bypassesRowLevelSecurity(role: String)
 
     /// What a client is told when the deadline is hit. Kept here because two layers
     /// translate this error — the auth routes, which swallow everything into an
@@ -289,6 +292,46 @@ enum StoreError: Error, CustomStringConvertible {
             "DEYLEE_DB_URL is not a postgresql:// URL with a host and username."
         case .timedOut:
             "The database did not answer in time."
+        case .bypassesRowLevelSecurity(let role):
+            """
+            DEYLEE_DB_URL connects as '\(role)', which bypasses row-level security. \
+            Every tenancy policy would be skipped and one customer's sync would read \
+            another's hours. Point it at the restricted login (deylee_api), not \
+            SUPABASE_DB_URL.
+            """
         }
+    }
+}
+
+extension Store {
+    /// Refuse to serve as a role that row-level security does not apply to.
+    ///
+    /// Tenancy rests on the policies binding, and they bind only to an ordinary role.
+    /// A superuser, or one holding BYPASSRLS, skips every policy — silently. Nothing
+    /// else would look wrong: the connection succeeds, the health check passes, the
+    /// log says `listening`, and every sync then reads and tombstones every
+    /// customer's rows.
+    ///
+    /// The misconfiguration is one character of `.env` away, because
+    /// `SUPABASE_DB_URL` connects as `postgres` and sits directly above
+    /// `DEYLEE_DB_URL` in the file. Checked at boot rather than per request: this
+    /// cannot change while the process runs, and a process that would serve every
+    /// tenant's data to whoever asks should not start at all.
+    func assertNotBypassingRowLevelSecurity() async throws {
+        let (role, isSuper, bypasses) = try await withoutTenant { connection in
+            let rows = try await connection.query(
+                "SELECT current_user::text, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user",
+                logger: self.logger
+            )
+            for try await row in rows.decode((String, Bool, Bool).self) { return row }
+            // No matching row means the role is not in pg_roles at all, which should
+            // be impossible for the role we are connected as. Unknown is not safe.
+            return ("unknown", true, true)
+        }
+
+        guard !isSuper, !bypasses else {
+            throw StoreError.bypassesRowLevelSecurity(role: role)
+        }
+        logger.info("tenancy enforced", metadata: ["role": .string(role)])
     }
 }

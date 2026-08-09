@@ -62,7 +62,7 @@ AuthController(store: store, tokens: tokens, config: config, mailer: mailer, log
 SyncController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
 WitnessController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
 
-let app = Application(
+var app = Application(
     router: router,
     configuration: .init(
         address: .hostname(config.host, port: config.port),
@@ -72,10 +72,25 @@ let app = Application(
     logger: logger
 )
 
+// After the pool is up and before a single request is served. Tenancy rests on the
+// row-level-security policies binding, and they bind only to an ordinary role — so a
+// process connected as a superuser is one that would serve every customer's hours to
+// whoever asked, while looking entirely healthy.
+app.beforeServerStarts {
+    try await store.assertNotBypassingRowLevelSecurity()
+}
+
 logger.info("listening", metadata: [
     "address": .string("\(config.host):\(config.port)"),
     "audiences": .string("\(config.googleAudiences.count) google client(s)"),
     "hostedDomain": .string(config.googleAllowedHostedDomain ?? "any"),
 ])
 
-try await app.runService()
+do {
+    try await app.runService()
+} catch {
+    // A refusal to start is a sentence somebody has to act on, not a stack trace.
+    // Same shape as the configuration failure above, for the same reason.
+    FileHandle.standardError.write(Data("deylee-api: \(error)\n".utf8))
+    exit(1)
+}

@@ -102,7 +102,7 @@ struct SyncController: Sendable {
                 results.append(await apply(change, userID: userID, on: connection))
             }
 
-            var pulled = try await self.pull(after: body.cursor, on: connection)
+            var pulled = try await self.pull(after: body.cursor, userID: userID, on: connection)
             let hasMore = pulled.count > Self.pageSize
             if hasMore { pulled = Array(pulled.prefix(Self.pageSize)) }
 
@@ -149,9 +149,9 @@ struct SyncController: Sendable {
             _ = try await connection.query(PostgresQuery(unsafeSQL: "SAVEPOINT \(name)"), logger: logger)
             switch (change.table, change.op) {
             case ("segments", "upsert"): try await upsertSegment(change.row, userID: userID, on: connection)
-            case ("segments", "delete"): try await tombstone("segments", change.row, on: connection)
+            case ("segments", "delete"): try await tombstone("segments", change.row, userID: userID, on: connection)
             case ("days", "upsert"): try await upsertDay(change.row, userID: userID, on: connection)
-            case ("days", "delete"): try await tombstone("days", change.row, on: connection)
+            case ("days", "delete"): try await tombstone("days", change.row, userID: userID, on: connection)
             default:
                 throw HTTPError(.badRequest, message: "Unknown \(change.table)/\(change.op).")
             }
@@ -268,7 +268,7 @@ struct SyncController: Sendable {
     /// the row is still there and can be restored, whereas resurrecting time
     /// somebody deleted shows them hours they believed were gone.
     private func tombstone(
-        _ table: String, _ row: SyncRow, on connection: PostgresConnection
+        _ table: String, _ row: SyncRow, userID: UUID, on connection: PostgresConnection
     ) async throws {
         guard let rowID = UUID(uuidString: row.id) else {
             throw HTTPError(.badRequest, message: "That id is not a UUID.")
@@ -276,11 +276,13 @@ struct SyncController: Sendable {
         let query: PostgresQuery = table == "segments"
             ? """
               UPDATE public.segments SET deleted_at = \(row.updatedAt), updated_at = \(row.updatedAt)
-              WHERE id = \(rowID) AND deleted_at IS NULL AND \(row.updatedAt) >= updated_at
+              WHERE id = \(rowID) AND user_id = \(userID)
+                AND deleted_at IS NULL AND \(row.updatedAt) >= updated_at
               """
             : """
               UPDATE public.days SET deleted_at = \(row.updatedAt), updated_at = \(row.updatedAt)
-              WHERE id = \(rowID) AND deleted_at IS NULL AND \(row.updatedAt) >= updated_at
+              WHERE id = \(rowID) AND user_id = \(userID)
+                AND deleted_at IS NULL AND \(row.updatedAt) >= updated_at
               """
         _ = try await connection.query(query, logger: logger)
     }
@@ -291,7 +293,9 @@ struct SyncController: Sendable {
     ///
     /// One extra row is fetched beyond the page so `hasMore` is known without a
     /// second count query.
-    private func pull(after cursor: Int64, on connection: PostgresConnection) async throws -> [SyncChange] {
+    private func pull(
+        after cursor: Int64, userID: UUID, on connection: PostgresConnection
+    ) async throws -> [SyncChange] {
         let limit = Self.pageSize + 1
         var out: [SyncChange] = []
 
@@ -299,7 +303,8 @@ struct SyncController: Sendable {
             """
             SELECT id, day_date, type, started_at, ended_at, note,
                    created_at, updated_at, deleted_at, seq
-            FROM public.segments WHERE seq > \(cursor) ORDER BY seq LIMIT \(limit)
+            FROM public.segments WHERE user_id = \(userID) AND seq > \(cursor)
+             ORDER BY seq LIMIT \(limit)
             """,
             logger: logger
         )
@@ -323,7 +328,8 @@ struct SyncController: Sendable {
         let days = try await connection.query(
             """
             SELECT id, date, target_minutes, ended_at, created_at, updated_at, deleted_at, seq
-            FROM public.days WHERE seq > \(cursor) ORDER BY seq LIMIT \(limit)
+            FROM public.days WHERE user_id = \(userID) AND seq > \(cursor)
+             ORDER BY seq LIMIT \(limit)
             """,
             logger: logger
         )
