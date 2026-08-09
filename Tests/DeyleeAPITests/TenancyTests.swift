@@ -27,7 +27,10 @@ import Testing
 /// `roleCannotBypassPolicies` fails loudly rather than letting the rest pass hollow.
 private let testDatabaseURL = ProcessInfo.processInfo.environment["DEYLEE_TEST_DB_URL"]
 
-@Suite(.enabled(if: testDatabaseURL != nil, "set DEYLEE_TEST_DB_URL to run"))
+// Serialized: these share two fixed accounts, and the cleanup tombstones every live
+// day belonging to them. Run in parallel, one test's cleanup deletes the row another
+// is still asserting on — which reads as a tenancy failure and is not one.
+@Suite(.enabled(if: testDatabaseURL != nil, "set DEYLEE_TEST_DB_URL to run"), .serialized)
 struct Tenancy {
     private func makeStore() throws -> Store {
         try Store(
