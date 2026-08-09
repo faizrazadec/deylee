@@ -101,6 +101,23 @@ struct AuthController: Sendable {
         router.post("/v1/auth/password", use: signInWithPassword)
         router.post("/v1/auth/refresh", use: refresh)
         router.post("/v1/auth/set-password", use: setPassword)
+        router.post("/v1/auth/signout", use: signOut)
+    }
+
+    /// The session behind a bearer token, or a 401.
+    ///
+    /// One copy, because two routes need it and a second hand-rolled header parse is
+    /// how one of them ends up checking something the other does not.
+    private func authenticated(_ request: Request) async throws -> (user: UUID, session: UUID) {
+        guard let header = request.headers[.authorization], header.hasPrefix("Bearer "),
+              let payload = try? await tokens.verifyAccessToken(
+                  String(header.dropFirst("Bearer ".count))),
+              let userID = UUID(uuidString: payload.sub.value),
+              let sessionID = UUID(uuidString: payload.sid)
+        else {
+            throw HTTPError(.unauthorized, message: "A bearer token is required.")
+        }
+        return (userID, sessionID)
     }
 
     // MARK: Google
@@ -292,26 +309,75 @@ struct AuthController: Sendable {
     /// Google: the access token has already established who they are, so nothing
     /// further needs proving. It is also why sign-up may refuse a known address
     /// outright rather than inventing an email-verification flow.
+    ///
+    /// It also ends every *other* session.
+    ///
+    /// That is the reason most people change a password — they believe somebody else is in
+    /// the account — and a new password that leaves the intruder's ninety-day refresh
+    /// chain running answers the wrong half of the problem. The device doing the
+    /// changing keeps its session; signing it out too would only teach people that
+    /// changing a password is a nuisance.
     @Sendable
     func setPassword(_ request: Request, context: BasicRequestContext) async throws -> OKResponse {
-        guard let header = request.headers[.authorization], header.hasPrefix("Bearer "),
-              let payload = try? await tokens.verifyAccessToken(String(header.dropFirst(7))),
-              let userID = UUID(uuidString: payload.sub.value)
-        else {
-            throw HTTPError(.unauthorized, message: "A bearer token is required.")
-        }
+        let caller = try await authenticated(request)
         let body = try await request.decode(as: SetPasswordRequest.self, context: context)
 
+        let ended: [UUID]
+        do {
+            ended = try await store.withoutTenant { connection -> [UUID] in
+                _ = try await connection.query(
+                    "SELECT public.auth_set_password(\(caller.user), \(body.password))",
+                    logger: logger
+                ).collect()
+                // Same transaction as the password itself: a change that took effect
+                // while the old sessions survived is the state this route exists to
+                // prevent, and two statements outside one would allow it on a fault.
+                let rows = try await connection.query(
+                    """
+                    SELECT public.auth_revoke_other_sessions(
+                        \(caller.user), \(caller.session))
+                    """,
+                    logger: logger
+                )
+                var ids: [UUID] = []
+                for try await id in rows.decode(UUID?.self) { if let id { ids.append(id) } }
+                return ids
+            }
+        } catch {
+            throw mapped(error)
+        }
+
+        for session in ended { await tokens.revoke(sessionID: session) }
+        if !ended.isEmpty {
+            logger.info("password changed; other sessions ended", metadata: [
+                "user": .string(caller.user.uuidString.lowercased()),
+                "sessions": .string("\(ended.count)"),
+            ])
+        }
+        return OKResponse(ok: true)
+    }
+
+    /// End this session, on the server as well as on the device.
+    ///
+    /// Idempotent, and deliberately so: a client that cannot reach this route clears
+    /// its own tokens anyway and may well call it again on the next launch. Revoking
+    /// an already-revoked chain updates nothing.
+    @Sendable
+    func signOut(_ request: Request, context _: BasicRequestContext) async throws -> OKResponse {
+        let caller = try await authenticated(request)
         do {
             try await store.withoutTenant { connection in
                 _ = try await connection.query(
-                    "SELECT public.auth_set_password(\(userID), \(body.password))",
-                    logger: logger
+                    "SELECT public.auth_revoke_session(\(caller.session))", logger: logger
                 ).collect()
             }
         } catch {
             throw mapped(error)
         }
+        await tokens.revoke(sessionID: caller.session)
+        logger.info("session ended", metadata: [
+            "user": .string(caller.user.uuidString.lowercased()),
+        ])
         return OKResponse(ok: true)
     }
 
@@ -354,6 +420,12 @@ struct AuthController: Sendable {
 
         guard outcome == "rotated", let user else {
             if outcome == "replayed" {
+                // The chain is revoked in the database by now. The access tokens on it
+                // are the half that revocation could never reach, and this is the case
+                // where that matters most: a replay means somebody has a copy.
+                if let replayed = try? await sessionID(forTokenHash: oldHash) {
+                    await tokens.revoke(sessionID: replayed)
+                }
                 logger.warning("refresh token replayed; session revoked")
             }
             throw HTTPError(.unauthorized, message: "That session has ended. Sign in again.")
@@ -361,16 +433,10 @@ struct AuthController: Sendable {
 
         // The rotated token stays on the same chain, so the access token must carry
         // the same session id or the two would describe different sessions.
-        let sessionID = try await store.withoutTenant { connection -> UUID in
-            let rows = try await connection.query(
-                "SELECT public.auth_session_for_token(\(newHash))", logger: logger
-            )
-            for try await id in rows.decode(UUID?.self) { if let id { return id } }
-            throw HTTPError(.internalServerError, message: "The session could not be renewed.")
-        }
+        let session = try await sessionID(forTokenHash: newHash)
 
         let access = try await tokens.issueAccessToken(
-            userID: UUID(uuidString: user.id)!, sessionID: sessionID
+            userID: UUID(uuidString: user.id)!, sessionID: session
         )
         return SessionResponse(
             accessToken: access, refreshToken: newToken,
@@ -379,6 +445,17 @@ struct AuthController: Sendable {
     }
 
     // MARK: Shared
+
+    /// The chain a stored refresh token belongs to.
+    private func sessionID(forTokenHash hash: ByteBuffer) async throws -> UUID {
+        try await store.withoutTenant { connection -> UUID in
+            let rows = try await connection.query(
+                "SELECT public.auth_session_for_token(\(hash))", logger: logger
+            )
+            for try await id in rows.decode(UUID?.self) { if let id { return id } }
+            throw HTTPError(.internalServerError, message: "The session could not be renewed.")
+        }
+    }
 
     /// Run a function that returns one user row, translating its refusals.
     private func callReturningUser(_ query: PostgresQuery) async throws -> UserDTO {

@@ -93,6 +93,21 @@ actor TokenService {
 
     private var googleKeysLoadedAt: Date?
 
+    /// Session ids whose access tokens have stopped counting, each with the moment it
+    /// stops mattering.
+    ///
+    /// Revoking a session revokes its refresh chain, and until this existed that was
+    /// the whole of it: the access token already in the thief's hands stayed valid for
+    /// the rest of its hour, so signing out did nothing a stolen session could feel.
+    /// An entry only has to outlive the longest-lived token carrying that id, which is
+    /// one access-token lifetime from the moment of revocation — after that every such
+    /// token fails on expiry alone.
+    ///
+    /// ponytail: one process's memory. A second replica keeps its own set and would
+    /// honour a token this one refuses; the upgrade is a shared cache, or reading
+    /// `refresh_tokens.revoked_at` per request if the round trip is ever affordable.
+    private var revokedSessions: [String: Date] = [:]
+
     /// Floor between refetches of Google's key set.
     ///
     /// An unknown `kid` triggers a refresh, and an unknown `kid` is something an
@@ -191,10 +206,28 @@ actor TokenService {
         )
     }
 
-    func verifyAccessToken(_ token: String) async throws -> SessionToken {
+    /// Stop honouring access tokens on this session.
+    ///
+    /// Called beside every database revocation rather than instead of it. The database
+    /// is what makes a revocation survive a restart; this is what makes it take effect
+    /// before the hour is out.
+    func revoke(sessionID: UUID, now: Date = Date()) {
+        revokedSessions[sessionID.uuidString] = now.addingTimeInterval(config.accessTokenTTL)
+        // Swept here because this is the only thing that makes the map grow, and it is
+        // rare — a sign-out, a password change, a replayed token.
+        revokedSessions = revokedSessions.filter { $0.value > now }
+    }
+
+    func verifyAccessToken(_ token: String, now: Date = Date()) async throws -> SessionToken {
         let payload = try await sessionKeys.verify(token, as: SessionToken.self)
         guard payload.iss.value == config.sessionIssuer else {
             throw TokenError.issuerRejected(payload.iss.value)
+        }
+        // Checked here rather than in the routes: three of them verify a token, and a
+        // guard added to two of the three is a revocation that works everywhere except
+        // the one place somebody forgot.
+        if let until = revokedSessions[payload.sid], until > now {
+            throw TokenError.invalid("that session has been signed out")
         }
         return payload
     }

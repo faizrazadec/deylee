@@ -93,6 +93,25 @@ struct AuthRoutes {
         }
     }
 
+    // MARK: Sign-out
+
+    /// Sign-out revokes a session and must therefore prove which one. Without a token
+    /// there is no `sid` to act on, and a route that shrugged and answered 200 would
+    /// read as a successful sign-out to every client.
+    @Test func signOutWithoutATokenIsRefused() async throws {
+        try await withRouter { client in
+            let missing = try await self.post(client, "/v1/auth/signout", "{}")
+            #expect(missing == .unauthorized)
+
+            let garbage = try await client.execute(
+                uri: "/v1/auth/signout", method: .post,
+                headers: [.contentType: "application/json", .authorization: "Bearer not-a-jwt"],
+                body: ByteBuffer(string: "{}")
+            ) { $0.status }
+            #expect(garbage == .unauthorized)
+        }
+    }
+
     /// A body the route cannot decode is the client's fault, not the server's. It
     /// used to be easy for this to surface as a 500.
     @Test func aMalformedBodyIsRejectedNotCrashed() async throws {
