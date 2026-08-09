@@ -5,8 +5,44 @@ SQLite schema may still change, so a minor bump can carry a migration.
 
 ## 0.2.0 — 2026-08-09 (pre-release)
 
-Integrity, top to bottom — because the store lives on a machine its owner controls,
-and a tracker sold to companies has to be honest about what that means.
+Sync works now. In 0.1.0 it did not, and that is the headline: everything the app
+itself wrote stayed on the machine that wrote it. The rest of this release is
+integrity — the store lives on a machine its owner controls, and a tracker sold to
+companies has to be honest about what that means.
+
+### Sync actually syncs
+
+- **Nothing the app created ever reached the server.** New days and segments were
+  written without a sync identity, so the push queue held them for ever without ever
+  offering them; edits were not flagged as changed, so a corrected time stayed local
+  while the server handed the old one back; and deletes removed the row outright,
+  leaving nothing to send, so the next pull returned what you had just deleted. All
+  three are fixed.
+- **The history stranded by that bug is rescued on upgrade.** Everything already on
+  disk is given an identity and queued, ordered by when it was actually lived rather
+  than all at the instant of the upgrade. Rows the server already has are left alone,
+  so nothing arrives twice.
+- A failed sync now backs off instead of retrying in a tight loop, a row the server
+  will always refuse stops being pushed for ever, and a row this build cannot read is
+  kept rather than dropped.
+- **History shows the entries the server would not accept**, so a rejected row is
+  something you can see and fix rather than a silent gap.
+
+### Your hours stay yours
+
+- **Sync now filters by account in the query as well as in the database.** The
+  application layer was trusting row-level security alone; one misconfigured database
+  URL would have been enough for one customer's sync to read and tombstone another's
+  rows. Three independent layers now, and a test that asserts a second customer can
+  neither see nor delete the first's.
+- Signing out ends the session everywhere, and changing a password ends every other
+  session — a revoked session's access token is refused straight away rather than
+  honoured for the rest of its hour.
+- Sign-in costs the same whether or not the address exists, so the clock can no longer
+  be used to discover who has an account, and repeated attempts on one account are
+  capped.
+- The Google sign-in callback is bound to the request that started it, and the API
+  refuses to start at all against a database connection it cannot verify.
 
 ### The local store is now encrypted
 
@@ -38,6 +74,18 @@ and a tracker sold to companies has to be honest about what that means.
 
 - Sign-in no longer occasionally hangs forever when the database is briefly
   unreachable; it fails cleanly and can be retried.
+- Dates and times are parsed as ASCII digits only, so a date carrying digits from
+  another script cannot be read as a day it is not.
+- A release build now takes its API address at assembly time and drops the
+  plaintext-HTTP exemption a development build needs, so which server a bundle talks
+  to is decided when it is built rather than by whatever a committed file last said.
+
+### Upgrading from 0.1.0
+
+Replace the app; your history and your session carry over. On first launch the store
+encrypts itself, and anything the old sync could never send is queued and sent. If you
+signed in on 0.1.0 and saw nothing arrive on another device, this is why — and it
+should arrive now.
 
 ## 0.1.0 — 2026-08-08 (pre-release)
 
