@@ -167,7 +167,7 @@ struct AuthController: Sendable {
                 ).collect()
             }
         } catch {
-            throw Self.mapped(error)
+            throw mapped(error)
         }
 
         do {
@@ -284,7 +284,7 @@ struct AuthController: Sendable {
                 ).collect()
             }
         } catch {
-            throw Self.mapped(error)
+            throw mapped(error)
         }
         return OKResponse(ok: true)
     }
@@ -370,7 +370,7 @@ struct AuthController: Sendable {
         } catch let error as HTTPError {
             throw error
         } catch {
-            throw Self.mapped(error)
+            throw mapped(error)
         }
     }
 
@@ -407,7 +407,7 @@ struct AuthController: Sendable {
     ///
     /// Wrong password and unknown address both become the same sentence on purpose:
     /// distinguishing them would let anyone test which addresses are registered.
-    private static func mapped(_ error: any Error) -> HTTPError {
+    private func mapped(_ error: any Error) -> HTTPError {
         // 503 rather than 500, because this one is worth retrying and the other is
         // not. The distinction is the whole reason the deadline exists: without it
         // the request would still be waiting, and a client cannot retry something
@@ -437,6 +437,15 @@ struct AuthController: Sendable {
                 .tooManyRequests,
                 message: "A code was already sent to that address. Check your email."
             )
+        case "email-collision":
+            // The address Google now reports already belongs to a different account
+            // here. The sign-in itself was fine, so this says which of the two facts
+            // is in the way rather than reporting a failure at Google.
+            return HTTPError(
+                .conflict,
+                message: "That Google address already belongs to another Deylee "
+                    + "account. Sign in to that one, or change the address on one of them."
+            )
         case "unverified-email":
             return HTTPError(.unauthorized, message: "Google has not verified that address.")
         case "invalid-credentials":
@@ -444,7 +453,36 @@ struct AuthController: Sendable {
         case "no-such-user":
             return HTTPError(.unauthorized, message: "That account no longer exists.")
         default:
-            return HTTPError(.internalServerError, message: "The request could not be completed.")
+            return unexplained(error)
         }
+    }
+
+    /// The generic 500 — but never a silent one.
+    ///
+    /// Returning the same opaque sentence is right: a database's own wording leaks
+    /// schema and is no use to the person reading it. Saying nothing *server-side* is
+    /// not. `ErrorLogging` deliberately lets an `HTTPError` past without a line,
+    /// because a deliberate 401 or 409 is an answer rather than a fault — but the
+    /// moment a database error is converted into one here, it stops being visible
+    /// anywhere, and the only evidence left is a client reporting a blank failure.
+    ///
+    /// That has hidden three separate faults already: a refusal whose sentinel was
+    /// never added to the switch, an argument bound as the wrong integer width so no
+    /// function overload matched, and the collision this branch was last extended
+    /// for. All three looked identical from outside and left nothing behind.
+    private func unexplained(_ error: any Error) -> HTTPError {
+        if let psql = error as? PSQLError {
+            logger.error("unmapped database error", metadata: [
+                "sqlstate": .string(psql.serverInfo?[.sqlState] ?? "none"),
+                // The message is the sentinel that was never added to the switch, on
+                // the day it turns out one is missing.
+                "message": .string(psql.serverInfo?[.message] ?? "none"),
+            ])
+        } else {
+            logger.error("unmapped error", metadata: [
+                "error": .string(String(reflecting: error)),
+            ])
+        }
+        return HTTPError(.internalServerError, message: "The request could not be completed.")
     }
 }
