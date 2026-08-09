@@ -113,6 +113,22 @@ struct SyncController: Sendable {
         // serialising a user's writes a pull can step past a row that has not
         // committed yet and never come back for it.
         return try await store.withUser(userID, lockForWrite: true) { connection in
+            // A cursor past anything the server has ever issued means the client is
+            // talking to a restored backup: the sequence rewound and every row it is
+            // asking for is behind it. `WHERE seq > cursor` would match nothing, for
+            // ever, and the client would go on pulling silently nothing at all. The
+            // protocol has always documented this 409; nothing implemented it.
+            //
+            // `pg_sequence_last_value` rather than `last_value`, which reports 1 on a
+            // sequence never drawn from and would 409 the very first sync.
+            let highest = try await self.highestSeq(on: connection)
+            guard body.cursor <= highest else {
+                throw HTTPError(
+                    .conflict,
+                    message: "That cursor is ahead of this server. Resync from zero."
+                )
+            }
+
             var results: [ChangeResult] = []
             for (index, change) in body.changes.enumerated() {
                 results.append(
@@ -160,6 +176,15 @@ struct SyncController: Sendable {
     static func claimsTheFuture(_ updatedAt: Int64, now: Int64) -> Bool {
         let bound = now < .max - futureTolerance ? now + futureTolerance : .max
         return updatedAt > bound
+    }
+
+    /// The largest sequence value this server has ever handed out, or zero if none.
+    private func highestSeq(on connection: PostgresConnection) async throws -> Int64 {
+        let rows = try await connection.query(
+            "SELECT coalesce(pg_sequence_last_value('public.sync_seq'), 0)", logger: logger
+        )
+        for try await value in rows.decode(Int64?.self) { return value ?? 0 }
+        return 0
     }
 
     // MARK: Push

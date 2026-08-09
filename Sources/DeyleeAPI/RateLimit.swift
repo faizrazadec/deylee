@@ -102,7 +102,13 @@ struct RateLimitMiddleware<Context: RequestContext>: RouterMiddleware {
         context: Context,
         next: (Request, Context) async throws -> Response
     ) async throws -> Response {
-        guard request.uri.path.hasPrefix("/v1/auth/") else {
+        // `/v1/sync` is here because the protocol document says it can answer 429 with
+        // an authoritative `Retry-After`, and a binding contract that describes
+        // behaviour the server does not have is how the next client author implements
+        // a handler for a response that never arrives. The ceiling is far above honest
+        // traffic — a device syncs every two minutes — so this bounds a runaway client
+        // rather than metering a real one.
+        guard request.uri.path.hasPrefix("/v1/auth/") || request.uri.path == "/v1/sync" else {
             return try await next(request, context)
         }
 
