@@ -24,9 +24,13 @@ struct GoogleIDToken: JWTPayload {
     /// has none, which is why a hosted-domain check must treat nil as "no domain"
     /// rather than as a value to compare.
     let hd: String?
+    /// Echoed back from the authorization request. Absent on a token minted for a
+    /// request that never sent one — which, now that the client always does, means the
+    /// token was not minted for this sign-in.
+    let nonce: String?
 
     enum CodingKeys: String, CodingKey {
-        case iss, sub, aud, exp, email, name, hd
+        case iss, sub, aud, exp, email, name, hd, nonce
         case emailVerified = "email_verified"
     }
 
@@ -60,6 +64,7 @@ enum TokenError: Error, CustomStringConvertible, Equatable {
     case emailUnverified
     case hostedDomainRejected(String?)
     case jwksUnavailable
+    case nonceMismatch
     case invalid(String)
 
     var description: String {
@@ -74,6 +79,8 @@ enum TokenError: Error, CustomStringConvertible, Equatable {
             "Sign-in is restricted to one Workspace domain; this account is in \(got ?? "none")."
         case .jwksUnavailable:
             "Google's signing keys could not be fetched."
+        case .nonceMismatch:
+            "That token was not issued for this sign-in."
         case .invalid(let why):
             "The token is not valid: \(why)"
         }
@@ -129,7 +136,15 @@ actor TokenService {
     // MARK: - Google
 
     /// Verify a Google ID token and return its claims, or explain the refusal.
-    func verifyGoogleIDToken(_ token: String) async throws -> GoogleIDToken {
+    ///
+    /// - Parameter nonce: the value the client put in its authorization request. The
+    ///   token must echo it. Without this check, an ID token obtained anywhere else
+    ///   for the same `aud` is indistinguishable from one minted for this sign-in.
+    ///
+    ///   Not optional, deliberately. A nonce the caller may leave out is one an
+    ///   attacker leaves out — the body is theirs to write — and the check would then
+    ///   protect only the clients that were never the threat.
+    func verifyGoogleIDToken(_ token: String, nonce: String) async throws -> GoogleIDToken {
         try await ensureGoogleKeys()
 
         let payload: GoogleIDToken
@@ -158,6 +173,12 @@ actor TokenService {
         // An unverified address must not identify anybody: on some providers it can
         // be claimed without ever proving control of the mailbox.
         guard payload.emailVerified == true else { throw TokenError.emailUnverified }
+
+        // Checked here with the rest, per this function's own reason for existing: a
+        // token verified in one place while one of its checks is forgotten in another
+        // is the failure the single call site prevents.
+        //
+        guard payload.nonce == nonce else { throw TokenError.nonceMismatch }
 
         if let required = config.googleAllowedHostedDomain {
             guard payload.hd == required else {

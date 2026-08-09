@@ -14,6 +14,9 @@ struct GoogleSignInRequest: Decodable {
     /// IANA name, e.g. "Europe/Berlin". Day boundaries are local, so a report
     /// spanning two countries is wrong without it.
     let timezone: String?
+    /// What the client put in its authorization request. The ID token must echo it,
+    /// or it was minted for some other sign-in.
+    let nonce: String?
 }
 
 struct PasswordRequest: Decodable {
@@ -128,9 +131,17 @@ struct AuthController: Sendable {
     ) async throws -> SessionResponse {
         let body = try await request.decode(as: GoogleSignInRequest.self, context: context)
 
+        // Required, not merely checked when present. The body is the caller's to
+        // write, so an optional nonce is one an attacker simply omits — and the
+        // binding would then hold only for the clients that were never the threat.
+        // Nothing has shipped without it, so there is no older client to accommodate.
+        guard let nonce = body.nonce, !nonce.isEmpty else {
+            throw HTTPError(.badRequest, message: "A nonce is required.")
+        }
+
         let claims: GoogleIDToken
         do {
-            claims = try await tokens.verifyGoogleIDToken(body.idToken)
+            claims = try await tokens.verifyGoogleIDToken(body.idToken, nonce: nonce)
         } catch let error as TokenError {
             throw HTTPError(.unauthorized, message: error.description)
         }

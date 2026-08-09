@@ -112,6 +112,29 @@ struct AuthRoutes {
         }
     }
 
+    // MARK: Google
+
+    /// The nonce binds the ID token to the authorization request that asked for it.
+    /// It has to be required rather than checked-when-present: the body is the
+    /// caller's to write, so an optional one is an optional an attacker omits, and the
+    /// binding would hold only for the clients that were never the threat.
+    ///
+    /// Refused before the token is looked at, so this needs no Google key set.
+    @Test func googleSignInWithoutANonceIsRefused() async throws {
+        try await withRouter { client in
+            let missing = try await self.post(
+                client, "/v1/auth/google", #"{"idToken":"whatever","timezone":"UTC"}"#
+            )
+            #expect(missing == .badRequest)
+
+            let empty = try await self.post(
+                client, "/v1/auth/google",
+                #"{"idToken":"whatever","timezone":"UTC","nonce":""}"#
+            )
+            #expect(empty == .badRequest, "an empty nonce binds nothing")
+        }
+    }
+
     /// A body the route cannot decode is the client's fault, not the server's. It
     /// used to be easy for this to surface as a 500.
     @Test func aMalformedBodyIsRejectedNotCrashed() async throws {
