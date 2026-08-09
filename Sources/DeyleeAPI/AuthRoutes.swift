@@ -91,6 +91,7 @@ struct AuthController: Sendable {
     let tokens: TokenService
     let config: Config
     let mailer: Mailer
+    let limiter: RateLimiter
     let logger: Logger
 
     func addRoutes(to router: Router<BasicRequestContext>) {
@@ -251,13 +252,38 @@ struct AuthController: Sendable {
         _ request: Request, context: BasicRequestContext
     ) async throws -> SessionResponse {
         let body = try await request.decode(as: PasswordRequest.self, context: context)
-        let user = try await callReturningUser(
-            """
-            SELECT id, email, display_name, timezone
-            FROM public.auth_sign_in_with_password(\(body.email), \(body.password))
-            """
-        )
-        return try await issueSession(for: user, deviceID: body.deviceId)
+
+        // Per address as well as per caller. The middleware bounds what one source can
+        // spend; this bounds what any number of sources can spend on one account, which
+        // is the shape a real credential-stuffing run takes. Tighter than the per-caller
+        // limit, because nobody mistypes their own password ten times a minute.
+        if let retryAfter = await limiter.secondsUntilAllowed(
+            "pw:\(body.email.lowercased())", limit: 10, window: .seconds(300)
+        ) {
+            logger.warning("password attempts throttled for one address")
+            throw HTTPError(
+                .tooManyRequests,
+                headers: [.retryAfter: "\(retryAfter)"],
+                message: "Too many attempts for that account. Try again in \(retryAfter) seconds."
+            )
+        }
+
+        let addressKey = "pw:\(body.email.lowercased())"
+        do {
+            let user = try await callReturningUser(
+                """
+                SELECT id, email, display_name, timezone
+                FROM public.auth_sign_in_with_password(\(body.email), \(body.password))
+                """
+            )
+            return try await issueSession(for: user, deviceID: body.deviceId)
+        } catch {
+            // Only failures count against the account. Signing in correctly on several
+            // devices is not an attack, and metering it would lock out the person who
+            // did nothing wrong.
+            await limiter.record(addressKey, window: .seconds(300))
+            throw error
+        }
     }
 
     /// Add or change a password on an account the caller is already signed into.

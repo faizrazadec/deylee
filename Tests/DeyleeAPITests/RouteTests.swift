@@ -45,10 +45,13 @@ struct AuthRoutes {
             apiKey: config.resendAPIKey, from: config.resendFrom,
             templateID: config.resendOTPTemplateID, logger: logger
         )
+        // A fresh limiter per router, so one test's attempts cannot throttle another's.
+        let limiter = RateLimiter()
 
         let router = Router()
         router.add(middleware: ErrorLogging(logger: logger))
-        AuthController(store: store, tokens: tokens, config: config, mailer: mailer, logger: logger)
+        AuthController(store: store, tokens: tokens, config: config, mailer: mailer,
+                       limiter: limiter, logger: logger)
             .addRoutes(to: router)
 
         let app = Application(router: router, services: [store.client], logger: logger)
@@ -191,6 +194,41 @@ struct AuthRoutes {
             #expect(status == .unauthorized)
         }
     }
+    // MARK: Throttling
+
+    /// Every password attempt costs a quarter-second of database CPU by design, so an
+    /// unauthenticated caller converts one cheap request into real money. Unlimited
+    /// attempts is the DoS; the 429 is the cap.
+    @Test func repeatedAttemptsAreThrottledWithRetryAfter() async throws {
+        try await withRouter { client in
+            var sawTooMany = false
+            var retryAfter: String?
+
+            // The per-address limit is 10 in five minutes and bites first.
+            for _ in 0..<14 {
+                let (status, header) = try await client.execute(
+                    uri: "/v1/auth/password", method: .post,
+                    headers: [.contentType: "application/json"],
+                    body: ByteBuffer(string: #"{"email":"throttle@routes.invalid","password":"whatever1"}"#)
+                ) { ($0.status, $0.headers[.retryAfter]) }
+
+                if status == .tooManyRequests {
+                    sawTooMany = true
+                    retryAfter = header
+                    break
+                }
+                #expect(status == .unauthorized, "before the cap, a bad password is a 401")
+            }
+
+            #expect(sawTooMany, "unlimited attempts against one account")
+            // The protocol says Retry-After is authoritative, so it has to be there and
+            // has to be a number a client can wait for.
+            let seconds = Int(retryAfter ?? "")
+            #expect(seconds != nil, "Retry-After missing or unparseable: \(retryAfter ?? "nil")")
+            #expect((seconds ?? 0) > 0, "Retry-After: 0 invites an immediate refusal")
+        }
+    }
+
 }
 
 /// Enough environment for `Config.load`, with the real signing key swapped for the

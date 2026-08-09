@@ -43,6 +43,15 @@ do {
 let router = Router()
 router.add(middleware: ErrorLogging(logger: logger))
 
+// Before anything expensive. Every password attempt costs a quarter-second of database
+// CPU by design, so an unauthenticated caller turns one cheap request into real money;
+// closing the timing channel made an unknown address cost the same as a real one, which
+// is why this lands with it rather than after it.
+let rateLimiter = RateLimiter()
+router.add(middleware: RateLimitMiddleware(
+    limiter: rateLimiter, limit: 600, window: .seconds(60), logger: logger
+))
+
 // Liveness only. Deliberately does not touch the database: a health check that
 // fails when Postgres is briefly unreachable invites an orchestrator to kill a
 // process that would otherwise have recovered on its own.
@@ -57,7 +66,8 @@ let mailer = Mailer(
     logger: logger
 )
 
-AuthController(store: store, tokens: tokens, config: config, mailer: mailer, logger: logger)
+AuthController(store: store, tokens: tokens, config: config, mailer: mailer,
+               limiter: rateLimiter, logger: logger)
     .addRoutes(to: router)
 SyncController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
 WitnessController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
