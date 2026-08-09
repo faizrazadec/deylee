@@ -51,7 +51,7 @@ private func uuids(_ db: Database, _ table: String, orderBy: String) throws -> [
         try runMigrations(db)
 
         #expect(try readSchemaVersion(db) == CURRENT_SCHEMA_VERSION)
-        #expect(CURRENT_SCHEMA_VERSION == 3)
+        #expect(CURRENT_SCHEMA_VERSION == 4)
     }
 
     @Test func backfillsAUuidOnEveryExistingRow() throws {

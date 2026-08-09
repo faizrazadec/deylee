@@ -213,7 +213,10 @@ extension Repository {
         let days = try db.query(
             """
             SELECT uuid, date, target_minutes, ended_at, created_at, updated_at, deleted_at
-            FROM days WHERE dirty = 1 AND uuid IS NOT NULL ORDER BY created_at LIMIT ?
+            FROM days
+            WHERE dirty = 1 AND uuid IS NOT NULL
+              AND (rejected_at IS NULL OR rejected_at < updated_at)
+            ORDER BY created_at LIMIT ?
             """,
             [.integer(Int64(limit))]
         ) { row in
@@ -231,7 +234,9 @@ extension Repository {
             SELECT s.uuid, d.date, s.type, s.started_at, s.ended_at, s.note,
                    s.created_at, s.updated_at, s.deleted_at
             FROM segments s JOIN days d ON d.id = s.day_id
-            WHERE s.dirty = 1 AND s.uuid IS NOT NULL ORDER BY s.started_at LIMIT ?
+            WHERE s.dirty = 1 AND s.uuid IS NOT NULL
+              AND (s.rejected_at IS NULL OR s.rejected_at < s.updated_at)
+            ORDER BY s.started_at LIMIT ?
             """,
             [.integer(Int64(remaining))]
         ) { row in
@@ -264,6 +269,42 @@ extension Repository {
                 )
             }
         }
+    }
+
+    /// Record that the server refused a row, so it stops being offered.
+    ///
+    /// Stamped with the row's own `updated_at`, not with now. The mark says "this
+    /// version was refused", so editing the row moves `updated_at` past it and the
+    /// row rejoins the queue without anything having to clear the mark — which is the
+    /// only resolution there is, since every reason the server gives is structural.
+    public func markRejected(
+        _ rejected: [(uuid: String, updatedAt: EpochMs, code: String)], table: SyncTable
+    ) throws {
+        guard !rejected.isEmpty else { return }
+        try db.transaction {
+            for row in rejected {
+                try db.run(
+                    """
+                    UPDATE \(table.rawValue) SET rejected_at = ?, rejection_code = ?
+                     WHERE uuid = ? AND updated_at = ?
+                    """,
+                    [.integer(row.updatedAt), .text(row.code), .text(row.uuid),
+                     .integer(row.updatedAt)]
+                )
+            }
+        }
+    }
+
+    /// Rows the server refused and will refuse again, for anything that wants to show
+    /// them. Nothing does yet — see the note on `markRejected`.
+    public func rejectedRows(table: SyncTable) throws -> [(uuid: String, code: String)] {
+        try db.query(
+            """
+            SELECT uuid, rejection_code FROM \(table.rawValue)
+             WHERE rejected_at IS NOT NULL AND rejected_at >= updated_at
+               AND deleted_at IS NULL
+            """
+        ) { ($0.text(0), $0.text(1)) }
     }
 
     // MARK: Pull

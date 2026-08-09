@@ -16,7 +16,7 @@ import Foundation
 /// a file from a newer build outright.
 
 /// Bump this in lock-step with a new entry in `migrations`.
-public let CURRENT_SCHEMA_VERSION = 3
+public let CURRENT_SCHEMA_VERSION = 4
 
 /// The database on disk was written by a newer build of Deylee than this one.
 ///
@@ -149,6 +149,26 @@ let migrations: [Migration] = [
         try db.run("""
             INSERT OR IGNORE INTO sync_state (id, device_id, cursor)
             VALUES (1, \(uuidV7SQL(millis: "(strftime('%s','now') * 1000)")), 0)
+            """)
+    },
+
+    // Remember which rows the server refused.
+    //
+    // `dirty` alone cannot express it. A rejected row keeps `dirty = 1`, so it is
+    // offered again on the next cycle — every two minutes, plus every wake and every
+    // activation — and the reasons the server refuses are structural rather than
+    // transient: an overlap clashes next time too, an over-long note is over-long for
+    // ever. The row is retried for the life of the install and can never succeed.
+    //
+    // Recorded against `updated_at` rather than as a flag, so the rejection is tied to
+    // the version that was refused. Edit the row and `updated_at` moves past it, which
+    // is what makes the retry resume without anything having to clear the mark.
+    Migration(version: 4) { db in
+        try db.execute("""
+            ALTER TABLE days     ADD COLUMN rejected_at INTEGER;
+            ALTER TABLE days     ADD COLUMN rejection_code TEXT;
+            ALTER TABLE segments ADD COLUMN rejected_at INTEGER;
+            ALTER TABLE segments ADD COLUMN rejection_code TEXT;
             """)
     },
 

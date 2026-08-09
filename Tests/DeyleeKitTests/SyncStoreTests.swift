@@ -468,3 +468,78 @@ private final class Harness {
         #expect(try h.count("days WHERE uuid = 'server-id'") == 1)
     }
 }
+
+/// A row the server refuses must stop being offered.
+///
+/// Every reason it gives is structural — an overlap clashes next time too, an
+/// over-long note is over-long for ever — so a rejected row left dirty is retried
+/// every two minutes, plus every wake and every activation, for the life of the
+/// install, and can never succeed.
+@Suite struct RejectedRows {
+    @Test func aRefusedRowLeavesTheQueueUntilItIsEdited() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-08-05", startedAt: 1_000, endedAt: 2_000)
+        let queued = try h.repo.pendingPush()
+        let segment = try #require(queued.segments.first)
+        #expect(queued.segments.count == 1)
+
+        try h.repo.markRejected(
+            [(segment.uuid, segment.updatedAt, "overlap")], table: .segments
+        )
+        #expect(try h.repo.pendingPush().segments.isEmpty, "a refused row must stop being sent")
+
+        // Still dirty — it is unsent work, not discarded work. The mark is what keeps
+        // it out of the queue, not the loss of its dirty flag.
+        #expect(try h.dirtyCount("segments") == 1)
+        #expect(try h.repo.rejectedRows(table: .segments).first?.code == "overlap")
+    }
+
+    /// The only resolution there is: change the row, and it goes up again. Nothing has
+    /// to clear the mark, because the mark names the version that was refused.
+    @Test func editingItPutsItBackInTheQueue() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-08-05", startedAt: 1_000, endedAt: 2_000)
+        let segment = try #require(try h.repo.pendingPush().segments.first)
+        try h.repo.markRejected(
+            [(segment.uuid, segment.updatedAt, "invalid-shape")], table: .segments
+        )
+        #expect(try h.repo.pendingPush().segments.isEmpty)
+
+        let id = try #require(
+            h.db.queryOne("SELECT id FROM segments WHERE uuid = ?", [.text(segment.uuid)]) {
+                $0.int64(0)
+            }
+        )
+        _ = try h.repo.updateSegmentFields(
+            id, UpdateSegmentInput(id: id, note: "fixed"), now: segment.updatedAt + 1_000
+        )
+
+        #expect(try h.repo.pendingPush().segments.count == 1, "an edited row must be retried")
+        #expect(try h.repo.rejectedRows(table: .segments).isEmpty)
+    }
+
+    /// The note limit the server enforces and the local store did not, which is how a
+    /// row the app could create but never send came to exist.
+    @Test func anOverlongNoteIsRefusedWhereItIsTyped() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-08-05", startedAt: 1_000, endedAt: 2_000)
+        let segment = try #require(try h.repo.pendingPush().segments.first)
+        let id = try #require(
+            h.db.queryOne("SELECT id FROM segments WHERE uuid = ?", [.text(segment.uuid)]) {
+                $0.int64(0)
+            }
+        )
+
+        #expect(throws: MutationError.self) {
+            try h.repo.updateSegmentFields(
+                id,
+                UpdateSegmentInput(id: id, note: String(repeating: "x", count: 2_001)),
+                now: 9_000
+            )
+        }
+        // Exactly at the limit is fine — the server's check is `<= 2000`.
+        _ = try h.repo.updateSegmentFields(
+            id, UpdateSegmentInput(id: id, note: String(repeating: "x", count: 2_000)), now: 9_000
+        )
+    }
+}

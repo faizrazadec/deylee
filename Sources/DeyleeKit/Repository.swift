@@ -12,6 +12,9 @@ import Foundation
 public final class Repository {
     /// Where the heartbeat records the last instant the app was known to be alive.
     public static let appStateHeartbeat = "heartbeat_at"
+    /// Mirrors `segments_note_bounded` on the server. Two copies of one number, and
+    /// the alternative is a row the app can create and never send.
+    public static let maximumNoteLength = 2000
 
     // Internal rather than private: SyncStore.swift extends Repository.
     let db: Database
@@ -251,6 +254,17 @@ public final class Repository {
         if let endedAt = patch.endedAt { next.endedAt = endedAt }
         if let note = patch.note { next.note = note }
         next.updatedAt = now
+
+        // The server refuses a note past 2000 characters, and the local store used to
+        // let one be written happily — producing a row that could never be pushed and
+        // whose only symptom was a sentence in a status line. Refused at the point of
+        // editing instead, where the person can still do something about it.
+        if let note = next.note, note.count > Self.maximumNoteLength {
+            throw MutationError(
+                code: .invalidRange,
+                message: "A note can be at most \(Self.maximumNoteLength) characters."
+            )
+        }
 
         try db.run(
             """

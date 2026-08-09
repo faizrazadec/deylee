@@ -163,6 +163,34 @@ final class SyncService: ObservableObject {
             table: .segments
         )
 
+        // Anything else was refused, and every reason the server gives is structural:
+        // an overlap clashes next time too, an over-long note is over-long for ever.
+        // Left dirty it would be offered again every two minutes, plus every wake and
+        // every activation, for the life of the install — a request that cannot ever
+        // succeed. Marking it against the version that was refused stops the retry
+        // without losing the row: editing it moves `updated_at` past the mark and the
+        // row rejoins the queue by itself.
+        let refusedByID = Dictionary(
+            response.results
+                .filter { $0.status != "applied" }
+                .map { ($0.id, $0.code ?? $0.status) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        if !refusedByID.isEmpty {
+            try repo.markRejected(
+                pending.days.compactMap { day in
+                    refusedByID[day.uuid].map { (day.uuid, day.updatedAt, $0) }
+                },
+                table: .days
+            )
+            try repo.markRejected(
+                pending.segments.compactMap { segment in
+                    refusedByID[segment.uuid].map { (segment.uuid, segment.updatedAt, $0) }
+                },
+                table: .segments
+            )
+        }
+
         var incomingDays: [SyncDay] = []
         var incomingSegments: [SyncSegment] = []
         for change in response.changes {
