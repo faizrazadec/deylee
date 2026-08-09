@@ -71,6 +71,18 @@ struct SyncController: Sendable {
     static let pageSize = 500
     /// Changes accepted per push, matching the 413 in the protocol.
     static let maxChangesPerPush = 500
+    /// How far ahead of the server a client's `updated_at` may be.
+    ///
+    /// Not zero, and not tight. Ordinary machines are minutes off without anybody
+    /// having done anything wrong, and refusing those rows would drop real work over a
+    /// clock. Five minutes admits every honest device and still bounds the damage a
+    /// dishonest one can do to five minutes of stuck row rather than for ever.
+    ///
+    /// The server deliberately does not *replace* the value — see the note in
+    /// `sync_core.sql`. Overwriting it would make every synced row look freshly edited
+    /// and hand every conflict to the staler device. Refusing an impossible claim is a
+    /// different thing from rewriting a plausible one.
+    static let futureTolerance: Int64 = 5 * 60 * 1000
     static let protocolVersion = 1
 
     func addRoutes(to router: Router<BasicRequestContext>) {
@@ -99,7 +111,9 @@ struct SyncController: Sendable {
         return try await store.withUser(userID, lockForWrite: true) { connection in
             var results: [ChangeResult] = []
             for (index, change) in body.changes.enumerated() {
-                results.append(await apply(change, at: index, userID: userID, on: connection))
+                results.append(
+                    await apply(change, at: index, now: now, userID: userID, on: connection)
+                )
             }
 
             var pulled = try await self.pull(after: body.cursor, userID: userID, on: connection)
@@ -134,6 +148,16 @@ struct SyncController: Sendable {
         return id
     }
 
+    /// Whether a row's `updated_at` is further ahead of the server than honest skew
+    /// explains.
+    ///
+    /// The bound saturates rather than wrapping. `Int64.max` is the value this exists
+    /// to refuse, and it must not be the value that makes the check itself go wrong.
+    static func claimsTheFuture(_ updatedAt: Int64, now: Int64) -> Bool {
+        let bound = now < .max - futureTolerance ? now + futureTolerance : .max
+        return updatedAt > bound
+    }
+
     // MARK: Push
 
     /// Apply one change in its own savepoint.
@@ -153,8 +177,22 @@ struct SyncController: Sendable {
     /// been applied. Both are long odds; one is a crash and the other is silent
     /// corruption, and an index costs nothing.
     private func apply(
-        _ change: SyncChange, at index: Int, userID: UUID, on connection: PostgresConnection
+        _ change: SyncChange, at index: Int, now: Int64,
+        userID: UUID, on connection: PostgresConnection
     ) async -> ChangeResult {
+        // Refused before the savepoint, because an `updated_at` in the future is not a
+        // row that failed — it is a row that would win every conflict from here on.
+        // Last-write-wins compares the clients' own claims, so a claim of `Int64.max`
+        // makes the row permanently uneditable on every device, with no way back
+        // through the app. A few days of honest clock skew does the same thing quietly:
+        // corrections made on the right machine lose to a stale row from the wrong one.
+        guard !Self.claimsTheFuture(change.row.updatedAt, now: now) else {
+            return ChangeResult(
+                id: change.row.id, status: "rejected", code: "invalid-shape",
+                message: "That row claims to have been edited in the future."
+            )
+        }
+
         let name = "sp_\(index)"
         do {
             _ = try await connection.query(PostgresQuery(unsafeSQL: "SAVEPOINT \(name)"), logger: logger)
