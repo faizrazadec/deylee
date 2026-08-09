@@ -636,3 +636,71 @@ private final class Harness {
         #expect(try h.repo.syncState().cursor == 7)
     }
 }
+
+/// What the History window reads to mark a stuck entry and offer to go to it.
+///
+/// Addressed by local id and carrying its date, because the difficulty was never
+/// knowing that *something* was refused — it was knowing which row, on which day.
+@Suite struct RejectedSegmentsForDisplay {
+    private func reject(_ h: Harness, _ code: String) throws {
+        let segment = try #require(try h.repo.pendingPush().segments.first)
+        try h.repo.markRejected(
+            [(segment.uuid, segment.updatedAt, code)], table: .segments
+        )
+    }
+
+    @Test func namesTheRowTheDayAndTheReason() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-03-14", startedAt: 1_000, endedAt: 2_000)
+        try reject(h, "overlap")
+
+        let stuck = try h.repo.rejectedSegments()
+        #expect(stuck.count == 1)
+        #expect(stuck.first?.date == DateKey("2026-03-14"))
+        #expect(stuck.first?.code == "overlap")
+
+        // The id is the one a `Segment` on screen carries, so the panel can match it
+        // without the domain model learning about uuids.
+        let id = try #require(
+            h.db.queryOne("SELECT id FROM segments WHERE deleted_at IS NULL") { $0.int64(0) }
+        )
+        #expect(stuck.first?.id == id)
+    }
+
+    /// The same condition `pendingPush` uses to skip them. If the two ever disagreed,
+    /// the window would mark a row that is queued, or stay silent about one that is not.
+    @Test func agreesWithTheQueueAboutWhatIsStuck() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-03-14", startedAt: 1_000, endedAt: 2_000)
+        #expect(try h.repo.rejectedSegments().isEmpty, "nothing is stuck before a refusal")
+
+        try reject(h, "overlap")
+        #expect(try h.repo.pendingPush().segments.isEmpty)
+        #expect(try h.repo.rejectedSegments().count == 1)
+
+        // Editing is the resolution: the mark names the version that was refused, so a
+        // newer version is queued again and must stop being shown as stuck.
+        let id = try #require(
+            h.db.queryOne("SELECT id FROM segments WHERE deleted_at IS NULL") { $0.int64(0) }
+        )
+        _ = try h.repo.updateSegmentFields(
+            id, UpdateSegmentInput(id: id, note: "moved"), now: 9_000
+        )
+        #expect(try h.repo.pendingPush().segments.count == 1)
+        #expect(try h.repo.rejectedSegments().isEmpty, "the banner must clear when it is settled")
+    }
+
+    /// Deleting it is the other resolution, and a tombstone is not something to show a
+    /// warning triangle against — the row is gone from the day.
+    @Test func aDeletedRowIsNoLongerShownAsStuck() throws {
+        let h = try Harness()
+        try h.seed(date: "2026-03-14", startedAt: 1_000, endedAt: 2_000)
+        try reject(h, "overlap")
+
+        let id = try #require(
+            h.db.queryOne("SELECT id FROM segments WHERE deleted_at IS NULL") { $0.int64(0) }
+        )
+        try h.repo.deleteSegment(id, now: 9_000)
+        #expect(try h.repo.rejectedSegments().isEmpty)
+    }
+}

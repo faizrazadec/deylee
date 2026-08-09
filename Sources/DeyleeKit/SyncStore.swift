@@ -311,6 +311,49 @@ extension Repository {
         }
     }
 
+    /// A segment the server refused, addressed the way the app already holds it.
+    ///
+    /// By local `id` rather than `uuid` because that is what a `Segment` on screen
+    /// carries, and the date because finding the row is the whole difficulty: knowing
+    /// that *something* was refused is no use without knowing which day to open.
+    public struct RejectedSegment: Sendable, Equatable, Identifiable {
+        public let id: Int64
+        public let date: DateKey
+        public let code: String
+
+        public init(id: Int64, date: DateKey, code: String) {
+            self.id = id
+            self.date = date
+            self.code = code
+        }
+    }
+
+    /// Every segment the server refused and will refuse again, oldest first.
+    ///
+    /// Same condition as the one `pendingPush` uses to skip them, so the two can never
+    /// disagree about which rows are stuck: a row marked against a version older than
+    /// its current one has been edited since and is queued again, not stuck.
+    public func rejectedSegments() throws -> [RejectedSegment] {
+        try db.query(
+            """
+            SELECT s.id, d.date, s.rejection_code
+            FROM segments s JOIN days d ON d.id = s.day_id
+            WHERE s.rejected_at IS NOT NULL AND s.rejected_at >= s.updated_at
+              AND s.deleted_at IS NULL
+            ORDER BY s.started_at
+            """
+        ) { row in
+            RejectedSegment(
+                id: row.int64(0),
+                // A date that will not parse cannot be navigated to, and the row is
+                // already in a bad way; the epoch is a visible wrong answer rather
+                // than a crash.
+                date: DateKey(row.text(1)) ?? DateKey(year: 1970, month: 1, day: 1)!,
+                code: row.text(2)
+            )
+        }
+    }
+
     /// Rows the server refused and will refuse again, for anything that wants to show
     /// them. Nothing does yet — see the note on `markRejected`.
     public func rejectedRows(table: SyncTable) throws -> [(uuid: String, code: String)] {

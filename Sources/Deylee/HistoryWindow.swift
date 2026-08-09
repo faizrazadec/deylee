@@ -23,6 +23,11 @@ final class HistoryWindow: NSObject, NSWindowDelegate {
     /// Opens the window, or brings the existing one forward.
     static func open(repo: Repository, engine: TimerEngine, prefs: PreferencesStore) {
         if let current {
+            // Re-read on the way forward. The window survives being sent behind
+            // something else, and a sync running in the meantime can have pulled
+            // another device's rows or marked one of this device's as refused — neither
+            // of which goes through the engine snapshot the model otherwise listens to.
+            current.model.reload()
             current.focus()
             return
         }

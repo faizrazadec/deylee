@@ -13,6 +13,8 @@ struct HistoryDayPanel: View {
     let detail: DayDetail?
     /// The day's own target, falling back to the current preference for an unused day.
     let targetMinutes: Int
+    /// Why the server refused a segment, by id. Empty for the ordinary case.
+    let rejected: [Int64: RejectedReason]
     let onAdd: () -> Void
     let onEdit: (Segment) -> Void
     let onDelete: (Segment) -> Void
@@ -128,6 +130,7 @@ struct HistoryDayPanel: View {
                         HistorySegmentRow(
                             segment: segment,
                             now: now,
+                            rejected: rejected[segment.id],
                             onEdit: { onEdit(segment) },
                             onDelete: { onDelete(segment) }
                         )
@@ -147,6 +150,8 @@ struct HistoryDayPanel: View {
 struct HistorySegmentRow: View {
     let segment: Segment
     let now: EpochMs
+    /// Set when the server refused this row and will refuse it again.
+    var rejected: RejectedReason?
     let onEdit: () -> Void
     let onDelete: () -> Void
 
@@ -154,6 +159,17 @@ struct HistorySegmentRow: View {
 
     var body: some View {
         HStack(spacing: Space.m) {
+            // Before the type chip, where the eye lands first. A stuck row is
+            // indistinguishable from an ordinary one otherwise — that is the whole
+            // complaint: the hours on this machine and the hours on another disagree,
+            // permanently, and nothing pointed at the disagreement.
+            if let rejected {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(Type.small)
+                    .foregroundStyle(Palette.danger)
+                    .help(rejected.text)
+                    .accessibilityLabel(rejected.text)
+            }
             TypeChip(type: segment.type).fixedSize()
             timeRange
             if let note = segment.note, !note.isEmpty {

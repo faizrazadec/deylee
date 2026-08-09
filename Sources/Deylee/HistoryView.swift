@@ -20,6 +20,7 @@ struct HistoryView: View {
             VStack(spacing: 0) {
                 header
                 if let status = model.status { banner(status) }
+                if !model.rejectedDates.isEmpty { unsyncedBanner }
                 HistorySummaryBar(month: model.monthSummary, week: model.weekSummary)
                 main(today: today)
             }
@@ -83,6 +84,42 @@ struct HistoryView: View {
         .buttonStyle(DeyleeButtonStyle(variant: .secondary, size: .small))
         .accessibilityLabel(label)
         .help(label)
+    }
+
+    /// Says that some entries never reached the server, and offers to go to one.
+    ///
+    /// Not dismissible, unlike the export banner: an export outcome is news, and this
+    /// is a state. It disappears when the last stuck entry is edited or deleted, which
+    /// is the only thing that resolves it.
+    private var unsyncedBanner: some View {
+        let count = model.rejected.count
+        let dates = model.rejectedDates
+        return HStack(spacing: Space.xl) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Palette.danger)
+                .font(Type.small)
+            Text(
+                count == 1
+                    ? "1 entry could not be synced."
+                    : "\(count) entries could not be synced."
+            )
+            .font(Type.small)
+            .foregroundStyle(Palette.danger)
+            Spacer(minLength: 0)
+            // Straight to the first one rather than a list. A second stuck entry is
+            // rare, and the banner stays until the last is settled, so repeating the
+            // button walks through them.
+            Button(dates.count == 1 ? "Show it" : "Show the first") {
+                model.reveal(dates[0])
+            }
+            .buttonStyle(DeyleeButtonStyle(variant: .ghost, size: .small))
+        }
+        .padding(.horizontal, Space.x4l)
+        .padding(.vertical, Space.m)
+        .background(Palette.dangerSoft)
+        .overlay(alignment: .bottom) {
+            Divider().overlay(Palette.danger.opacity(0.3))
+        }
     }
 
     // MARK: - Status banner
@@ -168,6 +205,7 @@ struct HistoryView: View {
                 date: model.selected,
                 detail: model.selectedDetail,
                 targetMinutes: model.selectedTargetMinutes,
+                rejected: model.rejected,
                 onAdd: { model.openCreate() },
                 onEdit: { model.openEdit($0) },
                 onDelete: { model.requestDelete($0) }

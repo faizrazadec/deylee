@@ -36,6 +36,33 @@ enum HistoryExportFormat: String, CaseIterable {
     }
 }
 
+/// Why the server refused a row, in words the person who wrote it can act on.
+///
+/// The codes are the protocol's, not `MutationErrorCode`'s — they arrive from the
+/// server and the two vocabularies only partly overlap. An unrecognised one still says
+/// something true rather than nothing: a newer server may refuse for a reason this
+/// build has never heard of.
+struct RejectedReason: Equatable {
+    let code: String
+
+    var text: String {
+        switch code {
+        case "overlap":
+            "This overlaps a segment recorded on another device, so it was not synced."
+        case "open-elsewhere":
+            "Another device has a timer running, so this was not synced."
+        case "invalid-shape":
+            "The server would not accept this entry. Editing it will offer it again."
+        case "invalid-range":
+            "This ends before it starts, so it was not synced."
+        case "stale":
+            "A newer version of this exists on another device, so this was not synced."
+        default:
+            "The server refused this entry (\(code)), so it is not synced."
+        }
+    }
+}
+
 /// The export banner. Only export outcomes ever set it, and only the user clears it.
 struct HistoryStatus: Equatable {
     enum Tone { case ok, error }
@@ -69,6 +96,16 @@ final class HistoryModel {
     private(set) var anchor: DateKey
     private(set) var selected: DateKey
     var view: HistoryViewMode = .calendar
+
+    /// Segments the server refused, by the id the panel already holds.
+    ///
+    /// A rejection is structural — an overlap clashes next time too — so the row sits
+    /// on this machine looking perfectly ordinary while never reaching the server, and
+    /// nothing on screen said so. This is what says so.
+    private(set) var rejected: [Int64: RejectedReason] = [:]
+    /// The days holding one, oldest first, so the banner can offer to go there. Knowing
+    /// something was refused is no use without knowing which day to open.
+    private(set) var rejectedDates: [DateKey] = []
 
     private(set) var monthSummary: RangeSummary?
     private(set) var weekSummary: RangeSummary?
@@ -146,6 +183,18 @@ final class HistoryModel {
         // A failed week read is deliberately quiet: the stat falls back to its
         // placeholder rather than claiming the whole window is broken.
         weekSummary = try? summariseRange(week, days: repo.range(week, now: now))
+
+        // Likewise quiet on failure. This annotates the window; it does not get to
+        // decide the window is broken.
+        let refused = (try? repo.rejectedSegments()) ?? []
+        rejected = Dictionary(
+            refused.map { ($0.id, RejectedReason(code: $0.code)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        // Distinct, in order, without sorting again — `rejectedSegments` is already
+        // oldest first and a day usually holds one.
+        var seen = Set<DateKey>()
+        rejectedDates = refused.map(\.date).filter { seen.insert($0).inserted }
     }
 
     private func reloadWeek() {
@@ -172,6 +221,23 @@ final class HistoryModel {
     func goToPreviousMonth() { goToMonth(startOfMonth(addDays(anchor, -1))) }
     func goToNextMonth() { goToMonth(startOfMonth(addDays(endOfMonth(anchor), 1))) }
     func goToToday() { goToMonth(startOfMonth(todayKey(in: zone))) }
+
+    /// Show a particular day, moving the month if it is not the visible one.
+    ///
+    /// `select` alone would not do: it keeps the selection inside the loaded month by
+    /// design, so a stuck entry from March would silently do nothing when the window
+    /// was showing August — which is the case the banner exists for.
+    func reveal(_ date: DateKey) {
+        let month = startOfMonth(date)
+        if month != anchor {
+            anchor = month
+            status = nil
+            selected = date
+            reload()
+        } else {
+            select(date)
+        }
+    }
 
     private func goToMonth(_ monthStart: DateKey) {
         anchor = monthStart
