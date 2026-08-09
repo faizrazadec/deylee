@@ -390,15 +390,35 @@ final class AuthService: NSObject, ObservableObject {
     /// The provider behind the current session, for display.
     var currentProvider: String? { session?.provider }
 
-    /// Sign out locally.
+    /// Sign out locally, and tell the server if it can be reached.
     ///
     /// Deliberately does *not* delete the local store. The hours belong to the
     /// person who tracked them, and signing out of a sync service is not a request
     /// to destroy them.
+    ///
+    /// The local half happens first and unconditionally. Signing out on a train has
+    /// to work, so the request is sent detached and its failure is not an error —
+    /// the tokens are gone from this device either way. What the server call buys is
+    /// the other direction: on a machine somebody else now has, the refresh chain
+    /// ends instead of living out its ninety days.
     func signOut() {
+        let ending = session
         TokenStore.clear()
         session = nil
         state = .signedOut
+
+        // A session whose access token has already expired cannot be presented, and
+        // there is nothing to send: the server will refuse it, and the refresh token
+        // is discarded here regardless.
+        guard let ending, ending.isAccessTokenUsable(at: EpochMs(Date().timeIntervalSince1970 * 1000))
+        else { return }
+        let url = config.apiBaseURL.appending(path: "/v1/auth/signout")
+        let bearer = ending.accessToken
+        Task.detached {
+            struct Empty: Encodable {}
+            struct OK: Decodable { let ok: Bool }
+            _ = try? await APIClient.post(url, body: Empty(), bearer: bearer) as OK
+        }
     }
 
     // MARK: - Tokens
