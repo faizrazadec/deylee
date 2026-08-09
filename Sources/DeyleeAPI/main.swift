@@ -40,7 +40,7 @@ do {
     exit(1)
 }
 
-let router = Router()
+let router = Router(context: DeyleeRequestContext.self)
 router.add(middleware: ErrorLogging(logger: logger))
 
 // Before anything expensive. Every password attempt costs a quarter-second of database

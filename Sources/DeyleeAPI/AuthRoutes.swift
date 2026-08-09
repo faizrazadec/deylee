@@ -94,7 +94,7 @@ struct AuthController: Sendable {
     let limiter: RateLimiter
     let logger: Logger
 
-    func addRoutes(to router: Router<BasicRequestContext>) {
+    func addRoutes(to router: Router<DeyleeRequestContext>) {
         router.post("/v1/auth/google", use: signInWithGoogle)
         router.post("/v1/auth/signup", use: requestSignupCode)
         router.post("/v1/auth/signup/verify", use: verifySignupCode)
@@ -124,7 +124,7 @@ struct AuthController: Sendable {
 
     @Sendable
     func signInWithGoogle(
-        _ request: Request, context: BasicRequestContext
+        _ request: Request, context: DeyleeRequestContext
     ) async throws -> SessionResponse {
         let body = try await request.decode(as: GoogleSignInRequest.self, context: context)
 
@@ -165,7 +165,7 @@ struct AuthController: Sendable {
     /// outside the mail itself.
     @Sendable
     func requestSignupCode(
-        _ request: Request, context: BasicRequestContext
+        _ request: Request, context: DeyleeRequestContext
     ) async throws -> CodeSentResponse {
         let body = try await request.decode(as: SignupCodeRequest.self, context: context)
         let code = SignupCode.generate()
@@ -216,7 +216,7 @@ struct AuthController: Sendable {
     /// whether an address has a sign-up in flight.
     @Sendable
     func verifySignupCode(
-        _ request: Request, context: BasicRequestContext
+        _ request: Request, context: DeyleeRequestContext
     ) async throws -> SessionResponse {
         let body = try await request.decode(as: VerifyCodeRequest.self, context: context)
 
@@ -266,7 +266,7 @@ struct AuthController: Sendable {
 
     @Sendable
     func signInWithPassword(
-        _ request: Request, context: BasicRequestContext
+        _ request: Request, context: DeyleeRequestContext
     ) async throws -> SessionResponse {
         let body = try await request.decode(as: PasswordRequest.self, context: context)
 
@@ -318,7 +318,7 @@ struct AuthController: Sendable {
     /// changing keeps its session; signing it out too would only teach people that
     /// changing a password is a nuisance.
     @Sendable
-    func setPassword(_ request: Request, context: BasicRequestContext) async throws -> OKResponse {
+    func setPassword(_ request: Request, context: DeyleeRequestContext) async throws -> OKResponse {
         let caller = try await authenticated(request)
         let body = try await request.decode(as: SetPasswordRequest.self, context: context)
 
@@ -363,7 +363,7 @@ struct AuthController: Sendable {
     /// its own tokens anyway and may well call it again on the next launch. Revoking
     /// an already-revoked chain updates nothing.
     @Sendable
-    func signOut(_ request: Request, context _: BasicRequestContext) async throws -> OKResponse {
+    func signOut(_ request: Request, context _: DeyleeRequestContext) async throws -> OKResponse {
         let caller = try await authenticated(request)
         do {
             try await store.withoutTenant { connection in
@@ -391,7 +391,7 @@ struct AuthController: Sendable {
     /// 401 with the same words, so a caller cannot learn from the response whether
     /// a token ever existed.
     @Sendable
-    func refresh(_ request: Request, context: BasicRequestContext) async throws -> SessionResponse {
+    func refresh(_ request: Request, context: DeyleeRequestContext) async throws -> SessionResponse {
         let body = try await request.decode(as: RefreshRequest.self, context: context)
         let oldHash = ByteBuffer(bytes: RefreshToken.digest(body.refreshToken))
         let newToken = RefreshToken.generate()

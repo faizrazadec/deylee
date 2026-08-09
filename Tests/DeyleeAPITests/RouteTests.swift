@@ -48,7 +48,7 @@ struct AuthRoutes {
         // A fresh limiter per router, so one test's attempts cannot throttle another's.
         let limiter = RateLimiter()
 
-        let router = Router()
+        let router = Router(context: DeyleeRequestContext.self)
         router.add(middleware: ErrorLogging(logger: logger))
         AuthController(store: store, tokens: tokens, config: config, mailer: mailer,
                        limiter: limiter, logger: logger)

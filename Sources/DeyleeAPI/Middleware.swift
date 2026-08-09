@@ -1,5 +1,30 @@
 import Hummingbird
 import Logging
+import NIOCore
+
+/// The request context, so the body limit is stated here rather than inherited.
+///
+/// Hummingbird defaults `maxUploadSize` to 2 MB, which is not obviously wrong until
+/// you work out what a legitimate maximum push weighs. The protocol allows 500 changes
+/// and the schema allows a 2000-*character* note; characters are not bytes, and 2000
+/// emoji are 8 KB of UTF-8. So the largest push a conforming client may send is about
+/// 4.2 MB — and it was being refused with a 413 it could never get past, because the
+/// client re-sends the same 500 rows every time. A permanent sync stall, from a limit
+/// nobody chose.
+///
+/// 8 MB leaves room for that worst case and for the escaping around it, and still
+/// bounds what one authenticated caller can make the process allocate. Pinned rather
+/// than inherited: this number now moves when somebody decides it should, not when a
+/// dependency does.
+struct DeyleeRequestContext: RequestContext {
+    var coreContext: CoreRequestContextStorage
+
+    init(source: Source) {
+        coreContext = .init(source: source)
+    }
+
+    var maxUploadSize: Int { 8 * 1024 * 1024 }
+}
 
 /// Logs the errors nobody chose to return.
 ///
@@ -20,6 +45,18 @@ struct ErrorLogging<Context: RequestContext>: RouterMiddleware {
             return try await next(request, context)
         } catch let error as HTTPError {
             throw error
+        } catch let tooBig as NIOTooManyBytesError {
+            // A body over the limit is the client's mistake, answered by the protocol's
+            // own 413. Logging it as an unhandled error buried real faults in noise —
+            // which is the exact thing this middleware exists to prevent.
+            logger.warning("request body over the limit", metadata: [
+                "path": .string(request.uri.path),
+                "maxBytes": .string("\(tooBig.maxBytes.map(String.init) ?? "unset")"),
+            ])
+            throw HTTPError(
+                .contentTooLarge,
+                message: "That request body is too large. Send fewer changes per push."
+            )
         } catch StoreError.timedOut {
             // Deliberate, so it is answered rather than logged as a bug — but a real
             // fault, so it is said out loud at warning level. The auth routes map

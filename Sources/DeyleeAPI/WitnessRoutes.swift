@@ -25,12 +25,12 @@ struct WitnessController: Sendable {
         let recorded: Bool
     }
 
-    func addRoutes(to router: Router<BasicRequestContext>) {
+    func addRoutes(to router: Router<DeyleeRequestContext>) {
         router.post("/v1/beat", use: beat)
     }
 
     @Sendable
-    func beat(_ request: Request, context: BasicRequestContext) async throws -> BeatResponse {
+    func beat(_ request: Request, context: DeyleeRequestContext) async throws -> BeatResponse {
         guard let header = request.headers[.authorization], header.hasPrefix("Bearer "),
               let payload = try? await tokens.verifyAccessToken(
                   String(header.dropFirst("Bearer ".count))),

@@ -71,6 +71,10 @@ struct SyncController: Sendable {
     static let pageSize = 500
     /// Changes accepted per push, matching the 413 in the protocol.
     static let maxChangesPerPush = 500
+    /// Matching `segments_note_length` on the table and `maximumNoteLength` in the Mac
+    /// app's store, so a note is refused where it is typed rather than after a round
+    /// trip. Characters, as Postgres's `length()` counts them.
+    static let maximumNoteLength = 2000
     /// How far ahead of the server a client's `updated_at` may be.
     ///
     /// Not zero, and not tight. Ordinary machines are minutes off without anybody
@@ -85,12 +89,12 @@ struct SyncController: Sendable {
     static let futureTolerance: Int64 = 5 * 60 * 1000
     static let protocolVersion = 1
 
-    func addRoutes(to router: Router<BasicRequestContext>) {
+    func addRoutes(to router: Router<DeyleeRequestContext>) {
         router.post("/v1/sync", use: sync)
     }
 
     @Sendable
-    func sync(_ request: Request, context: BasicRequestContext) async throws -> SyncResponse {
+    func sync(_ request: Request, context: DeyleeRequestContext) async throws -> SyncResponse {
         let userID = try await authenticate(request)
         let body = try await request.decode(as: SyncRequest.self, context: context)
 
@@ -267,6 +271,16 @@ struct SyncController: Sendable {
         }
         guard let rowID = UUID(uuidString: row.id) else {
             throw HTTPError(.badRequest, message: "That id is not a UUID.")
+        }
+        // Checked here as well as by the CHECK on the table, so the refusal names the
+        // field. Through the constraint it arrives as a generic "a field failed
+        // validation", which tells the person who wrote the note nothing about which
+        // one or why. Characters, matching `length(note)` in Postgres — not bytes.
+        if let note = row.note, note.count > Self.maximumNoteLength {
+            throw HTTPError(
+                .badRequest,
+                message: "A note may be at most \(Self.maximumNoteLength) characters."
+            )
         }
         _ = try await connection.query(
             """
