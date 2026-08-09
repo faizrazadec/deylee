@@ -122,7 +122,7 @@ public final class TimerEngine {
             // The day finalised is the one `at` falls in, which is also the day the
             // final piece of a midnight-crossing segment was attributed to.
             let day = try repo.getOrCreateDay(dateKeyOf(at, in: zone), targetMinutes: targetMinutes, now: now)
-            try repo.setDayEnded(day.id, endedAt: at)
+            try repo.setDayEnded(day.id, endedAt: at, now: now)
         }
         return try emit()
     }
@@ -147,7 +147,7 @@ public final class TimerEngine {
                 // A zero-length close would leave a phantom row in the day list; there
                 // is nothing worth keeping, so the segment goes instead.
                 if at <= segment.startedAt {
-                    try repo.deleteSegment(segment.id)
+                    try repo.deleteSegment(segment.id, now: now)
                 } else {
                     try repo.closeSegmentSplitting(
                         segment.id, endedAt: at, targetMinutes: targetMinutes, now: now
@@ -158,7 +158,7 @@ public final class TimerEngine {
 
         case .discard(let segmentId):
             guard try repo.segment(id: segmentId) != nil else { return try snapshot(now: now) }
-            try repo.transaction { try repo.deleteSegment(segmentId) }
+            try repo.transaction { try repo.deleteSegment(segmentId, now: now) }
             return try emit()
         }
     }
@@ -275,8 +275,10 @@ public final class TimerEngine {
     /// to do that.
     public func syncTodayTarget() throws -> [DateKey] {
         // The engine's own clock, not the wall clock, so a test that fakes the clock
-        // sees the same day here as everywhere else.
-        let date = dateKeyOf(clock(), in: zone)
+        // sees the same day here as everywhere else. Read once, so the date and the
+        // `updated_at` the write stamps cannot come from two different instants.
+        let now = clock()
+        let date = dateKeyOf(now, in: zone)
         // No row yet: nothing is stamped, and whoever creates it will stamp the
         // preference as it stands then.
         guard let day = try repo.findDay(date) else { return [] }
@@ -286,7 +288,7 @@ public final class TimerEngine {
         // identical value is pure churn.
         if day.targetMinutes == targetMinutes { return [] }
 
-        try repo.setDayTarget(day.id, targetMinutes: targetMinutes)
+        try repo.setDayTarget(day.id, targetMinutes: targetMinutes, now: now)
         return [date]
     }
 
@@ -348,7 +350,7 @@ public final class TimerEngine {
             dateKeyOf(at, in: zone), targetMinutes: targetMinutes, now: now
         )
         // A day with time running on it is by definition not finished.
-        if day.endedAt != nil { try repo.setDayEnded(day.id, endedAt: nil) }
+        if day.endedAt != nil { try repo.setDayEnded(day.id, endedAt: nil, now: now) }
         try repo.insertSegment(
             dayId: day.id, type: type, startedAt: at, endedAt: nil, now: now
         )

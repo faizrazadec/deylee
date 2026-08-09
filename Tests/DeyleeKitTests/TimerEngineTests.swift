@@ -54,6 +54,9 @@ private final class Harness {
         }
     }
 
+    /// Read-only view of the driven clock, for writes that now take an instant.
+    var now: EpochMs { clock }
+
     func advance(to instant: EpochMs) { clock = instant }
     func advance(by ms: Int64) { clock += ms }
 }
@@ -191,7 +194,7 @@ private final class Harness {
 
         // Deleting a segment changes the total immediately, with nothing to invalidate.
         let segments = try h.repo.listSegments(dayId: try #require(snapshot.dayId))
-        try h.repo.deleteSegment(segments[0].id)
+        try h.repo.deleteSegment(segments[0].id, now: h.now)
         let after = try h.engine.snapshot()
         #expect(after.closedWorkedMs == 4 * MS_PER_HOUR + 30 * MS_PER_MINUTE)
     }

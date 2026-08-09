@@ -26,17 +26,33 @@ public final class Repository {
 
     public func findDay(_ date: DateKey) throws -> Day? {
         try db.queryOne(
-            "SELECT \(Self.dayColumns) FROM days WHERE date = ?",
+            "SELECT \(Self.dayColumns) FROM days WHERE date = ? AND deleted_at IS NULL",
             [.text(date.description)],
             row: Self.day
         )
     }
 
+    /// Every row this writes carries a `uuid` and is left `dirty`.
+    ///
+    /// Both are what make the row visible to sync at all: the push queue selects
+    /// `WHERE dirty = 1 AND uuid IS NOT NULL`, so a row missing either is queued and
+    /// unsendable at the same time — it looks pending forever and never leaves the
+    /// machine. `dirty` defaults to 1 in the schema; the uuid has to be minted here.
+    ///
+    /// UUIDv7 seeded from the row's own `created_at`, exactly as the backfill does, so
+    /// ids sort in the order the rows were made and the server's pull order agrees
+    /// with a client's insertion order for free.
     public func getOrCreateDay(_ date: DateKey, targetMinutes: Int, now: EpochMs) throws -> Day {
         if let existing = try findDay(date) { return existing }
         try db.run(
-            "INSERT INTO days (date, created_at, ended_at, target_minutes) VALUES (?, ?, NULL, ?)",
-            [.text(date.description), .integer(now), .integer(Int64(targetMinutes))]
+            """
+            INSERT INTO days (uuid, date, created_at, ended_at, target_minutes, updated_at)
+            VALUES (\(uuidV7SQL(millis: "\(now)")), ?, ?, NULL, ?, ?)
+            """,
+            [
+                .text(date.description), .integer(now),
+                .integer(Int64(targetMinutes)), .integer(now),
+            ]
         )
         return Day(
             id: db.lastInsertRowID, date: date, createdAt: now,
@@ -45,11 +61,15 @@ public final class Repository {
     }
 
     /// `nil` clears the flag — the user pressed Start again after End Day.
+    ///
+    /// `dirty` and `updated_at` are set for the same reason they are on every other
+    /// write here: an edit the server never hears about is an edit that silently
+    /// reverts on the next device, and last-write-wins compares `updated_at`.
     @discardableResult
-    public func setDayEnded(_ dayId: Int64, endedAt: EpochMs?) throws -> Day {
+    public func setDayEnded(_ dayId: Int64, endedAt: EpochMs?, now: EpochMs) throws -> Day {
         try db.run(
-            "UPDATE days SET ended_at = ? WHERE id = ?",
-            [endedAt.map(Database.Value.integer) ?? .null, .integer(dayId)]
+            "UPDATE days SET ended_at = ?, updated_at = ?, dirty = 1 WHERE id = ?",
+            [endedAt.map(Database.Value.integer) ?? .null, .integer(now), .integer(dayId)]
         )
         return try requireDay(dayId)
     }
@@ -59,17 +79,18 @@ public final class Repository {
     /// that has already started — and the caller is responsible for passing only that
     /// day, so a changed preference cannot rewrite history.
     @discardableResult
-    public func setDayTarget(_ dayId: Int64, targetMinutes: Int) throws -> Day {
+    public func setDayTarget(_ dayId: Int64, targetMinutes: Int, now: EpochMs) throws -> Day {
         try db.run(
-            "UPDATE days SET target_minutes = ? WHERE id = ?",
-            [.integer(Int64(targetMinutes)), .integer(dayId)]
+            "UPDATE days SET target_minutes = ?, updated_at = ?, dirty = 1 WHERE id = ?",
+            [.integer(Int64(targetMinutes)), .integer(now), .integer(dayId)]
         )
         return try requireDay(dayId)
     }
 
     private func requireDay(_ dayId: Int64) throws -> Day {
         guard let day = try db.queryOne(
-            "SELECT \(Self.dayColumns) FROM days WHERE id = ?", [.integer(dayId)], row: Self.day
+            "SELECT \(Self.dayColumns) FROM days WHERE id = ? AND deleted_at IS NULL",
+            [.integer(dayId)], row: Self.day
         ) else {
             throw RepositoryError.dayNotFound(dayId)
         }
@@ -80,7 +101,10 @@ public final class Repository {
 
     public func listSegments(dayId: Int64) throws -> [Segment] {
         try db.query(
-            "SELECT \(Self.segmentColumns) FROM segments WHERE day_id = ? ORDER BY started_at ASC, id ASC",
+            """
+            SELECT \(Self.segmentColumns) FROM segments
+             WHERE day_id = ? AND deleted_at IS NULL ORDER BY started_at ASC, id ASC
+            """,
             [.integer(dayId)],
             row: Self.segment
         )
@@ -116,8 +140,8 @@ public final class Repository {
                    s.created_at     AS segment_created_at,
                    s.updated_at     AS segment_updated_at
               FROM days d
-              LEFT JOIN segments s ON s.day_id = d.id
-             WHERE d.date >= ? AND d.date <= ?
+              LEFT JOIN segments s ON s.day_id = d.id AND s.deleted_at IS NULL
+             WHERE d.date >= ? AND d.date <= ? AND d.deleted_at IS NULL
              ORDER BY d.date ASC, s.started_at ASC, s.id ASC
             """,
             [.text(range.from.description), .text(range.to.description)]
@@ -164,7 +188,7 @@ public final class Repository {
 
     public func segment(id: Int64) throws -> Segment? {
         try db.queryOne(
-            "SELECT \(Self.segmentColumns) FROM segments WHERE id = ?",
+            "SELECT \(Self.segmentColumns) FROM segments WHERE id = ? AND deleted_at IS NULL",
             [.integer(id)],
             row: Self.segment
         )
@@ -176,7 +200,8 @@ public final class Repository {
         try db.queryOne(
             """
             SELECT \(Self.segmentColumns) FROM segments
-             WHERE ended_at IS NULL ORDER BY started_at ASC, id ASC LIMIT 1
+             WHERE ended_at IS NULL AND deleted_at IS NULL
+             ORDER BY started_at ASC, id ASC LIMIT 1
             """,
             row: Self.segment
         )
@@ -191,8 +216,9 @@ public final class Repository {
     ) throws -> Segment {
         try db.run(
             """
-            INSERT INTO segments (day_id, type, started_at, ended_at, note, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO segments
+                (uuid, day_id, type, started_at, ended_at, note, created_at, updated_at)
+            VALUES (\(uuidV7SQL(millis: "\(now)")), ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 .integer(dayId), .text(type.rawValue), .integer(startedAt),
@@ -229,7 +255,7 @@ public final class Repository {
         try db.run(
             """
             UPDATE segments
-               SET type = ?, started_at = ?, ended_at = ?, note = ?, updated_at = ?
+               SET type = ?, started_at = ?, ended_at = ?, note = ?, updated_at = ?, dirty = 1
              WHERE id = ?
             """,
             [
@@ -242,9 +268,25 @@ public final class Repository {
         return next
     }
 
+    /// Tombstoned, not removed.
+    ///
+    /// A row deleted with `DELETE` cannot be sent, because there is nothing left to
+    /// send — so the delete never reaches the other devices, and the row is handed
+    /// back to this one on its next pull. Deleting time and watching it return is
+    /// worse than the delete not working at all.
+    ///
+    /// `deleted_at IS NULL` in the predicate makes this idempotent: deleting an
+    /// already-deleted row changes nothing and reports false, which is what the
+    /// callers checking the result mean by it.
     @discardableResult
-    public func deleteSegment(_ id: Int64) throws -> Bool {
-        try db.run("DELETE FROM segments WHERE id = ?", [.integer(id)])
+    public func deleteSegment(_ id: Int64, now: EpochMs) throws -> Bool {
+        try db.run(
+            """
+            UPDATE segments SET deleted_at = ?, updated_at = ?, dirty = 1
+             WHERE id = ? AND deleted_at IS NULL
+            """,
+            [.integer(now), .integer(now), .integer(id)]
+        )
         return db.changes > 0
     }
 

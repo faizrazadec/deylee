@@ -30,7 +30,18 @@ private final class Harness {
         }
     }
 
-    /// A day and one closed segment, written the way the timer would.
+    /// A day and one closed segment, written directly rather than through the writer.
+    ///
+    /// Deliberately raw SQL, and it used to claim it was "written the way the timer
+    /// would" — which was not true, and hid the fact that the timer produced rows with
+    /// no `uuid` that `pendingPush` silently skipped. Seeding by hand is still the
+    /// right tool here, because these tests need states the writer cannot reach: a row
+    /// already acknowledged, a tombstone, a cursor part-way through a page.
+    ///
+    /// What the writer itself produces is asserted in `SyncWriterTests`, which drives
+    /// `TimerEngine` and checks the queue is not empty. Keep the two apart: the moment
+    /// this helper is described as standing in for the app, it stops being a fixture
+    /// and starts being a second, fictional writer.
     @discardableResult
     func seed(date: String, startedAt: EpochMs, endedAt: EpochMs) throws -> Int64 {
         try db.run(

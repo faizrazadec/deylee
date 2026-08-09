@@ -79,7 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 // Too short to be worth asking about; a phantom row is worse than
                 // silently dropping a sub-second segment.
-                try repo.deleteSegment(orphan.id)
+                try repo.deleteSegment(orphan.id, now: EpochMs(Date().timeIntervalSince1970 * 1000))
             }
         }
 

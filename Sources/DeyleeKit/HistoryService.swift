@@ -157,7 +157,7 @@ public final class HistoryService {
             } else {
                 // A row never moves between days — `day_id` is the filing rule the whole
                 // schema rests on — so a segment dragged onto another date is re-filed.
-                try repo.deleteSegment(existing.id)
+                try repo.deleteSegment(existing.id, now: now)
                 try repo.insertSegment(
                     dayId: headDay.id, type: head.type,
                     startedAt: head.startedAt, endedAt: head.endedAt,
@@ -204,7 +204,7 @@ public final class HistoryService {
         // Stored segments always start inside the day they are filed under — the splitter
         // guarantees it — so the start instant identifies the day without a second lookup.
         let date = dateKeyOf(existing.startedAt, in: zone)
-        let removed = try repo.transaction { try repo.deleteSegment(id) }
+        let removed = try repo.transaction { try repo.deleteSegment(id, now: now) }
         guard removed else {
             throw MutationError(code: .notFound, message: "That segment no longer exists.")
         }
