@@ -16,7 +16,7 @@ import Foundation
 /// a file from a newer build outright.
 
 /// Bump this in lock-step with a new entry in `migrations`.
-public let CURRENT_SCHEMA_VERSION = 4
+public let CURRENT_SCHEMA_VERSION = 5
 
 /// The database on disk was written by a newer build of Deylee than this one.
 ///
@@ -196,6 +196,28 @@ let migrations: [Migration] = [
         // only ever clears the flag for a uuid the server named back.
         try db.run("UPDATE days     SET dirty = 1 WHERE server_seq IS NULL")
         try db.run("UPDATE segments SET dirty = 1 WHERE server_seq IS NULL")
+    },
+
+    // Rows the server sent that this build could not read.
+    //
+    // They used to be dropped, and the cursor advanced past them anyway — which is a
+    // deletion, not a skip, because the cursor only moves forwards and the protocol
+    // has no way to ask for a row again. The case that produces them is exactly the
+    // case where the row is meaningful: a newer server sending a shape this version
+    // does not know yet.
+    //
+    // Keeping them verbatim answers both halves. Sync does not stall on a row it
+    // cannot use, and an upgrade that teaches the app the new shape replays them.
+    Migration(version: 5) { db in
+        try db.execute("""
+            CREATE TABLE IF NOT EXISTS sync_quarantine (
+                uuid       TEXT PRIMARY KEY,
+                table_name TEXT    NOT NULL,
+                seq        INTEGER NOT NULL,
+                payload    TEXT    NOT NULL,
+                first_seen INTEGER NOT NULL
+            );
+            """)
     },
 ]
 

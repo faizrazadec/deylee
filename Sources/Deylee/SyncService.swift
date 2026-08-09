@@ -193,14 +193,49 @@ final class SyncService: ObservableObject {
 
         var incomingDays: [SyncDay] = []
         var incomingSegments: [SyncSegment] = []
+        var unreadable: [Repository.QuarantinedRow] = []
+        var understood: [String] = []
         for change in response.changes {
             if change.table == "days", let day = Self.decodeDay(change.row) {
                 incomingDays.append(day)
+                understood.append(day.uuid)
             } else if change.table == "segments", let segment = Self.decodeSegment(change.row) {
                 incomingSegments.append(segment)
+                understood.append(segment.uuid)
+            } else if let held = Self.quarantining(change, at: now()) {
+                // Set aside rather than dropped. The cursor only moves forwards and the
+                // protocol has no way to ask for one row again, so skipping this used to
+                // delete it from this device for ever — and the case that produces it is
+                // the forward-compatible one, where the row means something this build
+                // has not learnt yet.
+                unreadable.append(held)
             }
         }
+
+        // Rows held from an earlier sync that this build can read now — an upgrade
+        // taught it the shape. Ones still in the current batch are left alone: the
+        // copy that just arrived is the newer one.
+        let arrivedAgain = Set(unreadable.map(\.uuid)).union(understood)
+        var replayed: [String] = []
+        for held in try repo.quarantined() where !arrivedAgain.contains(held.uuid) {
+            guard let change = Self.decodeQuarantined(held) else { continue }
+            if change.table == "days", let day = Self.decodeDay(change.row) {
+                incomingDays.append(day)
+                replayed.append(held.uuid)
+            } else if change.table == "segments", let segment = Self.decodeSegment(change.row) {
+                incomingSegments.append(segment)
+                replayed.append(held.uuid)
+            }
+        }
+
         try repo.applyRemote(days: incomingDays, segments: incomingSegments, serverSeq: response.cursor)
+
+        // After the rows are written and before the cursor moves. Dying anywhere in
+        // here costs a repeat, never a row: an unsaved quarantine leaves the cursor
+        // where it was so the server sends it again, and a replay that was applied but
+        // not released is applied again, which the upsert makes a no-op.
+        try repo.quarantine(unreadable)
+        try repo.releaseFromQuarantine(replayed + understood)
 
         // Only after the rows are durably written. A cursor advanced first is a
         // cursor that skips rows if the process dies in between.
@@ -239,9 +274,33 @@ final class SyncService: ObservableObject {
         )
     }
 
-    /// A row that cannot be understood is skipped rather than fatal: a newer server
+    /// Re-encode a change this build could not read, so it can be tried again later.
+    ///
+    /// Nil only if the row will not round-trip through JSON at all, which for a value
+    /// that arrived as JSON means something is wrong with this process rather than
+    /// with the row. There is nothing useful to keep in that case.
+    private static func quarantining(_ change: ChangeDTO, at now: EpochMs) -> Repository.QuarantinedRow? {
+        guard let table = SyncTable(rawValue: change.table),
+              let json = try? JSONEncoder().encode(change),
+              let text = String(data: json, encoding: .utf8)
+        else { return nil }
+        return Repository.QuarantinedRow(
+            uuid: change.row.id, table: table,
+            // The row's own sequence when it has one, so a replay keeps the server's
+            // order. Zero sorts it first, which is where a row of unknown age belongs.
+            seq: change.row.seq ?? 0,
+            payload: text, firstSeen: now
+        )
+    }
+
+    private static func decodeQuarantined(_ held: Repository.QuarantinedRow) -> ChangeDTO? {
+        try? JSONDecoder().decode(ChangeDTO.self, from: Data(held.payload.utf8))
+    }
+
+    /// A row that cannot be understood is set aside rather than fatal: a newer server
     /// may send a shape this build does not know, and refusing the whole batch over
-    /// one row would strand the client until it updates.
+    /// one row would strand the client until it updates. It is kept rather than
+    /// dropped, because the cursor advances past it either way.
     private static func decodeDay(_ row: RowDTO) -> SyncDay? {
         guard let date = row.date.flatMap(DateKey.init), let target = row.targetMinutes
         else { return nil }

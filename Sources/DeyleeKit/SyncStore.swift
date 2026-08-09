@@ -307,6 +307,87 @@ extension Repository {
         ) { ($0.text(0), $0.text(1)) }
     }
 
+    // MARK: Quarantine
+
+    /// A row the server sent that this build could not read.
+    public struct QuarantinedRow: Sendable, Equatable {
+        public let uuid: String
+        public let table: SyncTable
+        public let seq: Int64
+        /// The row exactly as it arrived. Kept verbatim on purpose: the whole reason it
+        /// is here is that this version does not know what the fields mean, so anything
+        /// this version reshapes on the way in is a guess.
+        public let payload: String
+        public let firstSeen: EpochMs
+
+        public init(uuid: String, table: SyncTable, seq: Int64, payload: String, firstSeen: EpochMs) {
+            self.uuid = uuid
+            self.table = table
+            self.seq = seq
+            self.payload = payload
+            self.firstSeen = firstSeen
+        }
+    }
+
+    /// Set a row aside instead of dropping it.
+    ///
+    /// The cursor may then advance past it without losing it, which is the point: it
+    /// only moves forwards and the protocol has no way to ask for one row again, so a
+    /// row skipped before this existed was a row deleted on this device for ever.
+    ///
+    /// Keyed by uuid, so a later version of the same row replaces the earlier one —
+    /// there is no value in replaying a stale copy of something the server has since
+    /// changed. `first_seen` survives the replacement so the age of the problem is
+    /// still readable.
+    public func quarantine(_ rows: [QuarantinedRow]) throws {
+        guard !rows.isEmpty else { return }
+        try db.transaction {
+            for row in rows {
+                try db.run(
+                    """
+                    INSERT INTO sync_quarantine (uuid, table_name, seq, payload, first_seen)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(uuid) DO UPDATE SET
+                        table_name = excluded.table_name,
+                        seq        = excluded.seq,
+                        payload    = excluded.payload
+                    """,
+                    [.text(row.uuid), .text(row.table.rawValue), .integer(row.seq),
+                     .text(row.payload), .integer(row.firstSeen)]
+                )
+            }
+        }
+    }
+
+    /// Everything set aside, oldest first, so a replay applies them in the order the
+    /// server issued them.
+    public func quarantined() throws -> [QuarantinedRow] {
+        try db.query(
+            """
+            SELECT uuid, table_name, seq, payload, first_seen
+            FROM sync_quarantine ORDER BY seq
+            """
+        ) { row in
+            QuarantinedRow(
+                uuid: row.text(0),
+                table: SyncTable(rawValue: row.text(1)) ?? .days,
+                seq: row.int64(2),
+                payload: row.text(3),
+                firstSeen: row.int64(4)
+            )
+        }
+    }
+
+    /// Forget rows that have since been applied.
+    public func releaseFromQuarantine(_ uuids: [String]) throws {
+        guard !uuids.isEmpty else { return }
+        let placeholders = Array(repeating: "?", count: uuids.count).joined(separator: ",")
+        try db.run(
+            "DELETE FROM sync_quarantine WHERE uuid IN (\(placeholders))",
+            uuids.map { .text($0) }
+        )
+    }
+
     // MARK: Pull
 
     /// Apply rows from the server.

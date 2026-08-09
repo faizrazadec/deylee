@@ -543,3 +543,68 @@ private final class Harness {
         )
     }
 }
+
+/// A row this build cannot read is kept, not deleted.
+///
+/// The bug this pins closed was silent and permanent: `SyncService` dropped any row
+/// it could not decode and advanced the cursor past it anyway. The cursor only moves
+/// forwards and the protocol has no way to ask for one row again, so the row was gone
+/// from that device for ever — with no counter, no log line and no status change.
+///
+/// The case that produces one is the forward-compatible case. A third segment type
+/// added server-side would have silently deleted every segment of that type from
+/// every older client, which is precisely the row that matters.
+@Suite struct Quarantine {
+    private func row(
+        _ uuid: String, table: SyncTable = .segments, seq: Int64, payload: String = #"{"x":1}"#
+    ) -> Repository.QuarantinedRow {
+        .init(uuid: uuid, table: table, seq: seq, payload: payload, firstSeen: 1_000)
+    }
+
+    @Test func aHeldRowSurvivesAndComesBackInTheServersOrder() throws {
+        let h = try Harness()
+        try h.repo.quarantine([row("b", seq: 20), row("a", seq: 10)])
+
+        let held = try h.repo.quarantined()
+        #expect(held.map(\.uuid) == ["a", "b"], "a replay must follow the server's order")
+        #expect(held.first?.payload == #"{"x":1}"#, "the row is kept exactly as it arrived")
+    }
+
+    /// The server may send a newer copy of a row this build still cannot read. Keeping
+    /// both would replay a stale version over a current one.
+    @Test func aLaterCopyReplacesTheOneHeld() throws {
+        let h = try Harness()
+        try h.repo.quarantine([row("a", seq: 10, payload: #"{"v":1}"#)])
+        try h.repo.quarantine([row("a", seq: 30, payload: #"{"v":2}"#)])
+
+        let held = try h.repo.quarantined()
+        #expect(held.count == 1)
+        #expect(held.first?.payload == #"{"v":2}"#)
+        #expect(held.first?.seq == 30)
+        #expect(held.first?.firstSeen == 1_000, "the age of the problem stays readable")
+    }
+
+    /// What an upgrade does: the build learns the shape, the row applies, the entry
+    /// goes. Releasing one must not disturb the rest.
+    @Test func releasingAppliedRowsLeavesTheOthers() throws {
+        let h = try Harness()
+        try h.repo.quarantine([row("a", seq: 10), row("b", seq: 20), row("c", seq: 30)])
+
+        try h.repo.releaseFromQuarantine(["a", "c"])
+        #expect(try h.repo.quarantined().map(\.uuid) == ["b"])
+
+        // Called on every sync with whatever was understood, which is usually nothing
+        // that was ever held.
+        try h.repo.releaseFromQuarantine([])
+        try h.repo.releaseFromQuarantine(["never-quarantined"])
+        #expect(try h.repo.quarantined().map(\.uuid) == ["b"])
+    }
+
+    /// A store that has never seen an unreadable row must not pay for the mechanism.
+    @Test func anEmptyQuarantineIsTheNormalState() throws {
+        let h = try Harness()
+        #expect(try h.repo.quarantined().isEmpty)
+        try h.repo.quarantine([])
+        #expect(try h.repo.quarantined().isEmpty)
+    }
+}
