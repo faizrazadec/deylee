@@ -25,9 +25,28 @@ struct ClientConfig: Sendable {
         guard let base = bundle.object(forInfoDictionaryKey: "DeyleeAPIBaseURL") as? String,
               let url = URL(string: base),
               let clientID = bundle.object(forInfoDictionaryKey: "DeyleeGoogleClientID") as? String,
-              !clientID.isEmpty
+              !clientID.isEmpty,
+              isSafe(url)
         else { return nil }
         return ClientConfig(apiBaseURL: url, googleClientID: clientID)
+    }
+
+    /// Plaintext is allowed to reach this machine and nowhere else.
+    ///
+    /// App Transport Security is not the boundary it reads as: the exemption the
+    /// development plist carries, `NSAllowsLocalNetworking`, also covers `.local` and
+    /// any unqualified name on the local link. So a bundle built with that exemption
+    /// and a hostname would happily send tokens and a whole working history over the
+    /// office wifi in clear text, with nothing refusing it.
+    ///
+    /// Checked here as well, because this is the one place that sees the actual value.
+    static func isSafe(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        if scheme == "https" { return true }
+        guard scheme == "http" else { return false }
+        // Loopback only, by literal address. A name that currently resolves to
+        // loopback is still a name somebody else can answer for.
+        return ["127.0.0.1", "::1", "localhost"].contains(url.host?.lowercased() ?? "")
     }
 }
 

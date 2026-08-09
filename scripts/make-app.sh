@@ -16,6 +16,35 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Deylee"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
+# Which API this bundle talks to, decided here rather than by whatever the plist was
+# last edited to say. One committed file served both purposes, so the value depended on
+# who touched it most recently: for a while every release pointed at loopback and would
+# have shipped an app that silently never synced, and after that was corrected every
+# development build pointed at production instead — which is how test accounts end up in
+# a real database.
+#
+# Override for anything unusual; the default follows the configuration.
+if [[ -z "${DEYLEE_API_BASE_URL:-}" ]]; then
+  if [[ "$CONFIG" == "debug" ]]; then
+    DEYLEE_API_BASE_URL="http://127.0.0.1:8081"   # the dev container
+  else
+    DEYLEE_API_BASE_URL="https://api.faizraza.me"
+  fi
+fi
+/usr/libexec/PlistBuddy -c "Set :DeyleeAPIBaseURL $DEYLEE_API_BASE_URL" \
+  "$APP/Contents/Info.plist"
+
+# The plaintext-HTTP exemption is a development affordance and has no business in a
+# bundle that leaves this machine. It covers more than loopback — `.local` and any
+# unqualified name on the local link — so leaving it in a release would quietly widen
+# what the app is willing to talk to in clear text.
+if [[ "$CONFIG" != "debug" ]]; then
+  /usr/libexec/PlistBuddy -c "Delete :NSAppTransportSecurity" \
+    "$APP/Contents/Info.plist" 2>/dev/null || true
+fi
+
+echo "API base URL: $DEYLEE_API_BASE_URL ($CONFIG)"
+
 # App icon: build AppIcon.icns from the 1024px master.
 ICON_SRC="Resources/AppIcon.png"
 if [[ -f "$ICON_SRC" ]]; then
