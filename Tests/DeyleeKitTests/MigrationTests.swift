@@ -51,7 +51,10 @@ private func uuids(_ db: Database, _ table: String, orderBy: String) throws -> [
         try runMigrations(db)
 
         #expect(try readSchemaVersion(db) == CURRENT_SCHEMA_VERSION)
-        #expect(CURRENT_SCHEMA_VERSION == 5)
+        // Spelled out on purpose, and the one place that should be. Every other test
+        // reads the constant, so this is the single tripwire that makes adding a
+        // migration a deliberate act rather than something noticed later.
+        #expect(CURRENT_SCHEMA_VERSION == 6)
     }
 
     @Test func backfillsAUuidOnEveryExistingRow() throws {

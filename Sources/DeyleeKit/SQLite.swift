@@ -263,4 +263,17 @@ public struct Row {
     public func optionalText(_ column: Int) -> String? {
         isNull(column) ? nil : text(column)
     }
+
+    /// Copies the bytes out rather than wrapping the pointer.
+    ///
+    /// SQLite owns that buffer only until the statement is stepped or finalized, and
+    /// both happen before a caller could use it — `query` steps in a loop and
+    /// finalizes in a `defer`. A `Data` viewing the pointer would be reading freed
+    /// memory by the time it was read, which is the kind of bug that works in a test
+    /// and corrupts an image in the field.
+    public func blob(_ column: Int) -> Data {
+        guard let pointer = sqlite3_column_blob(statement, Int32(column)) else { return Data() }
+        let count = Int(sqlite3_column_bytes(statement, Int32(column)))
+        return Data(bytes: pointer, count: count)
+    }
 }

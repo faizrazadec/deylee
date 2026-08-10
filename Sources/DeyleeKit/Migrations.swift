@@ -16,7 +16,7 @@ import Foundation
 /// a file from a newer build outright.
 
 /// Bump this in lock-step with a new entry in `migrations`.
-public let CURRENT_SCHEMA_VERSION = 5
+public let CURRENT_SCHEMA_VERSION = 6
 
 /// The database on disk was written by a newer build of Deylee than this one.
 ///
@@ -217,6 +217,44 @@ let migrations: [Migration] = [
                 payload    TEXT    NOT NULL,
                 first_seen INTEGER NOT NULL
             );
+            """)
+    },
+    // Screen captures, which exist only while the user has switched capture on.
+    //
+    // The image lives in this table rather than as a file beside the database, and
+    // that is the whole reason it is safe to keep at all: the store is SQLCipher
+    // encrypted, so a capture is encrypted at rest for free and cannot be recovered
+    // by opening a folder. A PNG written next to the database would be the one
+    // unencrypted copy of the most sensitive thing this app ever holds.
+    //
+    // `captured_at` carries no timezone because every instant in this schema is UTC
+    // epoch milliseconds; `day_date` is the DateKey the capture belongs to, so a
+    // day's captures can be found and deleted without arithmetic on timestamps.
+    //
+    // Sync columns match days and segments — uuid, dirty, server_seq, deleted_at —
+    // so captures ride the push queue that already exists rather than needing a
+    // second one. `deleted_at` matters more here than anywhere else: deleting a
+    // capture has to travel, or a device that already pulled it keeps a copy of an
+    // image its owner deleted.
+    Migration(version: 6) { db in
+        try db.execute("""
+            CREATE TABLE IF NOT EXISTS captures (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid        TEXT    NOT NULL UNIQUE,
+                day_date    TEXT    NOT NULL,
+                segment_id  INTEGER REFERENCES segments(id) ON DELETE SET NULL,
+                captured_at INTEGER NOT NULL,
+                width       INTEGER NOT NULL,
+                height      INTEGER NOT NULL,
+                bytes       BLOB    NOT NULL,
+                created_at  INTEGER NOT NULL,
+                updated_at  INTEGER NOT NULL,
+                deleted_at  INTEGER,
+                dirty       INTEGER NOT NULL DEFAULT 1,
+                server_seq  INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS captures_by_day ON captures (day_date, captured_at);
+            CREATE INDEX IF NOT EXISTS captures_pending_push ON captures (dirty, uuid);
             """)
     },
 ]
