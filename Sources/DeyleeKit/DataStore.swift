@@ -128,7 +128,18 @@ public enum DataStore {
     ///
     /// Nothing restores from this file — it is an export — so removing them costs
     /// nothing.
-    static let tablesWithheldFromBackup = ["sync_state", "sync_quarantine"]
+    /// `captures` is here for a different and larger reason than the other two.
+    ///
+    /// Screen captures live in the database precisely so they are encrypted at rest.
+    /// This backup is deliberately *plaintext*, so that the owner can open it anywhere —
+    /// which would make it the one unencrypted copy of every screenshot the app ever
+    /// took, roughly half a gigabyte of it at the default retention, written to wherever
+    /// somebody happened to save it. That would undo the entire reason the images are
+    /// stored the way they are.
+    ///
+    /// The backup is an export of the owner's *hours*. Images are not hours, and the
+    /// place to get them out is the capture list in Settings, one at a time, knowingly.
+    static let tablesWithheldFromBackup = ["sync_state", "sync_quarantine", "captures"]
 
     public static func backup(to destination: URL, key: [UInt8]? = nil) throws {
         let source = try Database(path: databaseURL.path, key: key)

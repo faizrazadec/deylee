@@ -119,6 +119,44 @@ import Testing
         #expect(try Repository(db: db).findDay(DateKey("2026-08-09")!)?.targetMinutes == 480)
     }
 
+    /// The backup is plaintext so the owner can open it anywhere, which makes it the one
+    /// copy of this data outside the encrypted store. Screen captures must not travel in
+    /// it: that would be every screenshot the app ever took, in the clear, wherever the
+    /// file was saved — undoing the reason the images live in the database at all.
+    @Test func aBackupCarriesNoScreenCaptures() throws {
+        let dir = Self.scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        setenv(DataStore.folderOverrideEnvKey, dir.path, 1)
+        defer { unsetenv(DataStore.folderOverrideEnvKey) }
+
+        do {
+            let db = try DataStore.open(key: Self.aKey)
+            let repo = Repository(db: db)
+            _ = try repo.getOrCreateDay(DateKey("2026-08-10")!, targetMinutes: 480, now: 1)
+            try repo.insertCapture(
+                dayDate: DateKey("2026-08-10")!, segmentID: nil, capturedAt: 1_000,
+                width: 10, height: 10, bytes: Data("SCREENSHOTPIXELS".utf8), now: 1_000
+            )
+        }
+        let backup = dir.appending(path: "backup.sqlite")
+        try DataStore.backup(to: backup, key: Self.aKey)
+
+        // The hours are there...
+        let opened = try Database(path: backup.path)
+        let hours = try opened.query(
+            "SELECT target_minutes FROM days WHERE date = '2026-08-10'"
+        ) { $0.int64(0) }
+        #expect(hours == [480])
+
+        // ...the table is not, and neither are the pixels anywhere in the file.
+        let tables = try opened.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='captures'"
+        ) { $0.text(0) }
+        #expect(tables.isEmpty, "captures must not travel in a plaintext export")
+        let raw = try Data(contentsOf: backup)
+        #expect(raw.range(of: Data("SCREENSHOTPIXELS".utf8)) == nil)
+    }
+
     @Test func aPlaintextBackupOpensWithoutTheKey() throws {
         let dir = Self.scratch()
         defer { try? FileManager.default.removeItem(at: dir) }

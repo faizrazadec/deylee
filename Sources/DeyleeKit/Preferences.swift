@@ -101,7 +101,7 @@ public struct Preferences: Equatable, Sendable {
         updateCheckEnabled: Bool,
         screenCaptureEnabled: Bool = false,
         screenCaptureIntervalMinutes: Int = 10,
-        screenCaptureRetentionDays: Int = 14
+        screenCaptureRetentionDays: Int = 90
     ) {
         self.launchAtLogin = launchAtLogin
         self.showMiniWindow = showMiniWindow
@@ -148,7 +148,7 @@ public struct Preferences: Equatable, Sendable {
         // somebody reads to check.
         screenCaptureEnabled: false,
         screenCaptureIntervalMinutes: 10,
-        screenCaptureRetentionDays: 14
+        screenCaptureRetentionDays: 90
     )
 
     /// Daily target in whole minutes, the form the `days.target_minutes` column stores.
