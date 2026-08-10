@@ -24,9 +24,12 @@ if [[ -z "$ZIP" || ! -f "$ZIP" ]]; then
   exit 1
 fi
 
-SIGN_UPDATE="${SPARKLE_BIN:-}/sign_update"
+# Vendored alongside the framework, so publishing works from a clean checkout with no
+# network and no remembering where a tarball was unpacked. SPARKLE_BIN still overrides,
+# for testing a newer Sparkle before vendoring it.
+SIGN_UPDATE="${SPARKLE_BIN:-Vendor/sparkle-bin}/sign_update"
 if [[ ! -x "$SIGN_UPDATE" ]]; then
-  echo "Set SPARKLE_BIN to the directory holding Sparkle's sign_update tool." >&2
+  echo "sign_update not found at $SIGN_UPDATE" >&2
   echo "It ships in the Sparkle release tarball, alongside generate_keys." >&2
   exit 1
 fi
