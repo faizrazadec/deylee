@@ -3,6 +3,25 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## 0.3.0 — 2026-08-10 (pre-release)
+
+**Deylee updates itself now.** Until this version there was no way for the app to tell
+you a newer one existed — and the releases page Settings pointed at is in a private
+repository, so even that instruction did not work for the people it was written for.
+
+- Deylee checks its own update feed, offers a new version when one appears, and
+  installs it for you. Nothing is downloaded without asking, and the check can be
+  turned off in Settings.
+- **Every update is cryptographically signed.** The app carries only the public half
+  of a signing key and refuses any download that half cannot verify — so an archive
+  that has been altered in transit, or served by something pretending to be Deylee's
+  feed, is rejected rather than installed. The signing key itself never leaves the
+  machine releases are cut on.
+
+One catch, once: **0.2.1 and earlier cannot update themselves to this version**,
+because the machinery that does it arrives *in* this version. This is the last time
+you have to download Deylee by hand. From 0.3.0 onward it keeps itself current.
+
 ## 0.2.1 — 2026-08-10 (pre-release)
 
 - **A backup no longer says whose it is.** Exported backups carried the account the
