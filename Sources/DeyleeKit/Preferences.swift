@@ -64,6 +64,27 @@ public struct Preferences: Equatable, Sendable {
     /// Turning this off makes the app completely offline again.
     public var updateCheckEnabled: Bool
 
+    /// Whether Deylee captures the screen while a work timer runs.
+    ///
+    /// **False on every install, and only the person recorded may change it.** There is
+    /// no admin switch, no policy flag and no server-side enable, and adding one is the
+    /// refusal in `PRODUCT.md` §6 rather than a feature to weigh — the whole difference
+    /// between this and the trackers people resent is who holds this boolean.
+    ///
+    /// Off also means *nothing runs*: no capture timer is armed and macOS is never asked
+    /// for screen-recording permission, so a user who leaves it alone is not prompted.
+    public var screenCaptureEnabled: Bool
+
+    /// Minutes between captures while the timer runs.
+    public var screenCaptureIntervalMinutes: Int
+
+    /// How many days of captures to keep before they are swept.
+    ///
+    /// By age rather than by size: "the last fortnight" is something a person can hold
+    /// in their head, where a byte budget means the oldest image disappears at a moment
+    /// decided by their screen resolution.
+    public var screenCaptureRetentionDays: Int
+
     public init(
         launchAtLogin: Bool,
         showMiniWindow: Bool,
@@ -77,7 +98,10 @@ public struct Preferences: Equatable, Sendable {
         reminderMinute: Int,
         theme: Theme,
         weekStartsOn: WeekStart,
-        updateCheckEnabled: Bool
+        updateCheckEnabled: Bool,
+        screenCaptureEnabled: Bool = false,
+        screenCaptureIntervalMinutes: Int = 10,
+        screenCaptureRetentionDays: Int = 14
     ) {
         self.launchAtLogin = launchAtLogin
         self.showMiniWindow = showMiniWindow
@@ -92,6 +116,9 @@ public struct Preferences: Equatable, Sendable {
         self.theme = theme
         self.weekStartsOn = weekStartsOn
         self.updateCheckEnabled = updateCheckEnabled
+        self.screenCaptureEnabled = screenCaptureEnabled
+        self.screenCaptureIntervalMinutes = screenCaptureIntervalMinutes
+        self.screenCaptureRetentionDays = screenCaptureRetentionDays
     }
 
     /// The compiled-in macOS defaults.
@@ -115,7 +142,13 @@ public struct Preferences: Equatable, Sendable {
         reminderMinute: 30,
         theme: .system,
         weekStartsOn: .monday,
-        updateCheckEnabled: true
+        updateCheckEnabled: true,
+        // Spelled out rather than left to the parameter default. This is the value the
+        // product promise rests on, and it should be visible in the list of defaults
+        // somebody reads to check.
+        screenCaptureEnabled: false,
+        screenCaptureIntervalMinutes: 10,
+        screenCaptureRetentionDays: 14
     )
 
     /// Daily target in whole minutes, the form the `days.target_minutes` column stores.
@@ -142,6 +175,14 @@ public enum PreferenceLimits {
     public static let dailyTargetMaxHours: Double = 24
     public static let dailyTargetMinHours: Double = 0
     public static let reminderHourRange = 0...23
+
+    /// Minutes between captures. The floor is a minute because anything faster is a
+    /// screen recorder wearing a timer's clothes, and this product does not ship one.
+    public static let screenCaptureIntervalRange = 1...60
+    /// Days of captures kept. Capped at a quarter so "keep everything for ever" is not
+    /// reachable by dragging a slider — long retention is a decision, not a default that
+    /// drifts.
+    public static let screenCaptureRetentionRange = 1...90
     public static let reminderMinuteRange = 0...59
 }
 
@@ -205,6 +246,9 @@ public enum PreferenceKey: String, Sendable, CaseIterable {
     case theme
     case weekStartsOn
     case updateCheckEnabled
+    case screenCaptureEnabled
+    case screenCaptureIntervalMinutes
+    case screenCaptureRetentionDays
 
     /// Keys the Electron file may contain that this platform has no use for. They are
     /// skipped on read and never written; see the file header for why.
@@ -370,6 +414,9 @@ extension Preferences {
             "theme": .string(theme.rawValue),
             "weekStartsOn": .number(Double(weekStartsOn.rawValue)),
             "updateCheckEnabled": .bool(updateCheckEnabled),
+            "screenCaptureEnabled": .bool(screenCaptureEnabled),
+            "screenCaptureIntervalMinutes": .number(Double(screenCaptureIntervalMinutes)),
+            "screenCaptureRetentionDays": .number(Double(screenCaptureRetentionDays)),
         ]
     }
 
@@ -435,6 +482,23 @@ extension Preferences {
             reminderEnabled = try Preferences.requireBool(value, key)
         case .updateCheckEnabled:
             updateCheckEnabled = try Preferences.requireBool(value, key)
+        case .screenCaptureEnabled:
+            screenCaptureEnabled = try Preferences.requireBool(value, key)
+
+        case .screenCaptureIntervalMinutes:
+            screenCaptureIntervalMinutes = PreferenceCoercion.integerInRange(
+                .number(try Preferences.requireFinite(value, key)),
+                min: PreferenceLimits.screenCaptureIntervalRange.lowerBound,
+                max: PreferenceLimits.screenCaptureIntervalRange.upperBound,
+                fallback: screenCaptureIntervalMinutes
+            )
+        case .screenCaptureRetentionDays:
+            screenCaptureRetentionDays = PreferenceCoercion.integerInRange(
+                .number(try Preferences.requireFinite(value, key)),
+                min: PreferenceLimits.screenCaptureRetentionRange.lowerBound,
+                max: PreferenceLimits.screenCaptureRetentionRange.upperBound,
+                fallback: screenCaptureRetentionDays
+            )
 
         case .idleThresholdMinutes:
             idleThresholdMinutes = PreferenceCoercion.integerInRange(

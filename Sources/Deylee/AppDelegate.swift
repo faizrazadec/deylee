@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var powerMonitor: PowerMonitor?
     private var reminderService: ReminderService?
     private var updater: UpdaterService?
+    private var capture: CaptureService?
     private var rolloverTimer: Timer?
     private var heartbeatTimer: Timer?
     private var pendingRecovery: PendingRecovery?
@@ -120,6 +121,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settingsModel.onCheckForUpdates = { [weak updater] in updater?.checkNow() }
         updater.start(automaticallyChecks: prefs.value(\.updateCheckEnabled))
+
+        // Screen capture. Off unless the user switched it on — `reconcile` arms nothing
+        // and touches no system API while the preference is false, so a person who never
+        // enables it is never prompted for screen-recording permission.
+        let capture = CaptureService(repo: repo, prefs: prefs)
+        self.capture = capture
+        capture.observeTimer { [weak model] in model?.snapshot.state == .running }
+        capture.reconcile()
 
         model.openHistoryWindow = { HistoryWindow.open(repo: repo, engine: engine, prefs: prefs) }
         model.openSettingsWindow = { settingsWindow.show() }
@@ -354,6 +363,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // here. The login item only ever follows the OS — never re-registered behind
         // the user's back, because they may have removed it in System Settings.
         if let prefs { reconcileLoginItem(prefs: prefs) }
+        // Follows the preference without a relaunch, in both directions: switching
+        // capture off has to stop it now, not at the next launch.
+        capture?.reconcile()
     }
 
     private func applyTheme(_ theme: Theme) {
