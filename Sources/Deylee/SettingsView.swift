@@ -109,6 +109,9 @@ final class SettingsModel {
     /// Supplied by the app, which owns the store.
     @ObservationIgnored var readCaptureFootprint: (() -> (count: Int, bytes: Int))?
     @ObservationIgnored var onDeleteAllCaptures: (() -> Void)?
+    /// Runs when capture is switched on, so permission is asked for and one image is
+    /// taken while the person is still looking at the switch they just moved.
+    @ObservationIgnored var onCaptureEnabled: (() -> Void)?
 
     func refreshCaptureFootprint() {
         let footprint = readCaptureFootprint?() ?? (count: 0, bytes: 0)
@@ -594,11 +597,14 @@ struct SettingsView: View {
             SettingsToggleRow(
                 label: "Capture my screen while the timer runs",
                 description: "An image every few minutes while you are working — never on a break, "
-                    + "never while paused, never while the timer is stopped. macOS will ask for "
-                    + "permission the first time.",
+                    + "never while paused, never while the timer is stopped. Turning this on asks "
+                    + "macOS for permission and takes one image straight away, so you can see "
+                    + "exactly what gets stored.",
                 isOn: model.prefs.screenCaptureEnabled
             ) { next in
                 model.write { try $0.write(.screenCaptureEnabled, .bool(next)) }
+                // Only on the way on. Switching it off must not take a parting image.
+                if next { model.onCaptureEnabled?() }
             }
 
             if model.prefs.screenCaptureEnabled, model.capturePermission == .denied {

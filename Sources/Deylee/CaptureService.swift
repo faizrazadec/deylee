@@ -35,6 +35,9 @@ final class CaptureService {
     private(set) var permission: Permission = .unknown
     /// Reported to Settings so the screen can explain itself.
     var onPermissionChange: ((Permission) -> Void)?
+    /// Fired after a capture lands, so a window showing "what is stored" can stop
+    /// showing a number that is already wrong.
+    var onCaptured: (() -> Void)?
 
     private let repo: Repository
     private let prefs: PreferencesStore
@@ -96,8 +99,23 @@ final class CaptureService {
         await captureNow()
     }
 
-    /// Capture regardless of timer state — used by Settings so the user can look at one
-    /// example image immediately after switching the feature on.
+    /// Called the moment the user switches capture on.
+    ///
+    /// Two things happen now rather than at some unannounced point in the next ten
+    /// minutes: macOS is asked for screen-recording permission, and one capture is
+    /// taken. Both are feedback. A switch whose only effect is invisible for an interval
+    /// is a switch somebody cannot tell they have used — which is exactly what happened
+    /// when this was first built, and "nothing seemed to happen" is the worst answer for
+    /// a control this consequential.
+    ///
+    /// Taking a real capture is deliberate rather than merely asking for permission: the
+    /// first thing a reasonable person wants after enabling this is to see precisely what
+    /// it stored, and the footprint line cannot show them until something exists.
+    func primeAfterEnabling() async {
+        await captureNow()
+    }
+
+    /// Capture regardless of timer state.
     func captureNow() async {
         guard let shot = await takeScreenshot() else { return }
         let at = now()
@@ -115,6 +133,7 @@ final class CaptureService {
                 now: at
             )
             try? sweep(at: at)
+            onCaptured?()
         } catch {
             // A failed capture is never worth interrupting somebody's work over. The
             // timer keeps running, the day keeps counting, and the next tick tries again.

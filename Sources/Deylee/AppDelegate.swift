@@ -140,6 +140,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         capture.onPermissionChange = { [weak settingsModel] permission in
             settingsModel?.applyCapturePermission(permission)
         }
+        capture.onCaptured = { [weak settingsModel] in
+            settingsModel?.refreshCaptureFootprint()
+        }
+        settingsModel.onCaptureEnabled = { [weak capture] in
+            Task { @MainActor in await capture?.primeAfterEnabling() }
+        }
         capture.reconcile()
 
         model.openHistoryWindow = { HistoryWindow.open(repo: repo, engine: engine, prefs: prefs) }
