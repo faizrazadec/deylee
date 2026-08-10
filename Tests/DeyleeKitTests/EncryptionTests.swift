@@ -139,4 +139,55 @@ import Testing
         ) { $0.int64(0) }
         #expect(rows == [300])
     }
+
+    /// A backup carries the owner's hours and nothing that says whose they are.
+    ///
+    /// `sqlcipher_export` copies every table, so `sync_state` — the account this store
+    /// belongs to, and the id this install reports to the server — used to travel into
+    /// a deliberately plaintext file the owner may put anywhere. Neither value means
+    /// anything to the person reading their own backup, and together they are the only
+    /// thing in it that identifies them.
+    @Test func aBackupCarriesTheHoursAndNotTheIdentifiers() throws {
+        let dir = Self.scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        setenv(DataStore.folderOverrideEnvKey, dir.path, 1)
+        defer { unsetenv(DataStore.folderOverrideEnvKey) }
+
+        let accountID = "11111111-2222-7333-8444-555555555555"
+        do {
+            let db = try DataStore.open(key: Self.aKey)
+            let repo = Repository(db: db)
+            _ = try repo.getOrCreateDay(DateKey("2026-08-09")!, targetMinutes: 300, now: 1)
+            try repo.claimLocalData(forUserID: accountID)
+            // Present in the live store — this is not a test that never wrote it.
+            #expect(try repo.syncState().userID == accountID)
+        }
+
+        let backup = dir.appending(path: "backup.sqlite")
+        try DataStore.backup(to: backup, key: Self.aKey)
+        let opened = try Database(path: backup.path)
+
+        for table in DataStore.tablesWithheldFromBackup {
+            let present = try opened.query(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+                [.text(table)]
+            ) { $0.int64(0) }
+            #expect(present == [0], "\(table) must not travel in a backup")
+        }
+
+        // The hours are still all there — withholding must not cost the owner their
+        // own history, which is the entire point of the file.
+        let rows = try opened.query(
+            "SELECT target_minutes FROM days WHERE date = '2026-08-09'"
+        ) { $0.int64(0) }
+        #expect(rows == [300])
+
+        // And the identifier is not lingering in a dropped page, which is why the
+        // copy is vacuumed rather than merely dropped from.
+        let raw = try Data(contentsOf: backup)
+        #expect(
+            raw.range(of: Data(accountID.utf8)) == nil,
+            "the account id is still readable in the file's bytes"
+        )
+    }
 }

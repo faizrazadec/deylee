@@ -114,6 +114,22 @@ public enum DataStore {
     /// is not a backup. Reading through a live connection also means commits still in
     /// the `-wal` sidecar are included, where copying only the `.sqlite` file would
     /// silently drop them.
+    /// Tables that must not travel in a backup.
+    ///
+    /// Nothing here is the owner's work, and all of it identifies them. `sync_state`
+    /// holds the account this store belongs to and the id this install reports to the
+    /// server — two values the person reading their own backup has no use for, and the
+    /// only values in the file that say *whose* it is. `sync_quarantine` holds rows
+    /// verbatim as the server sent them, which is machinery rather than history.
+    ///
+    /// The backup is deliberately plaintext so the owner can open it anywhere, which
+    /// is exactly why the identifiers must not be in it: it is the one copy of this
+    /// data that leaves the encrypted store and the machine.
+    ///
+    /// Nothing restores from this file — it is an export — so removing them costs
+    /// nothing.
+    static let tablesWithheldFromBackup = ["sync_state", "sync_quarantine"]
+
     public static func backup(to destination: URL, key: [UInt8]? = nil) throws {
         let source = try Database(path: databaseURL.path, key: key)
         if key != nil {
@@ -123,5 +139,14 @@ public enum DataStore {
             // the faithful copy — page for page, WAL included.
             try source.backup(to: destination.path)
         }
+
+        // Both paths copy every table, so the withholding happens once, here, on the
+        // copy. `VACUUM` is not tidiness: a dropped table's pages stay in the file's
+        // free list until it runs, and this file has no encryption to hide them.
+        let copy = try Database(path: destination.path)
+        for table in tablesWithheldFromBackup {
+            try copy.execute("DROP TABLE IF EXISTS \(table);")
+        }
+        try copy.execute("VACUUM;")
     }
 }
