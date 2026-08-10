@@ -3,6 +3,21 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## 0.2.1 — 2026-08-10 (pre-release)
+
+- **A backup no longer says whose it is.** Exported backups carried the account the
+  store belongs to and the id this install reports to the server. Neither is any use
+  to somebody reading their own hours, and together they were the only thing in the
+  file identifying its owner — in the one copy of this data that is deliberately
+  plaintext, so that it can be opened anywhere, and the one copy that leaves the
+  machine. Both are withheld now, and the file is vacuumed rather than merely having
+  the table dropped, because a dropped table's pages linger in a file with no
+  encryption to hide them.
+
+Nothing else changed. If you are on 0.2.0 and never exported a backup, this release
+does nothing for you; if you did, that file still carries the identifiers and is worth
+replacing.
+
 ## 0.2.0 — 2026-08-09 (pre-release)
 
 Sync works now. In 0.1.0 it did not, and that is the headline: everything the app
