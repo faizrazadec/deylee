@@ -46,23 +46,35 @@ survey; version is owned by release tooling, never hand-edited.
 - **Accounts and sync are optional, never required.** Signed out, the app behaves
   exactly as it always has: local SQLite, no network, no account. Signing in adds
   sync; it does not become a precondition for tracking time.
-- The network requests the Swift app actually makes today are **only** these, and
-  only when signing in or signed in: `POST /v1/auth/google`, `/v1/auth/signup`,
-  `/v1/auth/password`, `/v1/auth/refresh`, `/v1/auth/set-password` and
-  `POST /v1/sync`. `URLSession` appears in `APIClient.swift` and `AuthService.swift`
-  and nowhere else. **Signed out, the app makes no network request whatsoever.**
-- The update check described in §5.5 #14–15 is **specified but not implemented**:
-  `SettingsUpdateModel.onCheckForUpdates` is declared and invoked, never assigned, so
-  "Check now" calls nothing and no release feed is ever contacted. Wiring it adds the
-  first request the app would make while signed out, which changes the sentence above
-  and the privacy page on the website. Do both in that commit or leave it unwired.
+- The network requests the Swift app makes **while signed in** are only these:
+  `POST /v1/auth/google`, `/v1/auth/signup`, `/v1/auth/password`, `/v1/auth/refresh`,
+  `/v1/auth/set-password`, `POST /v1/sync`, and `POST /v1/beat` — the heartbeat that
+  lets the server witness a running timer, which carries a device id and nothing else.
+  `URLSession` appears in `APIClient.swift`, `AuthService.swift` and
+  `HeartbeatService.swift` and nowhere else.
+- **Signed out, the app makes exactly one kind of request: the update check.** A
+  release bundle carries `SUFeedURL` and Sparkle fetches that appcast on a schedule
+  the user can switch off in Settings; a development build carries no feed and makes
+  none. This is no longer "specified but not implemented" — it shipped in 0.3.0, and
+  the sentence above changed with it.
+- Screen capture, when the user has switched it on, adds captured images to what
+  `POST /v1/sync` carries. Off by default and enabled only by the person recorded;
+  see `PRODUCT.md` §3 for the conditions that may not be relaxed.
 - Keep the two bullets above exhaustive. §5.5's Data copy is a promise made to
   somebody standing on the screen where they check, and the website repeats it to
   people who cannot read this file. Nothing downloads without an explicit user action.
-- **Only hours ever leave the machine.** Segments, days and their timestamps sync;
-  nothing else does. No window titles, no document names, no application names, no
-  screenshots, no keystroke or mouse activity, no productivity score. This is the
-  load-bearing claim of the product (see `PRODUCT.md`) and no feature may weaken it.
+- **Nothing leaves the machine that the user did not choose to send.** By default
+  that is hours alone: segments, days and their timestamps. No window titles, no
+  document names, no application names, no keystroke or mouse activity, no
+  productivity score — none of these exist at any setting.
+  
+  Screen capture is the one thing a user can choose to add, and the conditions on it
+  are binding rather than configurable: off on every install, enabled only from the
+  recorded person's own Settings, revocable and deletable by them alone, with no
+  admin switch, policy flag or server-side enable — and none may be added. This is
+  the load-bearing claim of the product (see `PRODUCT.md` §3); a feature may widen
+  what leaves the machine only by being something the user turns on, and never by
+  being something someone else turns on for them.
 - No stored totals or status columns anywhere — totals are always summed from
   segments at read time. This holds on the server too: nothing aggregated is ever
   transmitted or persisted.
@@ -1098,14 +1110,17 @@ counting."
     One field writes two preferences (`reminderHour` then `reminderMinute`,
     sequentially); incomplete mid-edit values are ignored, never half-written.
 
-**Data** — "Your database lives on this machine. Signed out, it goes nowhere;
-signed in, your hours sync to your account and nothing else does."
+**Data** — "Your database lives on this machine. Signed out, it goes nowhere; signed
+in, your hours sync to your account. Nothing else leaves unless you switch it on
+yourself — screen capture is off until you turn it on."
 
-(This copy was *"Everything Deylee records stays on this machine. Nothing is ever
-uploaded."* It stopped being true the moment sync existed and is recorded here
-because this is the screen where somebody checks. Copy that quietly contradicts the
-software is worse than no copy at all. If a future feature widens what leaves the
-machine, this string changes in the same commit — not after.)
+(This copy has now been wrong twice, which is why it is written down here. It was
+*"Everything Deylee records stays on this machine. Nothing is ever uploaded"* until
+sync existed, then *"…your hours sync to your account and nothing else does"* until
+screen capture could be enabled. Both were true when written and neither was updated
+by the commit that falsified it. This is the screen where somebody checks, so the
+rule stands and has teeth: **a feature that widens what leaves the machine changes
+this string in the same commit — not after.**)
 12. **Data folder** info block — title "Data folder", description "Your
     database and preferences live here.", then the absolute folder path in a
     selectable monospace 12 px box (truncated, full path in tooltip;

@@ -574,10 +574,13 @@ struct SettingsView: View {
         SettingsSectionCard(
             title: "Data",
             // Was "Nothing is ever uploaded", which stopped being true the moment
-            // sync existed. Copy that quietly contradicts the software is worse
-            // than none: this is the screen where somebody checks.
+            // sync existed, and then "nothing else does", which stopped being true
+            // the moment screen capture could be switched on. Copy that quietly
+            // contradicts the software is worse than none: this is the screen where
+            // somebody checks, and the sentence has to survive being checked.
             description: "Your database lives on this machine. Signed out, it goes nowhere; "
-                + "signed in, your hours sync to your account and nothing else does."
+                + "signed in, your hours sync to your account. Nothing else leaves unless "
+                + "you switch it on yourself — screen capture is off until you turn it on."
         ) {
             dataFolderBlock
             SettingsHairline()
