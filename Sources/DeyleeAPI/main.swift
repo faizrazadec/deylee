@@ -59,6 +59,28 @@ router.get("/health") { _, _ -> [String: String] in
     ["status": "ok"]
 }
 
+// The Mac app's update feed, when a directory is configured to serve it from.
+//
+// Public and unauthenticated on purpose: Sparkle fetches the appcast and the archive
+// with no credentials, which is also why this cannot live behind a private repository.
+// Authenticity does not come from the transport — every archive carries an EdDSA
+// signature the app checks against a public key compiled into it, so a tampered file
+// served from here is refused by the client rather than trusted because it arrived
+// over HTTPS.
+//
+// `FileMiddleware` rather than a handler of our own: it is the piece that has already
+// thought about a request path containing `../`, and a static file server is exactly
+// the kind of thing that looks trivial until it serves `/etc/passwd`.
+if let updates = config.updatesDirectory {
+    router.add(middleware: FileMiddleware(
+        updates,
+        urlBasePath: "/updates",
+        cacheControl: .init([(.text, [.maxAge(300)])]),
+        logger: logger
+    ))
+    logger.info("serving updates", metadata: ["directory": .string(updates)])
+}
+
 let mailer = Mailer(
     apiKey: config.resendAPIKey,
     from: config.resendFrom,

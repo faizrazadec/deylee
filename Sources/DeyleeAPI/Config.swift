@@ -74,6 +74,13 @@ struct Config: Sendable {
     /// reach the process — the platform's health check fails, the deploy is marked
     /// bad, and the logs say only that the server started.
     let host: String
+    /// Where the update feed and its archives are read from, or nil to serve none.
+    ///
+    /// A directory rather than anything baked into the image, so publishing a release
+    /// is copying two files into a mounted volume — not rebuilding and redeploying the
+    /// API to ship a new version of the Mac app. Unset in development, where there is
+    /// nothing to serve and the route should simply not exist.
+    let updatesDirectory: String?
 }
 
 enum ConfigError: Error, CustomStringConvertible {
@@ -160,7 +167,8 @@ extension Config {
             signupCodeResendCooldown:
                 optional("SIGNUP_CODE_RESEND_SECONDS").flatMap(Int.init) ?? 60,
             port: optional("PORT").flatMap(Int.init) ?? 8080,
-            host: optional("HOST") ?? "127.0.0.1"
+            host: optional("HOST") ?? "127.0.0.1",
+            updatesDirectory: optional("DEYLEE_UPDATES_DIR")
         )
     }
 
