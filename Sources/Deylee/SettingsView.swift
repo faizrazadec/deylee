@@ -27,10 +27,9 @@ enum SettingsBackupState: Equatable {
 
 /// What Deylee knows about a newer version of itself.
 ///
-/// The shipped macOS build is unsigned, so it can neither install an update nor ask
-/// about one; ``SettingsUpdateStatus/unsupported(reason:)`` is its permanent state.
-/// The rest of the cases exist so a signed build can drive this line without the
-/// window changing shape.
+/// A release build updates itself through Sparkle. ``SettingsUpdateStatus/unsupported(reason:)``
+/// is no longer the permanent state of every shipped build — it is what a development
+/// build reports, because `make-app.sh` gives only a release bundle an update feed.
 enum SettingsUpdateStatus: Equatable {
     case idle
     case checking
@@ -59,11 +58,15 @@ final class SettingsModel {
     /// How long the "Saved" line stays up before fading out.
     static let savedVisibleMs = 1_800
 
-    /// Squirrel refuses to install a bundle that is not signed and notarised, and Deylee
-    /// ships neither, so a self-update would download happily and then fail at the
-    /// install step — the worst possible moment to find out.
-    static let unsignedBuildReason =
-        "Automatic updates need a signed build — check the Releases page."
+    /// Shown when this bundle has no update feed, which is the case for a development
+    /// build by design — `make-app.sh` writes `SUFeedURL` into a release bundle only.
+    ///
+    /// It used to say updates needed a signed build. That was inherited from Squirrel,
+    /// which refuses an unsigned bundle outright. Sparkle does not: with no Developer
+    /// ID it validates the archive's EdDSA signature instead, so an ad-hoc signed
+    /// release updates itself perfectly well and the old sentence was simply wrong.
+    static let noFeedReason =
+        "This build has no update feed — check the Releases page."
 
     private static let releasesURLString = "https://github.com/faizrazadec/deylee-ios/releases"
 
@@ -81,8 +84,8 @@ final class SettingsModel {
     /// `nil` until the version is known — the row then shows a bare "Version" rather
     /// than a guessed number, because the number is the whole point of the line.
     private(set) var currentVersion: String?
-    /// False on an unsigned build, where the scheduled check is never armed and the
-    /// toggle would be a switch wired to nothing.
+    /// False on a build with no update feed, where the scheduled check is never armed
+    /// and the toggle would be a switch wired to nothing.
     let canAutoUpdate: Bool
 
     /// Set by whoever owns an update service. Left `nil` on a build that has none, in
@@ -108,7 +111,7 @@ final class SettingsModel {
         self.canAutoUpdate = canAutoUpdate
         self.currentVersion = currentVersion
         self.updateStatus =
-            canAutoUpdate ? .idle : .unsupported(reason: SettingsModel.unsignedBuildReason)
+            canAutoUpdate ? .idle : .unsupported(reason: SettingsModel.noFeedReason)
     }
 
     // MARK: Loading
@@ -308,8 +311,8 @@ final class SettingsModel {
     /// the lie straight back.
     var updatesSectionDescription: String {
         canAutoUpdate
-            ? "A version check against the project’s public releases page. No account, no telemetry, no payload."
-            : "This build has no update feed, so Deylee never checks. New versions live on the project’s public releases page."
+            ? "A signed version check against Deylee’s own update feed. No account, no telemetry, no payload."
+            : "This build has no update feed, so Deylee never checks. New versions live on the project’s releases page."
     }
 
     var updateCheckDescription: String {

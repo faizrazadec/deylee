@@ -58,7 +58,46 @@ if [[ -f "$ICON_SRC" ]]; then
   iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 fi
 
+# Sparkle, which is how a release updates itself.
+#
+# Copied in rather than linked from the build directory: the binary looks for it at
+# `@rpath/Sparkle.framework`, and outside the bundle that path does not exist on
+# anybody else's machine. The framework carries its own helpers — an XPC service, the
+# Updater and Autoupdate apps — so the whole thing travels, not just the dylib.
+mkdir -p "$APP/Contents/Frameworks"
+cp -R Vendor/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework "$APP/Contents/Frameworks/"
+
+# Teach the binary where that is. SwiftPM builds a bare executable and adds no rpath
+# for a bundle layout it knows nothing about, so dyld looks beside the binary in
+# Contents/MacOS, does not find the framework, and the app dies at launch with
+# "Library not loaded: @rpath/Sparkle.framework". Before signing, because editing a
+# Mach-O invalidates any signature already over it.
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/Deylee" 2>/dev/null || true
+
+# The update feed is a property of the build, exactly like the API address above. A
+# release asks Deylee's own appcast; a development build is given no feed at all, so it
+# reports having none instead of checking production from somebody's laptop.
+if [[ "$CONFIG" == "debug" ]]; then
+  /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP/Contents/Info.plist" 2>/dev/null || true
+else
+  /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $DEYLEE_API_BASE_URL/updates/appcast.xml" \
+    "$APP/Contents/Info.plist"
+fi
+
 # Ad-hoc signature so local Gatekeeper/TCC treat the bundle as a stable identity.
-codesign --force --sign - "$APP"
+#
+# Inside out, and that order is not optional: signing the app seals a hash of every
+# nested bundle, so a framework signed afterwards invalidates the signature that was
+# taken over it. Sparkle's own helpers are nested bundles in their own right and have
+# to be sealed before the framework that contains them.
+sign() { codesign --force --sign - "$1"; }
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+sign "$SPARKLE/Versions/B/XPCServices/Downloader.xpc" 2>/dev/null || true
+sign "$SPARKLE/Versions/B/XPCServices/Installer.xpc" 2>/dev/null || true
+sign "$SPARKLE/Versions/B/Autoupdate" 2>/dev/null || true
+sign "$SPARKLE/Versions/B/Updater.app" 2>/dev/null || true
+sign "$SPARKLE"
+sign "$APP"
 
 echo "Built $APP"

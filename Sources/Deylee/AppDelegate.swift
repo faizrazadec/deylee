@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var idleMonitor: IdleMonitor?
     private var powerMonitor: PowerMonitor?
     private var reminderService: ReminderService?
+    private var updater: UpdaterService?
     private var rolloverTimer: Timer?
     private var heartbeatTimer: Timer?
     private var pendingRecovery: PendingRecovery?
@@ -104,10 +105,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         coordinator?.start()
 
-        let settingsModel = SettingsModel(store: prefs)
+        // A release bundle carries an update feed and a public key; a development one
+        // carries neither, and the window says so rather than offering a switch wired
+        // to nothing.
+        let settingsModel = SettingsModel(store: prefs, canAutoUpdate: UpdaterService.isConfigured)
         let settingsWindow = SettingsWindowController(model: settingsModel, sync: coordinator)
         self.settingsModel = settingsModel
         self.settingsWindow = settingsWindow
+
+        let updater = UpdaterService()
+        self.updater = updater
+        updater.onStatus = { [weak settingsModel] status in
+            settingsModel?.applyUpdateStatus(status)
+        }
+        settingsModel.onCheckForUpdates = { [weak updater] in updater?.checkNow() }
+        updater.start(automaticallyChecks: prefs.value(\.updateCheckEnabled))
 
         model.openHistoryWindow = { HistoryWindow.open(repo: repo, engine: engine, prefs: prefs) }
         model.openSettingsWindow = { settingsWindow.show() }

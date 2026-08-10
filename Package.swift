@@ -1,6 +1,31 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+// Sparkle is a macOS framework, and this manifest is read on Linux too — the server
+// package depends on this one for DeyleeKit, so `swift package resolve` inside the API's
+// container evaluates everything declared here. A binary target pointing at a macOS
+// XCFramework fails outright there ("does not contain a binary artifact"), and copying
+// the framework into a Linux image to satisfy a manifest that will never build the app
+// would be worse. So the app's updater exists only where an app can run.
+#if os(macOS)
+    let sparkleTargets: [Target] = [
+        // Vendored as its XCFramework rather than fetched.
+        //
+        // A `binaryTarget` with a *path* resolves nothing over the network, so the root
+        // package still builds with the Command Line Tools alone and still works with no
+        // internet — the same reason SQLCipher is vendored rather than depended on.
+        //
+        // The distribution's dSYMs are 15 MB of symbols for Sparkle's own crashes,
+        // needed neither to build nor to run, so they are stripped and the manifest's
+        // reference to them removed. Updating Sparkle means repeating both.
+        .binaryTarget(name: "Sparkle", path: "Vendor/Sparkle.xcframework")
+    ]
+    let appDependencies: [Target.Dependency] = ["DeyleeKit", "Sparkle"]
+#else
+    let sparkleTargets: [Target] = []
+    let appDependencies: [Target.Dependency] = ["DeyleeKit"]
+#endif
+
 let package = Package(
     name: "Deylee",
     platforms: [.macOS(.v14)],
@@ -45,8 +70,8 @@ let package = Package(
         // The menu-bar app: NSStatusItem, popover panel, windows, power/idle monitors.
         .executableTarget(
             name: "Deylee",
-            dependencies: ["DeyleeKit"]
+            dependencies: appDependencies
         ),
         .testTarget(name: "DeyleeKitTests", dependencies: ["DeyleeKit"]),
-    ]
+    ] + sparkleTargets
 )
