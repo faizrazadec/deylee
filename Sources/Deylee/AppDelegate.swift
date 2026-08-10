@@ -128,6 +128,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let capture = CaptureService(repo: repo, prefs: prefs)
         self.capture = capture
         capture.observeTimer { [weak model] in model?.snapshot.state == .running }
+        // Settings shows what is actually on disk rather than what the setting says, and
+        // owns the only button that deletes it. The app supplies both because it holds
+        // the store; the window holds no repository of its own.
+        settingsModel.readCaptureFootprint = { [weak repo] in
+            (try? repo?.captureFootprint()) ?? (count: 0, bytes: 0)
+        }
+        settingsModel.onDeleteAllCaptures = { [weak repo] in
+            _ = try? repo?.deleteAllCaptures(now: EpochMs(Date().timeIntervalSince1970 * 1000))
+        }
+        capture.onPermissionChange = { [weak settingsModel] permission in
+            settingsModel?.applyCapturePermission(permission)
+        }
         capture.reconcile()
 
         model.openHistoryWindow = { HistoryWindow.open(repo: repo, engine: engine, prefs: prefs) }

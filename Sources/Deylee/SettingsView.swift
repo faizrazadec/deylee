@@ -94,6 +94,44 @@ final class SettingsModel {
     @ObservationIgnored var onDownloadUpdate: (() -> Void)?
     @ObservationIgnored var onInstallUpdate: (() -> Void)?
 
+    // MARK: Screen capture
+    //
+    // The window shows what is actually stored rather than what the setting says,
+    // because "capture is on" and "there are 412 images of my screen on this disk" are
+    // different facts and only the second one is the reason somebody opens this screen.
+
+    private(set) var captureCount = 0
+    private(set) var captureBytes = 0
+    /// macOS's answer, which is separate from the preference: a person can want capture
+    /// on and still not have granted screen recording, and the screen has to say which.
+    private(set) var capturePermission: CaptureService.Permission = .unknown
+
+    /// Supplied by the app, which owns the store.
+    @ObservationIgnored var readCaptureFootprint: (() -> (count: Int, bytes: Int))?
+    @ObservationIgnored var onDeleteAllCaptures: (() -> Void)?
+
+    func refreshCaptureFootprint() {
+        let footprint = readCaptureFootprint?() ?? (count: 0, bytes: 0)
+        captureCount = footprint.count
+        captureBytes = footprint.bytes
+    }
+
+    func applyCapturePermission(_ permission: CaptureService.Permission) {
+        capturePermission = permission
+    }
+
+    func deleteAllCaptures() {
+        onDeleteAllCaptures?()
+        refreshCaptureFootprint()
+    }
+
+    /// "412 images · 61 MB", or the sentence that says there is nothing to worry about.
+    var captureFootprintDescription: String {
+        guard captureCount > 0 else { return "Nothing has been captured." }
+        let size = ByteCountFormatter.string(fromByteCount: Int64(captureBytes), countStyle: .file)
+        return "\(captureCount) image\(captureCount == 1 ? "" : "s") · \(size), stored encrypted on this Mac."
+    }
+
     /// The window the save panel hangs off, so the sheet cannot be lost behind it.
     @ObservationIgnored weak var hostWindow: NSWindow?
 
@@ -395,6 +433,7 @@ struct SettingsView: View {
                 tracking
                 reminders
                 data
+                screenCapture
                 updates
             }
             .padding(Space.x4l)
@@ -532,6 +571,94 @@ struct SettingsView: View {
                 model.write { try $0.write(.autoPauseOnLock, .bool(next)) }
             }
         }
+    }
+
+    // MARK: Screen capture
+
+    /// The screen-capture section.
+    ///
+    /// Written to be read by somebody who is suspicious, because that is who opens it.
+    /// The section states what is stored and how much of it, offers one button that
+    /// deletes all of it, and never hides the fact that the images exist behind a
+    /// summary that sounds smaller than it is.
+    ///
+    /// Everything below the toggle stays visible while capture is off rather than
+    /// disappearing, so the retention window and the delete button can be found by a
+    /// person who has *just* switched it off and wants the images gone too.
+    private var screenCapture: some View {
+        SettingsSectionCard(
+            title: "Screen capture",
+            description: "Off unless you turn it on. Nobody else can turn it on for you, "
+                + "and there is no version of Deylee where they can."
+        ) {
+            SettingsToggleRow(
+                label: "Capture my screen while the timer runs",
+                description: "An image every few minutes while you are working — never on a break, "
+                    + "never while paused, never while the timer is stopped. macOS will ask for "
+                    + "permission the first time.",
+                isOn: model.prefs.screenCaptureEnabled
+            ) { next in
+                model.write { try $0.write(.screenCaptureEnabled, .bool(next)) }
+            }
+
+            if model.prefs.screenCaptureEnabled, model.capturePermission == .denied {
+                SettingsHairline()
+                SettingsRow(
+                    label: "macOS has not granted screen recording",
+                    description: "The setting is on, but the system is refusing. Nothing is being "
+                        + "captured until you allow it in System Settings."
+                ) {
+                    Button("Open System Settings") {
+                        CaptureService.openSystemPrivacySettings()
+                    }
+                    .buttonStyle(.link)
+                    .font(Type.small)
+                }
+            }
+
+            SettingsHairline()
+
+            SettingsNumberFieldRow(
+                label: "Capture every",
+                description: model.prefs.screenCaptureEnabled
+                    ? "How often an image is taken while you are working."
+                    : "Turn capture on to change this.",
+                value: Double(model.prefs.screenCaptureIntervalMinutes),
+                bounds: Double(PreferenceLimits.screenCaptureIntervalRange.lowerBound)
+                    ... Double(PreferenceLimits.screenCaptureIntervalRange.upperBound),
+                suffix: "minutes",
+                isEnabled: model.prefs.screenCaptureEnabled
+            ) { next in
+                model.write { try $0.write(.screenCaptureIntervalMinutes, .number(next)) }
+            }
+
+            SettingsHairline()
+
+            SettingsNumberFieldRow(
+                label: "Keep them for",
+                description: "Older images are deleted automatically. This applies to images "
+                    + "already taken, so shortening it removes some immediately.",
+                value: Double(model.prefs.screenCaptureRetentionDays),
+                bounds: Double(PreferenceLimits.screenCaptureRetentionRange.lowerBound)
+                    ... Double(PreferenceLimits.screenCaptureRetentionRange.upperBound),
+                suffix: "days"
+            ) { next in
+                model.write { try $0.write(.screenCaptureRetentionDays, .number(next)) }
+            }
+
+            SettingsHairline()
+
+            SettingsRow(
+                label: "What is stored",
+                description: model.captureFootprintDescription
+            ) {
+                Button("Delete all") { model.deleteAllCaptures() }
+                    .buttonStyle(.link)
+                    .font(Type.small)
+                    .disabled(model.captureCount == 0)
+            }
+        }
+        .onAppear { model.refreshCaptureFootprint() }
     }
 
     // MARK: Reminders
