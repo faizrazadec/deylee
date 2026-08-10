@@ -315,11 +315,39 @@ private func preferencesTestStore(
         flipped.theme = .light
         flipped.weekStartsOn = .sunday
         flipped.updateCheckEnabled = false
+        flipped.screenCaptureEnabled = true
+        flipped.screenCaptureIntervalMinutes = 3
+        flipped.screenCaptureRetentionDays = 21
 
         #expect(Preferences.sanitized(raw: flipped.rawValues) == flipped)
         #expect(flipped.rawValues.count == PreferenceKey.allCases.count)
         for key in PreferenceKey.allCases {
             #expect(flipped.rawValues[key.rawValue] != nil)
+        }
+
+        // The two loops below are what make this test hard to fool, and they exist
+        // because the version above was fooled. `screenCaptureEnabled` was added to the
+        // enum, to `rawValues` and to `apply`, but not to `sanitized(raw:)` — so every
+        // write saved correctly and every read rebuilt it from the default. The window
+        // flashed "Saved" and the switch stayed off. This test passed throughout, because
+        // a key nobody remembers to flip above sits at its default on both sides of the
+        // comparison and matches itself.
+        let defaults = Preferences.defaults.rawValues
+        for key in PreferenceKey.allCases {
+            #expect(
+                flipped.rawValues[key.rawValue] != defaults[key.rawValue],
+                "\(key.rawValue) is not changed from its default above, so nothing here can tell whether the sanitiser reads it"
+            )
+        }
+        // Each key on its own: change only that one and the result must stop being the
+        // defaults. A key the sanitiser ignores cannot move the answer.
+        for key in PreferenceKey.allCases {
+            var raw = defaults
+            raw[key.rawValue] = flipped.rawValues[key.rawValue]
+            #expect(
+                Preferences.sanitized(raw: raw) != Preferences.defaults,
+                "\(key.rawValue) is never read by sanitized(raw:), so a stored value for it is silently discarded"
+            )
         }
     }
 

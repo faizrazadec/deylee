@@ -394,7 +394,19 @@ extension Preferences {
             theme: PreferenceCoercion.theme(raw["theme"], fallback: d.theme),
             weekStartsOn: PreferenceCoercion.weekStart(raw["weekStartsOn"], fallback: d.weekStartsOn),
             updateCheckEnabled: PreferenceCoercion.bool(
-                raw["updateCheckEnabled"], fallback: d.updateCheckEnabled)
+                raw["updateCheckEnabled"], fallback: d.updateCheckEnabled),
+            screenCaptureEnabled: PreferenceCoercion.bool(
+                raw["screenCaptureEnabled"], fallback: d.screenCaptureEnabled),
+            screenCaptureIntervalMinutes: PreferenceCoercion.integerInRange(
+                raw["screenCaptureIntervalMinutes"],
+                min: PreferenceLimits.screenCaptureIntervalRange.lowerBound,
+                max: PreferenceLimits.screenCaptureIntervalRange.upperBound,
+                fallback: d.screenCaptureIntervalMinutes),
+            screenCaptureRetentionDays: PreferenceCoercion.integerInRange(
+                raw["screenCaptureRetentionDays"],
+                min: PreferenceLimits.screenCaptureRetentionRange.lowerBound,
+                max: PreferenceLimits.screenCaptureRetentionRange.upperBound,
+                fallback: d.screenCaptureRetentionDays)
         )
     }
 
