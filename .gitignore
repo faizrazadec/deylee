@@ -52,3 +52,8 @@ Desktop.ini
 # The 1024px icon master in macos/Resources is deliberately NOT ignored: it is a
 # packaging input that make-app.sh turns into AppIcon.icns, so a clean checkout can
 # build a bundle without regenerating anything.
+
+# Strategy: competitor pricing, roadmap ordering, go-to-market. Split out of
+# docs/PRODUCT.md when the repository went public — it constrains nothing in the
+# software and would only help somebody selling against us. Keep it backed up.
+docs/STRATEGY.md
