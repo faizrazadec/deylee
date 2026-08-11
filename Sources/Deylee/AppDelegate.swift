@@ -146,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsModel.onCaptureEnabled = { [weak capture] in
             Task { @MainActor in await capture?.primeAfterEnabling() }
         }
+        settingsModel.onReviewCaptures = { CapturesWindow.open(repo: repo) }
         capture.reconcile()
 
         model.openHistoryWindow = { HistoryWindow.open(repo: repo, engine: engine, prefs: prefs) }

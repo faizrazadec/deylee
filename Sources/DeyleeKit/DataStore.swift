@@ -138,7 +138,7 @@ public enum DataStore {
     /// stored the way they are.
     ///
     /// The backup is an export of the owner's *hours*. Images are not hours, and the
-    /// place to get them out is the capture list in Settings, one at a time, knowingly.
+    /// place to look at them is Settings -> Screen capture -> Review, one at a time.
     static let tablesWithheldFromBackup = ["sync_state", "sync_quarantine", "captures"]
 
     public static func backup(to destination: URL, key: [UInt8]? = nil) throws {

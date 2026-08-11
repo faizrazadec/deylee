@@ -112,6 +112,8 @@ final class SettingsModel {
     /// Runs when capture is switched on, so permission is asked for and one image is
     /// taken while the person is still looking at the switch they just moved.
     @ObservationIgnored var onCaptureEnabled: (() -> Void)?
+    /// Opens the window that shows the images themselves.
+    @ObservationIgnored var onReviewCaptures: (() -> Void)?
 
     func refreshCaptureFootprint() {
         let footprint = readCaptureFootprint?() ?? (count: 0, bytes: 0)
@@ -658,10 +660,21 @@ struct SettingsView: View {
                 label: "What is stored",
                 description: model.captureFootprintDescription
             ) {
-                Button("Delete all") { model.deleteAllCaptures() }
-                    .buttonStyle(.link)
-                    .font(Type.small)
-                    .disabled(model.captureCount == 0)
+                HStack(spacing: Space.l) {
+                    // Looking comes before deleting, in that order, because somebody
+                    // deciding whether to keep these needs to see them first — and
+                    // "delete everything" is a poor substitute for being shown what
+                    // "everything" is.
+                    Button("Review") { model.onReviewCaptures?() }
+                        .buttonStyle(.link)
+                        .font(Type.small)
+                        .disabled(model.captureCount == 0)
+                    Button("Delete all") { model.deleteAllCaptures() }
+                        .buttonStyle(.link)
+                        .font(Type.small)
+                        .foregroundStyle(Palette.breakColor)
+                        .disabled(model.captureCount == 0)
+                }
             }
         }
         .onAppear { model.refreshCaptureFootprint() }
