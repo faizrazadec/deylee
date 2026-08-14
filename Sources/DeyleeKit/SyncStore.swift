@@ -588,8 +588,9 @@ extension Repository {
     /// seen that date.
     private func localDayID(for date: DateKey, createdAt: EpochMs) throws -> Int64 {
         if let existing = try db.queryOne(
-            "SELECT id FROM days WHERE date = ?", [.text(date.description)]
-        ) { $0.int64(0) } {
+            "SELECT id FROM days WHERE date = ?", [.text(date.description)],
+            row: { $0.int64(0) }
+        ) {
             return existing
         }
         try db.run(
