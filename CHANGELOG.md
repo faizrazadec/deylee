@@ -3,6 +3,25 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## 0.4.1 — 2026-08-14 (pre-release)
+
+A maintenance release. The app itself is unchanged from 0.4.0 — what was fixed is how
+updates reach you and how reliably the server stays up.
+
+- **The update dialog was showing an empty Release Notes pane.** It fetched them from a
+  web page that did not exist yet at the moment the update was published. The notes
+  travel with the update now, so they are always there.
+- **An update could have been undownloadable for hours.** Publishing briefly exposed a
+  missing-file error to the CDN in front of the download, which then served that error
+  for four hours while the file sat there perfectly fine. Each release is now published
+  at an address that has never been requested, so a stale answer cannot be waiting.
+- **Sign-in and sync could stop working for an hour at a time.** The server reached its
+  database over a route that any VPN could sever, and when that happened the service
+  looked healthy while failing every request. It now takes a route that does not depend
+  on it.
+
+If you are on 0.4.0 there is nothing new in the app, and nothing you need to do.
+
 ## 0.4.0 — 2026-08-14 (pre-release)
 
 ### An account is now required to start a day
