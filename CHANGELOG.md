@@ -3,6 +3,23 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## 0.4.2 — 2026-08-14 (pre-release)
+
+**Deylee stops asking for your Keychain password every time it opens.**
+
+The key that encrypts your local database is kept in the macOS Keychain, and macOS
+guards it with a list naming the exact build of Deylee allowed to read it. Updating
+Deylee produces a new build, which is not on that list — so every launch of the new
+version asked permission again. Clicking Allow answers only that one question and
+changes nothing, so the same question came back the next time, and the time after.
+
+Deylee now puts itself back on that list the first time a new version runs, which is
+what "Always Allow" would have done had anyone known to click it. You will be asked
+once after an update, and then not again until the next one.
+
+The prompts end for good once Deylee is signed with an Apple Developer ID, because
+then its identity stops changing between versions. That is still to come.
+
 ## 0.4.1 — 2026-08-14 (pre-release)
 
 A maintenance release. The app itself is unchanged from 0.4.0 — what was fixed is how
