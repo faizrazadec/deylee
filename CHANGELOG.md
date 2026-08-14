@@ -3,6 +3,51 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## 0.4.0 — 2026-08-14 (pre-release)
+
+### An account is now required to start a day
+
+Pressing Start while signed out raises sign-in and no longer opens a day if you dismiss
+it. Earlier versions let a dismissed sign-in start the timer anyway; that changed
+deliberately, and this note is the announcement rather than a footnote.
+
+Required **once**, not continuously. The check reads a stored session rather than making
+a request, so once you are signed in Deylee opens days, counts work and closes them with
+no network at all — on a train, on a plane, with the wifi off. Nothing about local-first
+changed.
+
+If you are already signed in you will not notice this at all.
+
+### Screen capture — off unless you turn it on
+
+Deylee can now take a picture of your screen every few minutes **while the timer is
+running**, if you switch it on yourself in Settings.
+
+- **Off on every install.** While it is off nothing runs — macOS is never even asked for
+  screen-recording permission, so leaving it alone means never being prompted about it.
+- **Only you can turn it on.** There is no admin switch, no policy flag, no server-side
+  enable, and there will not be one. Your employer cannot turn this on for you.
+- **Only while you are working.** Never on a break, never while paused, never while the
+  timer is stopped.
+- **You can see everything it took.** Settings → Screen capture → Review shows the images
+  themselves, a day at a time; open one to view it full size or delete it. "Delete all"
+  clears the lot.
+- **Stored encrypted on your Mac**, in the same database as your hours, and kept for 90
+  days by default. Exported backups deliberately contain none of them.
+
+### Also
+
+- Development builds keep their own credentials, so testing a build no longer signs you
+  in as yourself or touches your real database.
+- Fixes: the capture setting would not stay switched on; turning it on appeared to do
+  nothing; captures could reach a plaintext backup.
+
+### Upgrading
+
+Replace the app; your history and your session carry over. This version upgrades the
+local database, so an older Deylee will refuse to open it afterwards — it says so plainly
+rather than writing rows it does not understand.
+
 ## 0.3.0 — 2026-08-10 (pre-release)
 
 **Deylee updates itself now.** Until this version there was no way for the app to tell
