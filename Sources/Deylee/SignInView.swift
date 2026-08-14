@@ -17,24 +17,22 @@ import SwiftUI
 /// the action that raised it completes on its own — the press the user already made
 /// is not thrown away and asked for again.
 ///
-/// Dismissing it is always allowed. The app keeps tracking locally, and the first
-/// successful sign-in claims that history, because everything local is already
-/// dirty.
+/// Dismissing it is allowed and does nothing else: an account is required to start a
+/// day, so the timer stays where it was. Required once rather than continuously —
+/// after signing in, the app tracks with no network at all.
 struct SignInView: View {
     @ObservedObject var auth: AuthService
     /// Called once there is a session, so the app can put its tray item up.
     var onSignedIn: () -> Void
-    /// Declining. Always available, not only when the API is unreachable — the timer
-    /// starts either way, and a choice you can only make by closing the window is a
-    /// choice nobody knows they made.
-    var onContinueOffline: () -> Void
+    /// Closing without signing in. The timer does not start — an account is required
+    /// to begin tracking — so this only puts the window away.
+    var onDismiss: () -> Void
 
     @State private var email = ""
     @State private var password = ""
     @State private var code = ""
     @State private var mode: Mode = .signIn
     @State private var error: String?
-    @State private var offlineOffered = false
     /// Seconds left on the resend cooldown, recomputed on the tick rather than
     /// decremented, so a sleeping laptop resumes with the right number.
     @State private var resendSeconds = 0
@@ -99,16 +97,7 @@ struct SignInView: View {
         .background(Palette.surface)
         .onChange(of: auth.state) { _, state in
             if case .signedIn = state { onSignedIn() }
-            if case .failed(let reason) = state {
-                error = reason
-                // Only when the API itself is unreachable — a rejected password is
-                // not a reason to offer working without an account.
-                if reason.localizedCaseInsensitiveContains("could not connect")
-                    || reason.localizedCaseInsensitiveContains("offline")
-                    || reason.localizedCaseInsensitiveContains("network") {
-                    offlineOffered = true
-                }
-            }
+            if case .failed(let reason) = state { error = reason }
         }
     }
 
@@ -121,7 +110,7 @@ struct SignInView: View {
                 Text("Sign in to Deylee")
                     .font(Type.controlLarge.weight(.medium))
                     .foregroundStyle(Palette.fg)
-                Text("Only so your log follows you between machines. Tracking works without it.")
+                Text("Deylee needs an account. It keeps your log, and carries it between machines.")
                     .font(Type.small)
                     .foregroundStyle(Palette.fgMuted)
                     .multilineTextAlignment(.center)
@@ -191,20 +180,12 @@ struct SignInView: View {
                 googleButton
             }
 
-            // Always offered, not only after the network has failed.
-            //
-            // Declining has always been allowed — the timer starts either way, because
-            // an account is what makes hours follow you between machines rather than
-            // what permits recording them. But the only way to decline was to close the
-            // window, and closing a modal reads as "cancel", so the timer starting was
-            // a surprise rather than a choice. The behaviour was right and invisible;
-            // this makes it a button somebody presses on purpose.
-            Button(offlineOffered ? "Continue without an account" : "Not now — track on this Mac") {
-                onContinueOffline()
-            }
-            .buttonStyle(.link)
-            .font(Type.small)
-            .frame(maxWidth: .infinity, alignment: .center)
+            // Says what closing actually does now, rather than offering a way to track
+            // without an account that no longer exists.
+            Button("Not now") { onDismiss() }
+                .buttonStyle(.link)
+                .font(Type.small)
+                .frame(maxWidth: .infinity, alignment: .center)
 
             Text("Tracking works offline — signing in only syncs the log.")
                 .font(Type.meta)

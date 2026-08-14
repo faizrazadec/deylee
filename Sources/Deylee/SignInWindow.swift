@@ -39,7 +39,7 @@ final class SignInWindowController: NSObject, NSWindowDelegate {
         let view = SignInView(
             auth: auth,
             onSignedIn: { [weak self] in self?.finish() },
-            onContinueOffline: { [weak self] in self?.finish() }
+            onDismiss: { [weak self] in self?.finish() }
         )
 
         let hosting = NSHostingController(rootView: view)

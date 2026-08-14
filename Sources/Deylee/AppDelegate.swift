@@ -207,11 +207,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if settingsWasOpen {
                 self.settingsWindow?.show()
             } else if panelWasOpen {
-                // Back to the panel the press came from, so the timer that is about
-                // to start is visible when it does. Restored on every outcome now,
-                // since the timer starts on every outcome.
+                // Back to the panel the press came from, whatever the outcome — a
+                // person who declined should land where they started rather than
+                // nowhere.
                 self.statusItem?.showPanel()
             }
+            // Only a session resumes the press. An account is required to begin
+            // tracking now; declining leaves the timer where it was rather than
+            // starting a day the person did not agree to sync.
+            //
+            // Required once, not required always: this gate is `isSignedIn`, which is
+            // a stored session and not a live request, so a signed-in Mac on a train
+            // still starts, tracks and closes days with no network at all.
+            guard coordinator.auth.isSignedIn else { return }
             resume()
         }
         signInWindow = window
