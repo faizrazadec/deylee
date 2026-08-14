@@ -28,6 +28,20 @@ public enum DataStore {
         return base.appending(path: folderName, directoryHint: .isDirectory)
     }
 
+    /// Suffix for Keychain item names, so a development run keeps its own credentials.
+    ///
+    /// `DEYLEE_DATA_DIR` already means "this is a throwaway store, not the real
+    /// history". The two secrets that belong to a store should be throwaway with it:
+    /// without this a test run restores the *real* session and syncs as the real user,
+    /// and encrypts its scratch database with the real key.
+    ///
+    /// It also stops a rebuilt development binary and the installed app fighting over
+    /// the same Keychain items — which, on an ad-hoc signed build, means a password
+    /// prompt every time you switch between them.
+    public static var keychainSuffix: String {
+        ProcessInfo.processInfo.environment[folderOverrideEnvKey]?.isEmpty == false ? ".dev" : ""
+    }
+
     public static var databaseURL: URL {
         folderURL.appending(path: databaseFileName, directoryHint: .notDirectory)
     }

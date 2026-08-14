@@ -229,3 +229,23 @@ import Testing
         )
     }
 }
+
+/// A development run must not borrow the installed app's credentials.
+@Suite(.serialized) struct KeychainScoping {
+    @Test func aThrowawayStoreGetsThrowawayKeychainItems() {
+        unsetenv(DataStore.folderOverrideEnvKey)
+        #expect(DataStore.keychainSuffix == "", "the real app must use the unsuffixed items")
+
+        setenv(DataStore.folderOverrideEnvKey, "/tmp/whatever", 1)
+        defer { unsetenv(DataStore.folderOverrideEnvKey) }
+        #expect(DataStore.keychainSuffix == ".dev")
+    }
+
+    /// An empty value is not an override — `DEYLEE_DATA_DIR=` on a command line would
+    /// otherwise silently sign the real app out of its own keychain items.
+    @Test func anEmptyOverrideIsNotADevelopmentRun() {
+        setenv(DataStore.folderOverrideEnvKey, "", 1)
+        defer { unsetenv(DataStore.folderOverrideEnvKey) }
+        #expect(DataStore.keychainSuffix == "")
+    }
+}

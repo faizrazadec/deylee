@@ -35,7 +35,7 @@ struct StoredSession: Sendable, Codable, Equatable {
 enum TokenStore {
     /// Scoped to the bundle id so a debug build and a release build do not fight
     /// over one item.
-    private static let service = "me.faizraza.deylee.session"
+    private static let service = "me.faizraza.deylee.session" + DataStore.keychainSuffix
     private static let account = "primary"
 
     enum Failure: Error, CustomStringConvertible {

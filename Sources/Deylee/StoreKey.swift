@@ -1,3 +1,4 @@
+import DeyleeKit
 import Foundation
 import Security
 
@@ -20,7 +21,7 @@ import Security
 /// followed the account would defeat the point, and the data already travels by its
 /// own protected path.
 enum StoreKey {
-    private static let service = "me.faizraza.deylee.store"
+    private static let service = "me.faizraza.deylee.store" + DataStore.keychainSuffix
     private static let account = "encryption-key"
     private static let byteCount = 32
 
