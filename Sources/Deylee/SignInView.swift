@@ -24,7 +24,9 @@ struct SignInView: View {
     @ObservedObject var auth: AuthService
     /// Called once there is a session, so the app can put its tray item up.
     var onSignedIn: () -> Void
-    /// Offered only when the API cannot be reached at all.
+    /// Declining. Always available, not only when the API is unreachable — the timer
+    /// starts either way, and a choice you can only make by closing the window is a
+    /// choice nobody knows they made.
     var onContinueOffline: () -> Void
 
     @State private var email = ""
@@ -119,7 +121,7 @@ struct SignInView: View {
                 Text("Sign in to Deylee")
                     .font(Type.controlLarge.weight(.medium))
                     .foregroundStyle(Palette.fg)
-                Text("Only so your log follows you between machines.")
+                Text("Only so your log follows you between machines. Tracking works without it.")
                     .font(Type.small)
                     .foregroundStyle(Palette.fgMuted)
                     .multilineTextAlignment(.center)
@@ -189,14 +191,20 @@ struct SignInView: View {
                 googleButton
             }
 
-            if offlineOffered {
-                Button("Continue without an account") {
-                    onContinueOffline()
-                }
-                .buttonStyle(.link)
-                .font(Type.small)
-                .frame(maxWidth: .infinity, alignment: .center)
+            // Always offered, not only after the network has failed.
+            //
+            // Declining has always been allowed — the timer starts either way, because
+            // an account is what makes hours follow you between machines rather than
+            // what permits recording them. But the only way to decline was to close the
+            // window, and closing a modal reads as "cancel", so the timer starting was
+            // a surprise rather than a choice. The behaviour was right and invisible;
+            // this makes it a button somebody presses on purpose.
+            Button(offlineOffered ? "Continue without an account" : "Not now — track on this Mac") {
+                onContinueOffline()
             }
+            .buttonStyle(.link)
+            .font(Type.small)
+            .frame(maxWidth: .infinity, alignment: .center)
 
             Text("Tracking works offline — signing in only syncs the log.")
                 .font(Type.meta)
