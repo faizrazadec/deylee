@@ -73,6 +73,68 @@ cp "$ZIP" "$OUT/$SERVED"
 # Emits BOTH attributes ready to paste: sparkle:edSignature="…" length="…". Adding a
 # length of our own alongside it produces a duplicate attribute, which is not a warning
 # — it is malformed XML, and Sparkle rejects the whole feed rather than one item.
+# Release notes, embedded rather than linked.
+#
+# `sparkle:releaseNotesLink` pointed at the GitHub release page, which fails twice: the
+# tag does not exist at the moment the feed is published, so the pane is blank for
+# whoever updates first, and once it does exist it loads a full web page — navigation,
+# header and all — into a box a few hundred pixels wide.
+#
+# Embedded notes are always present, need no second request, and cannot 404. Taken from
+# dist/release-notes-<version>.md when it is there.
+NOTES_MD="dist/release-notes-$SHORT_VERSION.md"
+NOTES_HTML=""
+if [[ -f "$NOTES_MD" ]]; then
+  NOTES_HTML=$(python3 - "$NOTES_MD" <<'PYEOF'
+import html, re, sys
+
+def inline(t):
+    t = html.escape(t)
+    t = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", t)
+    return re.sub(r"`(.+?)`", r"<code>\1</code>", t)
+
+out, para, item, in_list = [], [], [], False
+
+def flush_para():
+    # Markdown soft-wraps: consecutive lines are one paragraph, not one each.
+    global para
+    if para: out.append("<p>" + inline(" ".join(para)) + "</p>"); para = []
+
+def flush_item():
+    global item
+    if item: out.append("<li>" + inline(" ".join(item)) + "</li>"); item = []
+
+def close_list():
+    global in_list
+    flush_item()
+    if in_list: out.append("</ul>"); in_list = False
+
+for raw in open(sys.argv[1]):
+    line = raw.rstrip("\n")
+    stripped = line.strip()
+    if line.startswith("## "):
+        flush_para(); close_list()
+        out.append("<h2>" + inline(line[3:]) + "</h2>")
+    elif stripped.startswith("- "):
+        flush_para(); flush_item()
+        if not in_list: out.append("<ul>"); in_list = True
+        item = [stripped[2:]]
+    elif not stripped:
+        flush_para(); close_list()
+    elif in_list:
+        item.append(stripped)          # continuation of the current bullet
+    else:
+        para.append(stripped)
+flush_para(); close_list()
+# A readable size in Sparkle's pane, and the system font so it looks native.
+print('<style>body{font:13px -apple-system;margin:0;padding:4px 2px}'
+      'h2{font-size:14px;margin:14px 0 6px}p{margin:6px 0}'
+      'ul{margin:6px 0;padding-left:20px}li{margin:3px 0}code{font-size:12px}</style>')
+print("\n".join(out))
+PYEOF
+  )
+fi
+
 SIGNATURE_LINE=$("$SIGN_UPDATE" "$ZIP")
 PUBLISHED=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
 FEED_BASE="${DEYLEE_UPDATES_URL:-https://api.faizraza.me/updates}"
@@ -94,7 +156,9 @@ cat > "$OUT/appcast.xml" <<XML
       <sparkle:version>$BUILD_VERSION</sparkle:version>
       <sparkle:shortVersionString>$SHORT_VERSION</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>$MIN_SYSTEM</sparkle:minimumSystemVersion>
-      <sparkle:releaseNotesLink>https://github.com/faizrazadec/deylee-ios/releases/tag/v$SHORT_VERSION</sparkle:releaseNotesLink>
+      <description><![CDATA[
+$NOTES_HTML
+]]></description>
       <enclosure url="$FEED_BASE/$SERVED"
                  type="application/octet-stream"
                  $SIGNATURE_LINE />
