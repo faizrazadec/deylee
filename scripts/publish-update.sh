@@ -59,7 +59,16 @@ fi
 
 OUT="dist/updates"
 mkdir -p "$OUT"
-cp "$ZIP" "$OUT/"
+
+# Served under a name carrying the build number, so every publish is a URL that has
+# never been requested before.
+#
+# Cloudflare sits in front of this and caches 404s for four hours. Fetch the public URL
+# in the seconds between writing the appcast and copying the archive — which a release
+# script naturally does, while checking its own work — and that 404 is served to every
+# client for the rest of the afternoon. A fresh path cannot have a stale answer.
+SERVED="Deylee-$SHORT_VERSION-$BUILD_VERSION.zip"
+cp "$ZIP" "$OUT/$SERVED"
 
 # Emits BOTH attributes ready to paste: sparkle:edSignature="…" length="…". Adding a
 # length of our own alongside it produces a duplicate attribute, which is not a warning
@@ -86,7 +95,7 @@ cat > "$OUT/appcast.xml" <<XML
       <sparkle:shortVersionString>$SHORT_VERSION</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>$MIN_SYSTEM</sparkle:minimumSystemVersion>
       <sparkle:releaseNotesLink>https://github.com/faizrazadec/deylee-ios/releases/tag/v$SHORT_VERSION</sparkle:releaseNotesLink>
-      <enclosure url="$FEED_BASE/$(basename "$ZIP")"
+      <enclosure url="$FEED_BASE/$SERVED"
                  type="application/octet-stream"
                  $SIGNATURE_LINE />
     </item>
@@ -95,7 +104,10 @@ cat > "$OUT/appcast.xml" <<XML
 XML
 
 echo "Wrote $OUT/appcast.xml for $SHORT_VERSION (build $BUILD_VERSION)"
-echo "Staged $OUT/$(basename "$ZIP")"
+echo "Staged $OUT/$SERVED"
 echo
-echo "Copy both to the API's DEYLEE_UPDATES_DIR, then check:"
-echo "  curl -s $FEED_BASE/appcast.xml | head"
+echo "Copy both to the API's DEYLEE_UPDATES_DIR, then check LOCALLY first:"
+echo "  curl -sI http://127.0.0.1:8080/updates/$SERVED | head -1"
+echo
+echo "Only fetch $FEED_BASE once the file is in place — a 404 through Cloudflare is"
+echo "cached for four hours and would be served to every client."
