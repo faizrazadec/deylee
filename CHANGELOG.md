@@ -3,6 +3,30 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## 0.4.3 — 2026-08-14 (pre-release)
+
+**The Keychain and Screen Recording prompts stop coming back after every update.**
+
+0.4.2 claimed to fix this and made it worse, asking twice per launch instead of once. This
+release fixes it properly, and by a different route.
+
+The cause was never the prompt logic. Deylee was signed ad hoc, which identifies an app by
+the hash of its exact binary — so a new version was not a newer Deylee as far as macOS was
+concerned, it was an unrelated program wearing the name. Asking again was correct
+behaviour. The identity was the bug.
+
+Deylee is now signed with a certificate, which identifies it by the certificate rather than
+the binary. Every future version satisfies it, so permissions you grant survive updates.
+
+- **One last round of questions on the first launch of this version**, because the identity
+  changes with it. Answer them once. They should not return.
+- If you are asked for a Keychain password and your Mac password is refused, that is a
+  different, older prompt — dismiss it and relaunch.
+
+Nothing changes about the install warning: the certificate is self-signed, so a fresh
+install still needs **Open Anyway**. Silencing that requires a Developer ID from Apple,
+because only Apple's root ships inside macOS, and it is not done yet.
+
 ## 0.4.2 — 2026-08-14 (pre-release)
 
 **Deylee stops asking for your Keychain password every time it opens.**
