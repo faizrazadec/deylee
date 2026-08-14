@@ -53,48 +53,26 @@ enum StoreKey {
         guard let existing = found else {
             let fresh = try generate()
             try save(fresh)
-            markAdopted()
             return fresh
         }
-
-        // A Keychain item's access list names the exact build that wrote it, so every
-        // update makes Deylee a stranger to its own key and macOS asks permission again
-        // — on every launch, for ever, because Allow authorises the one read and
-        // changes nothing about the item. Writing the key back under this build's own
-        // identity is what ends that, and it also takes the item back off the
-        // permissive access list that `security add-generic-password` leaves behind.
-        if !isAdopted { adopt(existing) }
         return existing
     }
 
-    /// Whether the item in the Keychain was last written by this build of Deylee.
-    ///
-    /// Kept in `UserDefaults` rather than the database, because this runs while
-    /// fetching the key the database cannot be opened without.
-    private static let adoptedKey = "storeKeyAdoptedForBuild"
-
-    private static var buildStamp: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
-    }
-
-    private static var isAdopted: Bool {
-        UserDefaults.standard.string(forKey: adoptedKey) == buildStamp
-    }
-
-    private static func markAdopted() {
-        UserDefaults.standard.set(buildStamp, forKey: adoptedKey)
-    }
-
-    /// Rewrites the key under this build's identity, and checks that it worked.
-    ///
-    /// `save` deletes before it adds, and a failure in that gap would leave the store
-    /// encrypted with a key nothing on this Mac still holds. That is worth one retry
-    /// and a read-back rather than a hopeful `try?`.
-    private static func adopt(_ key: [UInt8]) {
-        try? save(key)
-        if (try? loadWithoutPrompting()) == nil { try? save(key) }
-        if (try? loadWithoutPrompting()) != nil { markAdopted() }
-    }
+    // On rewriting the item to make macOS stop asking, which 0.4.2 tried and 0.4.3
+    // removed. The access list has a second entry, ACLAuthorizationChangeACL, whose
+    // trusted-application list is empty: no program may rewrite the item without the
+    // user typing their Keychain password, ever, including Deylee. So the rewrite
+    // could not be done quietly — it replaced one prompt with two, and when it was
+    // refused it simply ran again on the next launch.
+    //
+    // There is no way to fix this from inside the app, because the thing macOS objects
+    // to is the app's identity. Ad-hoc signing gives Deylee a designated requirement of
+    // `cdhash H"..."` — the hash of that exact binary — so every build really is a
+    // different program as far as the Keychain is concerned. A Developer ID replaces
+    // that with `identifier "me.faizraza.deylee" and anchor apple generic and
+    // certificate leaf[subject.OU] = <team>`, which every future build satisfies, and
+    // the question stops being asked. Until then, Always Allow answers it once per
+    // update; Allow answers it once per launch.
 
     /// `load()`, with macOS forbidden from asking the user anything. Returns nil rather
     /// than prompting when this build is a stranger to the item.

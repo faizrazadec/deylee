@@ -75,15 +75,10 @@ enum TokenStore {
 
     static func load() throws -> StoredSession? {
         // Silently first: this succeeds when the item's access list already names this
-        // build, which is the ordinary case and writes nothing.
+        // build, which is the ordinary case and writes nothing. Rewriting the item when
+        // it does not is what 0.4.2 tried; see StoreKey for why that made it worse.
         if let session = try? readWithoutPrompting() { return session }
-
-        guard let session = try read() else { return nil }
-        // macOS had to ask, so this build is a stranger to the item — see StoreKey for
-        // the full reasoning. Rewriting it under our own identity is what turns "asked
-        // on every launch" back into "asked once, after an update".
-        try? save(session)
-        return session
+        return try read()
     }
 
     /// `read()`, with macOS forbidden from asking the user anything.
