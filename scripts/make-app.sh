@@ -85,13 +85,48 @@ else
     "$APP/Contents/Info.plist"
 fi
 
-# Ad-hoc signature so local Gatekeeper/TCC treat the bundle as a stable identity.
+# Signed with the local certificate from scripts/make-signing-identity.sh when there is
+# one, and ad hoc when there is not, so a clean checkout still builds.
+#
+# What differs is the designated requirement the bundle ends up with. Ad hoc gives
+# `cdhash H"..."`, the hash of this exact binary, so every build is a different program
+# as far as the Keychain and TCC are concerned and both re-ask after every update. A
+# certificate gives `identifier "me.faizraza.deylee" and certificate root = H"..."`,
+# which every future build satisfies, so the grants survive.
+#
+# Neither is a Developer ID, so neither gets an app past Gatekeeper on a Mac that did
+# not build it. That is a different problem and only Apple can solve it.
 #
 # Inside out, and that order is not optional: signing the app seals a hash of every
 # nested bundle, so a framework signed afterwards invalidates the signature that was
 # taken over it. Sparkle's own helpers are nested bundles in their own right and have
 # to be sealed before the framework that contains them.
-sign() { codesign --force --sign - "$1"; }
+SIGN_KEYCHAIN="${DEYLEE_SIGN_KEYCHAIN:-$HOME/Library/Keychains/deylee-signing.keychain-db}"
+SIGN_PASSWORD_FILE="${DEYLEE_SIGN_PASSWORD_FILE:-$HOME/.deylee-signing-password}"
+SIGN_IDENTITY="${DEYLEE_SIGN_IDENTITY:-Deylee Signing}"
+
+if [[ -f "$SIGN_KEYCHAIN" && -f "$SIGN_PASSWORD_FILE" ]]; then
+  security unlock-keychain -p "$(cat "$SIGN_PASSWORD_FILE")" "$SIGN_KEYCHAIN"
+
+  # codesign resolves an identity by name through the search list only; passing
+  # --keychain is not enough on its own and fails with "no identity found". The list is
+  # global to the login session, so it is put back however this script exits — leaving a
+  # build keychain in it would change where every app on this Mac looks for its items.
+  ORIGINAL_KEYCHAINS=()
+  while IFS= read -r line; do
+    ORIGINAL_KEYCHAINS+=("$(sed -e 's/^ *"//' -e 's/" *$//' <<<"$line")")
+  done < <(security list-keychains -d user)
+  restore_keychains() { security list-keychains -d user -s "${ORIGINAL_KEYCHAINS[@]}"; }
+  trap restore_keychains EXIT
+  security list-keychains -d user -s "$SIGN_KEYCHAIN" "${ORIGINAL_KEYCHAINS[@]}"
+
+  sign() { codesign --force --sign "$SIGN_IDENTITY" --keychain "$SIGN_KEYCHAIN" "$1"; }
+  echo "Signing identity: $SIGN_IDENTITY"
+else
+  sign() { codesign --force --sign - "$1"; }
+  echo "Signing identity: ad hoc — run scripts/make-signing-identity.sh to stop the"
+  echo "  Keychain and Screen Recording prompts returning after every update"
+fi
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 sign "$SPARKLE/Versions/B/XPCServices/Downloader.xpc" 2>/dev/null || true
 sign "$SPARKLE/Versions/B/XPCServices/Installer.xpc" 2>/dev/null || true
