@@ -74,13 +74,34 @@ enum TokenStore {
     }
 
     static func load() throws -> StoredSession? {
-        let query: [String: Any] = [
+        // Silently first: this succeeds when the item's access list already names this
+        // build, which is the ordinary case and writes nothing.
+        if let session = try? readWithoutPrompting() { return session }
+
+        guard let session = try read() else { return nil }
+        // macOS had to ask, so this build is a stranger to the item — see StoreKey for
+        // the full reasoning. Rewriting it under our own identity is what turns "asked
+        // on every launch" back into "asked once, after an update".
+        try? save(session)
+        return session
+    }
+
+    /// `read()`, with macOS forbidden from asking the user anything.
+    private static func readWithoutPrompting() throws -> StoredSession? {
+        try read(promptIfNeeded: false)
+    }
+
+    private static func read(promptIfNeeded: Bool = true) throws -> StoredSession? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        if !promptIfNeeded {
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }

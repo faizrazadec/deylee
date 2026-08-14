@@ -44,10 +44,62 @@ enum StoreKey {
 
     /// The device's key, generated and saved the first time it is asked for.
     static func loadOrCreate() throws -> [UInt8] {
-        if let existing = try load() { return existing }
-        let fresh = try generate()
-        try save(fresh)
-        return fresh
+        // Read once without letting macOS put a dialog up. Nil means either no item at
+        // all or an item this build is not on the access list of — and only the second
+        // of those is worth a question.
+        var found = try? loadWithoutPrompting()
+        if found == nil { found = try load() }
+
+        guard let existing = found else {
+            let fresh = try generate()
+            try save(fresh)
+            markAdopted()
+            return fresh
+        }
+
+        // A Keychain item's access list names the exact build that wrote it, so every
+        // update makes Deylee a stranger to its own key and macOS asks permission again
+        // — on every launch, for ever, because Allow authorises the one read and
+        // changes nothing about the item. Writing the key back under this build's own
+        // identity is what ends that, and it also takes the item back off the
+        // permissive access list that `security add-generic-password` leaves behind.
+        if !isAdopted { adopt(existing) }
+        return existing
+    }
+
+    /// Whether the item in the Keychain was last written by this build of Deylee.
+    ///
+    /// Kept in `UserDefaults` rather than the database, because this runs while
+    /// fetching the key the database cannot be opened without.
+    private static let adoptedKey = "storeKeyAdoptedForBuild"
+
+    private static var buildStamp: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+    }
+
+    private static var isAdopted: Bool {
+        UserDefaults.standard.string(forKey: adoptedKey) == buildStamp
+    }
+
+    private static func markAdopted() {
+        UserDefaults.standard.set(buildStamp, forKey: adoptedKey)
+    }
+
+    /// Rewrites the key under this build's identity, and checks that it worked.
+    ///
+    /// `save` deletes before it adds, and a failure in that gap would leave the store
+    /// encrypted with a key nothing on this Mac still holds. That is worth one retry
+    /// and a read-back rather than a hopeful `try?`.
+    private static func adopt(_ key: [UInt8]) {
+        try? save(key)
+        if (try? loadWithoutPrompting()) == nil { try? save(key) }
+        if (try? loadWithoutPrompting()) != nil { markAdopted() }
+    }
+
+    /// `load()`, with macOS forbidden from asking the user anything. Returns nil rather
+    /// than prompting when this build is a stranger to the item.
+    private static func loadWithoutPrompting() throws -> [UInt8]? {
+        try load(promptIfNeeded: false)
     }
 
     private static func generate() throws -> [UInt8] {
@@ -57,14 +109,17 @@ enum StoreKey {
         return bytes
     }
 
-    private static func load() throws -> [UInt8]? {
-        let query: [String: Any] = [
+    private static func load(promptIfNeeded: Bool = true) throws -> [UInt8]? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        if !promptIfNeeded {
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }
