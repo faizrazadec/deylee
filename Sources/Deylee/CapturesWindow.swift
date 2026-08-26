@@ -305,31 +305,31 @@ private struct CapturesView: View {
 
     private func viewer(_ opened: (summary: CaptureSummary, image: NSImage)) -> some View {
         VStack(spacing: Space.l) {
+            // Stepping through the day without going back to the grid between each one,
+            // which is how anybody actually reads a set of captures.
+            //
+            // Flanking the image rather than sitting under it: this is a picture viewer,
+            // and the place a hand goes for "next picture" is the edge of the picture.
+            // Overlaid rather than laid out beside it, so a portrait capture and a
+            // landscape one do not move the controls between them.
             Image(nsImage: opened.image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .leading) {
+                    step(
+                        "chevron.left", enabled: model.canShowPrevious,
+                        key: .leftArrow, label: "Previous capture"
+                    ) { model.showPrevious() }
+                }
+                .overlay(alignment: .trailing) {
+                    step(
+                        "chevron.right", enabled: model.canShowNext,
+                        key: .rightArrow, label: "Next capture"
+                    ) { model.showNext() }
+                }
 
             HStack(spacing: Space.xl) {
-                // Stepping through the day without going back to the grid between each
-                // one, which is how anybody actually reads a set of captures. Arrow
-                // keys do the same, because that is what hands reach for.
-                Button { model.showPrevious() } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .buttonStyle(.plain)
-                .disabled(!model.canShowPrevious)
-                .keyboardShortcut(.leftArrow, modifiers: [])
-                .help("Previous capture")
-
-                Button { model.showNext() } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .buttonStyle(.plain)
-                .disabled(!model.canShowNext)
-                .keyboardShortcut(.rightArrow, modifiers: [])
-                .help("Next capture")
-
                 Text("Captured at \(Self.clock(opened.summary.capturedAt))")
                     .font(Type.small)
                     .foregroundStyle(Palette.fgMuted)
@@ -341,6 +341,33 @@ private struct CapturesView: View {
             }
         }
         .padding(Space.x3l)
+    }
+
+    /// One of the two arrows over the image.
+    ///
+    /// A capture is a screenshot of anything at all, so a bare glyph disappears against
+    /// roughly half of them. The disc is what keeps it readable over a white document
+    /// and a dark editor alike.
+    ///
+    /// Kept in place and dimmed at the ends of the day rather than removed: an arrow
+    /// that vanishes leaves you wondering whether you missed a picture.
+    private func step(
+        _ symbol: String, enabled: Bool, key: KeyEquivalent, label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(Type.body)
+                .foregroundStyle(enabled ? Palette.fg : Palette.fgFaint)
+                .frame(width: Space.x6l, height: Space.x6l)
+                .background(Circle().fill(Palette.raised.opacity(enabled ? 0.9 : 0.5)))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .keyboardShortcut(key, modifiers: [])
+        .help(label)
+        .accessibilityLabel(label)
+        .padding(.horizontal, Space.x4l)
     }
 
     private static func clock(_ at: EpochMs) -> String {
