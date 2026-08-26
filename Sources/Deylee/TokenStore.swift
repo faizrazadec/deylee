@@ -59,9 +59,16 @@ enum TokenStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        // Delete-then-add rather than update: it is one code path instead of two,
-        // and the item is small enough that rewriting it costs nothing.
-        SecItemDelete(query as CFDictionary)
+        // Update in place rather than delete-then-add. The two are not equivalent:
+        // replacing an item rewrites its access list, which nothing may do without the
+        // user's Keychain password, so a token refresh raised a password dialog. Since
+        // the access token is renewed roughly hourly and sync asks for it constantly,
+        // that was a prompt every hour, for ever, whatever the app was signed with.
+        // Writing only the value is permitted outright and asks nothing.
+        let updated = SecItemUpdate(query as CFDictionary,
+                                    [kSecValueData as String: data] as CFDictionary)
+        if updated == errSecSuccess { return }
+        guard updated == errSecItemNotFound else { throw Failure.keychain(updated) }
 
         var attributes = query
         attributes[kSecValueData as String] = data

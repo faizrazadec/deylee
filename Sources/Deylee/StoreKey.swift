@@ -58,21 +58,23 @@ enum StoreKey {
         return existing
     }
 
-    // On rewriting the item to make macOS stop asking, which 0.4.2 tried and 0.4.3
-    // removed. The access list has a second entry, ACLAuthorizationChangeACL, whose
-    // trusted-application list is empty: no program may rewrite the item without the
-    // user typing their Keychain password, ever, including Deylee. So the rewrite
-    // could not be done quietly — it replaced one prompt with two, and when it was
-    // refused it simply ran again on the next launch.
+    // Why macOS asks, in two halves, because they have different answers.
     //
-    // There is no way to fix this from inside the app, because the thing macOS objects
-    // to is the app's identity. Ad-hoc signing gives Deylee a designated requirement of
-    // `cdhash H"..."` — the hash of that exact binary — so every build really is a
-    // different program as far as the Keychain is concerned. A Developer ID replaces
-    // that with `identifier "me.faizraza.deylee" and anchor apple generic and
-    // certificate leaf[subject.OU] = <team>`, which every future build satisfies, and
-    // the question stops being asked. Until then, Always Allow answers it once per
-    // update; Allow answers it once per launch.
+    // READING is guarded by an access list naming the exact code allowed to do it.
+    // Signed ad hoc, that was `cdhash H"..."` — the hash of one binary — so every build
+    // was a stranger and every update brought the question back. Signing with a
+    // certificate makes it `identifier "me.faizraza.deylee" and certificate root =
+    // H"..."`, which every future build satisfies. Answering Always Allow once then
+    // holds; Allow answers only that one read and changes nothing.
+    //
+    // WRITING was self-inflicted and is fixed in `save`. The item's access list also
+    // carries ACLAuthorizationChangeACL with an empty trusted list, meaning nothing may
+    // rewrite the item without the user's Keychain password. Delete-then-add is exactly
+    // that rewrite, so every write raised a dialog; SecItemUpdate touches only the value,
+    // which is permitted outright, and asks nothing.
+    //
+    // 0.4.2 tried to end the reading half by rewriting the item, which needed the writing
+    // half it did not have — so it asked twice instead of once and retried every launch.
 
     /// `load()`, with macOS forbidden from asking the user anything. Returns nil rather
     /// than prompting when this build is a stranger to the item.
@@ -114,7 +116,21 @@ enum StoreKey {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(query as CFDictionary)
+        // Update in place when the item is already there, rather than replacing it.
+        //
+        // Deleting and re-adding looks equivalent and is not. Replacing an item means
+        // writing a new access list, and the access list guarding that says NOBODY may
+        // do it without the user's Keychain password — so every write raised a dialog,
+        // for ever, no matter how the app was signed. Changing only the value asks
+        // nothing, because writing a value is permitted outright.
+        //
+        // It also closes the window where the key exists nowhere. A crash between the
+        // delete and the add would have left the database encrypted with a key no
+        // longer on this Mac, which is unrecoverable.
+        let updated = SecItemUpdate(query as CFDictionary,
+                                    [kSecValueData as String: Data(key)] as CFDictionary)
+        if updated == errSecSuccess { return }
+        guard updated == errSecItemNotFound else { throw Failure.keychain(updated) }
 
         var attributes = query
         attributes[kSecValueData as String] = Data(key)
