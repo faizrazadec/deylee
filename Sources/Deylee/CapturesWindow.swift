@@ -1,5 +1,6 @@
 import AppKit
 import DeyleeKit
+import ImageIO
 import SwiftUI
 
 /// What Deylee has captured, as images rather than as a number.
@@ -78,6 +79,13 @@ final class CapturesModel {
     /// screenshot of the day in memory to show one.
     private(set) var opened: (summary: CaptureSummary, image: NSImage)?
 
+    /// Grid-sized thumbnails, by capture id.
+    ///
+    /// Small enough to keep for a whole day — a few hundred kilobytes each rather than
+    /// the several megabytes a decoded screenshot costs — which is the difference
+    /// between caching these and caching the images themselves.
+    private(set) var thumbnails: [Int64: NSImage] = [:]
+
     @ObservationIgnored private let repo: Repository
 
     init(repo: Repository, day: DateKey = dateKeyOf(EpochMs(Date().timeIntervalSince1970 * 1000))) {
@@ -107,6 +115,64 @@ final class CapturesModel {
     }
 
     func close() { opened = nil }
+
+    /// Decode one thumbnail, at the size the grid draws rather than the size it was
+    /// captured at.
+    ///
+    /// The grid used to show a placeholder for every capture on the grounds that
+    /// decoding a day of screenshots would make the window slow. It would — but only
+    /// because `NSImage(data:)` decodes the whole thing. Asking ImageIO for a thumbnail
+    /// decodes straight to the size wanted and never holds the full image at all.
+    ///
+    /// Called from the cell, so `LazyVGrid` only pays for rows somebody scrolls to.
+    func loadThumbnail(for summary: CaptureSummary) {
+        guard thumbnails[summary.id] == nil,
+              let capture = try? repo.capture(id: summary.id),
+              let image = Self.thumbnail(from: capture.bytes, maxPixel: 440)
+        else { return }
+        thumbnails[summary.id] = image
+    }
+
+    // ponytail: decoded on the main actor. It is a downsample rather than a full decode
+    // and a screenful is a handful of cells, so it does not stutter; if a day of
+    // captures ever grows enough to be felt, this moves off the actor and the cache
+    // gains a bound.
+    private static func thumbnail(from data: Data, maxPixel: Int) -> NSImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+              ] as CFDictionary)
+        else { return nil }
+        return NSImage(cgImage: cgImage, size: .zero)
+    }
+
+    // MARK: Moving between captures
+
+    /// Where the open capture sits in the day, so the viewer can step either way.
+    private var openedIndex: Int? {
+        guard let opened else { return nil }
+        return summaries.firstIndex { $0.id == opened.summary.id }
+    }
+
+    var canShowPrevious: Bool { (openedIndex ?? 0) > 0 }
+    var canShowNext: Bool {
+        guard let index = openedIndex else { return false }
+        return index < summaries.count - 1
+    }
+
+    /// Earlier in the day. Looking through a day's captures without returning to the
+    /// grid between each one is the whole point of opening one.
+    func showPrevious() {
+        guard let index = openedIndex, index > 0 else { return }
+        open(summaries[index - 1])
+    }
+
+    func showNext() {
+        guard let index = openedIndex, index < summaries.count - 1 else { return }
+        open(summaries[index + 1])
+    }
 
     /// Delete the one being looked at, which is the only place a single capture can be
     /// deleted — deleting an image you are looking at is a decision; deleting one from a
@@ -197,16 +263,30 @@ private struct CapturesView: View {
                 ForEach(model.summaries) { summary in
                     Button { model.open(summary) } label: {
                         VStack(alignment: .leading, spacing: Space.xs) {
-                            // A placeholder rather than a thumbnail: decoding every image
-                            // in a day to fill a grid is the one thing that would make
-                            // this window slow, and the timestamp is what people scan by.
+                            // Decoded at tile size rather than capture size, so a day
+                            // of screenshots costs a downsample each instead of a full
+                            // decode each — which is what a grid of identical grey
+                            // placeholders was buying before.
                             RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
                                 .fill(Palette.raised)
                                 .frame(height: 124)
-                                .overlay(
-                                    Image(systemName: "photo")
-                                        .foregroundStyle(Palette.fgFaint)
+                                .overlay {
+                                    if let thumbnail = model.thumbnails[summary.id] {
+                                        Image(nsImage: thumbnail)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                    } else {
+                                        Image(systemName: "photo")
+                                            .foregroundStyle(Palette.fgFaint)
+                                    }
+                                }
+                                .clipShape(
+                                    RoundedRectangle(
+                                        cornerRadius: Radius.control, style: .continuous
+                                    )
                                 )
+                                // Only rows somebody scrolls to are decoded.
+                                .task { model.loadThumbnail(for: summary) }
                             Text(Self.clock(summary.capturedAt))
                                 .font(Type.body)
                                 .foregroundStyle(Palette.fg)
@@ -231,6 +311,25 @@ private struct CapturesView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             HStack(spacing: Space.xl) {
+                // Stepping through the day without going back to the grid between each
+                // one, which is how anybody actually reads a set of captures. Arrow
+                // keys do the same, because that is what hands reach for.
+                Button { model.showPrevious() } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.canShowPrevious)
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                .help("Previous capture")
+
+                Button { model.showNext() } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.canShowNext)
+                .keyboardShortcut(.rightArrow, modifiers: [])
+                .help("Next capture")
+
                 Text("Captured at \(Self.clock(opened.summary.capturedAt))")
                     .font(Type.small)
                     .foregroundStyle(Palette.fgMuted)
