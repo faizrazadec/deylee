@@ -3,6 +3,53 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## 0.4.4 — 2026-08-26 (pre-release)
+
+### The Keychain password prompt is actually fixed
+
+0.4.3 fixed half of it and this fixes the other half, which was the half that would never
+have stopped on its own.
+
+Deylee wrote to the Keychain by deleting the item and adding it back. Replacing an item
+rewrites the list of who may use it, and macOS lets nothing do that without your Keychain
+password — Deylee included. Since your sign-in is rewritten every time the access token is
+renewed, roughly hourly, that was a password prompt every hour for as long as the app was
+open. Signing the app differently never addressed it, because the objection was never to
+who was asking.
+
+Deylee now changes the value in place, which macOS permits outright and asks nothing about.
+
+### Send feedback from inside Deylee
+
+The bug button used to open a draft in your mail app, which meant leaving Deylee, finding
+your mail client, and sending it somewhere nobody reads. It now opens a small window: type,
+press Send, done.
+
+It goes with your Deylee version and your macOS version, and the window says so above the
+button. No logs, no screenshots, nothing read from your history. Signing in is required,
+because feedback nobody can reply to helps neither of us.
+
+### Your history is better protected against a lost key
+
+If the key that encrypts your database goes missing, Deylee used to quietly generate a new
+one — which cannot open the old file and does destroy the last chance a backup had of
+opening it. It now stops and says so plainly, leaving everything as it was.
+
+Both secrets now live in a single Keychain item rather than two, so there is one thing to
+grant and one thing to back up.
+
+### Also
+
+- The panel footer is three icons rather than two words and an icon.
+- Ending a day and starting another shows the new one instead of the one just closed.
+- A sync that fails for want of a network no longer signs you out.
+
+### Upgrading
+
+Expect **one** last round of Keychain questions on the first launch of this version, because
+both secrets move into a single item. Answer once. Choosing **Always Allow** rather than
+Allow is what makes it stick.
+
 ## 0.4.3 — 2026-08-14 (pre-release)
 
 **The Keychain and Screen Recording prompts stop coming back after every update.**
