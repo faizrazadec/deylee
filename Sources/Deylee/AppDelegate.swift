@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController?
     private var syncCoordinator: SyncCoordinator?
     private var signInWindow: SignInWindowController?
+    private var feedbackWindow: FeedbackWindowController?
     private var stopWatchingPreferences: PreferencesUnsubscribe?
     private var idleMonitor: IdleMonitor?
     private var powerMonitor: PowerMonitor?
@@ -151,6 +152,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         model.openHistoryWindow = { HistoryWindow.open(repo: repo, engine: engine, prefs: prefs) }
         model.openSettingsWindow = { settingsWindow.show() }
+
+        // Feedback needs the API and a session, so it only exists when sync does. With
+        // no coordinator the panel's button stays inert rather than opening a window
+        // whose Send could never work.
+        if let coordinator = syncCoordinator, let config = ClientConfig.fromBundle() {
+            let feedback = FeedbackWindowController(
+                service: FeedbackService(config: config, auth: coordinator.auth)
+            )
+            feedbackWindow = feedback
+            model.openFeedbackWindow = { feedback.show() }
+        }
 
         // Applied before any window exists: the change listener alone would leave the
         // first launch on the system appearance regardless of a stored light/dark choice.

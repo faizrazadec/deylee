@@ -139,6 +139,10 @@ enum Layout {
     static let historyMinSize = CGSize(width: 760, height: 520)
     static let settingsSize = CGSize(width: 560, height: 640)
     static let settingsMinSize = CGSize(width: 480, height: 420)
+    static let feedbackSize = CGSize(width: 420, height: 340)
+    static let feedbackEditorMinHeight: CGFloat = 140
+    /// Where the character counter starts showing itself.
+    static let feedbackCounterThreshold = 200
     /// Gap between the status item and the top of the panel.
     static let panelStatusItemGap: CGFloat = 8
     /// Inset from the work-area corner where a mini window first appears.

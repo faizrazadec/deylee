@@ -31,6 +31,7 @@ final class AppModel {
     @ObservationIgnored private let repo: Repository
     @ObservationIgnored var openHistoryWindow: () -> Void = {}
     @ObservationIgnored var openSettingsWindow: () -> Void = {}
+    @ObservationIgnored var openFeedbackWindow: () -> Void = {}
 
     /// Whether an account is still needed. False on a build with no API, where
     /// nothing is ever gated and the app is the local tracker it always was.
@@ -97,29 +98,21 @@ final class AppModel {
     func openHistory() { openHistoryWindow() }
     func openSettings() { openSettingsWindow() }
 
-    /// Where feedback goes. One line, because it is the only thing about this feature
-    /// worth configuring.
-    private static let feedbackAddress = "faiz.raza.dec@gmail.com"
-
-    /// Opens a mail draft. It lives on the panel rather than in Settings because a bug
-    /// is reported at the moment it is noticed, and nobody goes hunting through
-    /// preferences at that moment.
+    /// Opens the feedback window, or sign-in first when there is no account.
     ///
-    /// The version and OS go in as plain readable text the person can delete before
-    /// sending. Nothing is attached and no request is made: the moment something travels
-    /// that they cannot see, this has become the thing it was avoiding.
+    /// Gated for the same reason the API gates it: feedback nobody can reply to is
+    /// worth less to both sides, and an account is already required to start a day,
+    /// so this asks nothing new of anyone actually using the app. Declining leaves
+    /// the window closed rather than opening one whose Send could only fail.
     func sendFeedback() {
-        let body = "\n\n---\nDeylee \(DeyleeKit.version) · "
-            + ProcessInfo.processInfo.operatingSystemVersionString
-        guard var components = URLComponents(
-            string: "mailto:\(AppModel.feedbackAddress)"
-        ) else { return }
-        components.queryItems = [
-            .init(name: "subject", value: "Deylee feedback"),
-            .init(name: "body", value: body),
-        ]
-        guard let url = components.url else { return }
-        NSWorkspace.shared.open(url)
+        guard needsSignIn() else {
+            openFeedbackWindow()
+            return
+        }
+        presentSignIn { [weak self] in
+            guard let self, !self.needsSignIn() else { return }
+            self.openFeedbackWindow()
+        }
     }
 
     func post(_ notice: Notice) {
