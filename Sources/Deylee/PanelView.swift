@@ -164,7 +164,7 @@ struct PanelView: View {
         // Icons rather than words, so the footer stays quiet under the numbers that
         // matter. Each carries a tooltip and an accessibility label, because a glyph
         // with neither is a guess for a sighted user and nothing at all for VoiceOver.
-        HStack(spacing: Space.xs) {
+        HStack(spacing: Space.xxs) {
             FooterButton(
                 symbol: "clock.arrow.circlepath",
                 label: "History",
@@ -188,9 +188,12 @@ struct PanelView: View {
                 action: model.openSettings
             )
         }
-        .buttonStyle(DeyleeButtonStyle(variant: .ghost, size: .small))
-        .padding(.horizontal, Space.l)
-        .padding(.vertical, Space.m)
+        // The icon-only size, because .small carries the horizontal padding a word like
+        // "History" needs and a glyph does not: 10pt either side, which held the bug and
+        // the gear 24pt apart when they should read as one pair.
+        .buttonStyle(DeyleeButtonStyle(variant: .ghost, size: .circle))
+        .padding(.horizontal, Space.s)
+        .padding(.vertical, Space.xs)
     }
 }
 
