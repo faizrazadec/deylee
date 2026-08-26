@@ -1,6 +1,5 @@
 import DeyleeKit
 import Foundation
-import LocalAuthentication
 import Security
 
 /// The key that encrypts the local SQLite store, held in the macOS Keychain.

@@ -1,6 +1,5 @@
 import DeyleeKit
 import Foundation
-import LocalAuthentication
 import Security
 
 /// The session, as this device holds it.
