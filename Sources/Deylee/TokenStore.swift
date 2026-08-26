@@ -33,6 +33,7 @@ struct StoredSession: Sendable, Codable, Equatable {
 /// One item, replaced wholesale. There is no partial state worth keeping: an access
 /// token without its refresh token is an hour from useless, and a refresh token
 /// without the user id it belongs to cannot be attributed.
+@MainActor
 enum TokenStore {
     /// Scoped to the bundle id so a debug build and a release build do not fight
     /// over one item.
@@ -55,83 +56,32 @@ enum TokenStore {
 
     static func save(_ session: StoredSession) throws {
         let data = try JSONEncoder().encode(session)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        // Update in place rather than delete-then-add. The two are not equivalent:
-        // replacing an item rewrites its access list, which nothing may do without the
-        // user's Keychain password, so a token refresh raised a password dialog. Since
-        // the access token is renewed roughly hourly and sync asks for it constantly,
-        // that was a prompt every hour, for ever, whatever the app was signed with.
-        // Writing only the value is permitted outright and asks nothing.
-        let updated = SecItemUpdate(query as CFDictionary,
-                                    [kSecValueData as String: data] as CFDictionary)
-        if updated == errSecSuccess { return }
-        guard updated == errSecItemNotFound else { throw Failure.keychain(updated) }
-
-        var attributes = query
-        attributes[kSecValueData as String] = data
-        // Not synchronised to iCloud, and unavailable until the Mac has been
-        // unlocked once — a background sync before first unlock would fail anyway.
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-
-        let status = SecItemAdd(attributes as CFDictionary, nil)
-        guard status == errSecSuccess else { throw Failure.keychain(status) }
+        guard let vault = try SecretVault.load() else {
+            // No vault means no store key, and the app cannot have got this far
+            // without one — it opens the database before anyone can sign in.
+            throw Failure.keychain(errSecItemNotFound)
+        }
+        try SecretVault.save(VaultContents(storeKey: vault.storeKey, session: data))
     }
 
+    /// The session held on this machine, or nil when nobody is signed in.
     static func load() throws -> StoredSession? {
-        // Silently first: this succeeds when the item's access list already names this
-        // build, which is the ordinary case and writes nothing. Rewriting the item when
-        // it does not is what 0.4.2 tried; see StoreKey for why that made it worse.
-        if let session = try? readWithoutPrompting() { return session }
-        return try read()
-    }
-
-    /// `read()`, with macOS forbidden from asking the user anything.
-    private static func readWithoutPrompting() throws -> StoredSession? {
-        try read(promptIfNeeded: false)
-    }
-
-    private static func read(promptIfNeeded: Bool = true) throws -> StoredSession? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        if !promptIfNeeded {
-            // Verified equivalent to the deprecated kSecUseAuthenticationUIFail on the
-            // file-based Keychain these items live in, which is not obvious: LAContext
-            // reads as being about Touch ID, and this needs the plain access-list dialog
-            // suppressed. Both return errSecInvalidOwnerEdit on an operation the access
-            // list refuses, rather than stopping to ask.
-            let context = LAContext()
-            context.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext as String] = context
-        }
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = item as? Data else {
-            throw Failure.keychain(status)
-        }
+        guard let data = try SecretVault.load()?.session else { return nil }
         guard let session = try? JSONDecoder().decode(StoredSession.self, from: data) else {
-            // A session written by an older build that cannot be read is not an
-            // error worth stopping for: signing in again fixes it.
+            // Written by an older build in a shape this one cannot read. Not an error
+            // worth stopping for: signing in again replaces it.
             throw Failure.malformed
         }
         return session
     }
 
+    /// Sign out, keeping the store key.
+    ///
+    /// One field, never the whole item. Deleting the vault to sign somebody out would
+    /// take the encryption key with it and leave every hour they ever tracked
+    /// unreadable — the one mistake that merging the two items makes easy to reach.
     static func clear() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
+        guard let vault = try? SecretVault.load() else { return }
+        try? SecretVault.save(vault.withoutSession())
     }
 }

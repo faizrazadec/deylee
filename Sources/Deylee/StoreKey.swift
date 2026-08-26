@@ -21,9 +21,8 @@ import Security
 /// which is the backup. So this is deliberately not synced to iCloud: a key that
 /// followed the account would defeat the point, and the data already travels by its
 /// own protected path.
+@MainActor
 enum StoreKey {
-    private static let service = "me.faizraza.deylee.store" + DataStore.keychainSuffix
-    private static let account = "encryption-key"
     private static let byteCount = 32
 
     enum Failure: Error, CustomStringConvertible {
@@ -53,118 +52,35 @@ enum StoreKey {
     }
 
     /// The device's key, generated and saved the first time it is asked for.
+    ///
+    /// Lives in the vault now, beside the session, so the launch reads one Keychain
+    /// item instead of two. The key itself is unchanged — same bytes, same item
+    /// contents after migration — only where it is kept has moved.
     static func loadOrCreate() throws -> [UInt8] {
-        // Read once without letting macOS put a dialog up. Nil means either no item at
-        // all or an item this build is not on the access list of — and only the second
-        // of those is worth a question.
-        var found = try? loadWithoutPrompting()
-        if found == nil { found = try load() }
-
-        guard let existing = found else {
-            // No key. On a first run that is ordinary and a fresh one is minted.
-            //
-            // With a store already on disk it is the opposite of ordinary: that file was
-            // encrypted with a key this Mac no longer holds, and a new key cannot open
-            // it — it can only overwrite the last thing that ever could. Failing here is
-            // what keeps a recoverable situation recoverable.
-            if FileManager.default.fileExists(atPath: DataStore.databaseURL.path) {
-                throw Failure.keyMissingForExistingStore
-            }
-            let fresh = try generate()
-            try save(fresh)
-            return fresh
+        if let vault = try SecretVault.load() {
+            return [UInt8](vault.storeKey)
         }
-        return existing
+
+        // No vault. On a first run that is ordinary and a fresh key is minted.
+        //
+        // With a store already on disk it is the opposite of ordinary: that file was
+        // encrypted with a key this Mac no longer holds, and a new key cannot open it —
+        // it can only overwrite the last thing that ever could. Failing here is what
+        // keeps a recoverable situation recoverable.
+        if FileManager.default.fileExists(atPath: DataStore.databaseURL.path) {
+            throw Failure.keyMissingForExistingStore
+        }
+
+        let fresh = try generate()
+        try SecretVault.save(VaultContents(storeKey: Data(fresh)))
+        return fresh
     }
 
-    // Why macOS asks, in two halves, because they have different answers.
-    //
-    // READING is guarded by an access list naming the exact code allowed to do it.
-    // Signed ad hoc, that was `cdhash H"..."` — the hash of one binary — so every build
-    // was a stranger and every update brought the question back. Signing with a
-    // certificate makes it `identifier "me.faizraza.deylee" and certificate root =
-    // H"..."`, which every future build satisfies. Answering Always Allow once then
-    // holds; Allow answers only that one read and changes nothing.
-    //
-    // WRITING was self-inflicted and is fixed in `save`. The item's access list also
-    // carries ACLAuthorizationChangeACL with an empty trusted list, meaning nothing may
-    // rewrite the item without the user's Keychain password. Delete-then-add is exactly
-    // that rewrite, so every write raised a dialog; SecItemUpdate touches only the value,
-    // which is permitted outright, and asks nothing.
-    //
-    // 0.4.2 tried to end the reading half by rewriting the item, which needed the writing
-    // half it did not have — so it asked twice instead of once and retried every launch.
-
-    /// `load()`, with macOS forbidden from asking the user anything. Returns nil rather
-    /// than prompting when this build is a stranger to the item.
-    private static func loadWithoutPrompting() throws -> [UInt8]? {
-        try load(promptIfNeeded: false)
-    }
-
+    /// Thirty-two bytes from the system CSPRNG, never derived and never guessable.
     private static func generate() throws -> [UInt8] {
         var bytes = [UInt8](repeating: 0, count: byteCount)
         let status = SecRandomCopyBytes(kSecRandomDefault, byteCount, &bytes)
         guard status == errSecSuccess else { throw Failure.randomness(status) }
         return bytes
-    }
-
-    private static func load(promptIfNeeded: Bool = true) throws -> [UInt8]? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        if !promptIfNeeded {
-            // Verified equivalent to the deprecated kSecUseAuthenticationUIFail on the
-            // file-based Keychain these items live in, which is not obvious: LAContext
-            // reads as being about Touch ID, and this needs the plain access-list dialog
-            // suppressed. Both return errSecInvalidOwnerEdit on an operation the access
-            // list refuses, rather than stopping to ask.
-            let context = LAContext()
-            context.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext as String] = context
-        }
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess else { throw Failure.keychain(status) }
-        guard let data = item as? Data, data.count == byteCount else {
-            throw Failure.malformed
-        }
-        return [UInt8](data)
-    }
-
-    private static func save(_ key: [UInt8]) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        // Update in place when the item is already there, rather than replacing it.
-        //
-        // Deleting and re-adding looks equivalent and is not. Replacing an item means
-        // writing a new access list, and the access list guarding that says NOBODY may
-        // do it without the user's Keychain password — so every write raised a dialog,
-        // for ever, no matter how the app was signed. Changing only the value asks
-        // nothing, because writing a value is permitted outright.
-        //
-        // It also closes the window where the key exists nowhere. A crash between the
-        // delete and the add would have left the database encrypted with a key no
-        // longer on this Mac, which is unrecoverable.
-        let updated = SecItemUpdate(query as CFDictionary,
-                                    [kSecValueData as String: Data(key)] as CFDictionary)
-        if updated == errSecSuccess { return }
-        guard updated == errSecItemNotFound else { throw Failure.keychain(updated) }
-
-        var attributes = query
-        attributes[kSecValueData as String] = Data(key)
-        // Available after the first unlock, so a login-time relaunch can open the
-        // store; not synchronised to iCloud, so the key never leaves this Mac.
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-
-        let status = SecItemAdd(attributes as CFDictionary, nil)
-        guard status == errSecSuccess else { throw Failure.keychain(status) }
     }
 }

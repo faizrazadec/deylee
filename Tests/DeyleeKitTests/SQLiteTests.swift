@@ -94,3 +94,47 @@ private func openScratch() throws -> Database {
         }
     }
 }
+
+/// The single Keychain item that replaced two.
+///
+/// Merging the store key and the session invites one specific catastrophe — deleting
+/// the item to sign out, taking the encryption key with it — so the sign-out path is
+/// pinned here rather than left to a comment.
+@Suite struct VaultContentsShape {
+    private let key = Data(repeating: 7, count: 32)
+
+    @Test func survivesTheRoundTrip() throws {
+        let vault = VaultContents(storeKey: key, session: Data("session".utf8))
+        let restored = try #require(VaultContents.decoded(try vault.encoded()))
+        #expect(restored == vault)
+        #expect(restored.storeKey == key)
+    }
+
+    @Test func signingOutKeepsTheKey() throws {
+        let vault = VaultContents(storeKey: key, session: Data("session".utf8))
+        let out = vault.withoutSession()
+        #expect(out.session == nil)
+        #expect(out.storeKey == key, "signing out must never touch the encryption key")
+
+        // And it survives being written and read as a signed-out vault.
+        let restored = try #require(VaultContents.decoded(try out.encoded()))
+        #expect(restored.storeKey == key)
+        #expect(restored.session == nil)
+    }
+
+    /// Nobody signed in is ordinary, not an error.
+    @Test func aVaultWithNoSessionIsValid() throws {
+        let vault = VaultContents(storeKey: key)
+        #expect(VaultContents.decoded(try vault.encoded())?.session == nil)
+    }
+
+    /// Unreadable must be nil, never a partial value: the caller falls back to the
+    /// legacy items, and a half-read vault would let it conclude the key was lost.
+    @Test func refusesAnythingThatIsNotAWholeVault() {
+        #expect(VaultContents.decoded(Data("not json".utf8)) == nil)
+        #expect(VaultContents.decoded(Data()) == nil)
+        // Right shape, wrong key length — a 16-byte key would open nothing.
+        let short = try! VaultContents(storeKey: Data(repeating: 1, count: 16)).encoded()
+        #expect(VaultContents.decoded(short) == nil, "a key of the wrong size is not a key")
+    }
+}

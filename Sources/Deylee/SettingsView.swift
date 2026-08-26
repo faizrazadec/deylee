@@ -299,12 +299,26 @@ final class SettingsModel {
     /// hundreds of megabytes, and the window must keep drawing while it steps.
     private func copyDatabase(to destination: URL) {
         Task { [weak self] in
+            // Read here, on the main actor, and carried into the copy. The key lives in
+            // the vault, which is main-actor state, and reaching for it from a detached
+            // task is both a data race and a second trip through the Keychain.
+            let key: [UInt8]
+            do {
+                key = try StoreKey.loadOrCreate()
+            } catch {
+                let message = error.localizedDescription
+                self?.backup = .failed(
+                    message: message.isEmpty ? "The backup could not be written." : message
+                )
+                return
+            }
+
             let result: SettingsBackupState = await Task.detached {
                 do {
                     // The store is encrypted, so the key is needed to read it; the
                     // backup itself is plaintext, an export the owner can open
                     // anywhere.
-                    try DataStore.backup(to: destination, key: StoreKey.loadOrCreate())
+                    try DataStore.backup(to: destination, key: key)
                     return .done(path: destination.path(percentEncoded: false))
                 } catch {
                     let message = error.localizedDescription
