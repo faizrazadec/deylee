@@ -442,11 +442,25 @@ final class AuthService: NSObject, ObservableObject {
             try TokenStore.save(renewed)
             session = renewed
             return renewed.accessToken
-        } catch {
-            // The refresh token was rejected — expired, revoked, or replayed and the
-            // whole chain revoked with it. Signing out is the honest outcome; leaving
-            // a session that cannot renew produces a 401 on every sync forever.
+        } catch let failure as APIClient.HTTPFailure where failure.isUnauthorized {
+            // A 401 from the refresh route is the only answer that means the chain is
+            // actually dead — expired, revoked, or replayed and revoked with it.
+            // Signing out is the honest outcome; leaving a session that cannot renew
+            // produces a 401 on every sync forever.
             signOut()
+            return nil
+        } catch {
+            // Everything else says this attempt failed, not that the session ended.
+            //
+            // This used to sign out on any error at all, and the reliable way to hit it
+            // was to restart the Mac: the app syncs the instant it launches, the access
+            // token is always stale by then, and the network is usually not up yet. The
+            // refresh threw, the tokens were deleted, and the network arrived a few
+            // seconds later to find them gone — a sign-in demanded after every reboot,
+            // and after every lid opened somewhere with no signal.
+            //
+            // Keeping them costs nothing: `pendingPush` still holds the work, and the
+            // next cycle retries on the backoff. Destroying them costs a sign-in.
             return nil
         }
     }
