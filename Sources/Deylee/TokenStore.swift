@@ -1,5 +1,6 @@
 import DeyleeKit
 import Foundation
+import LocalAuthentication
 import Security
 
 /// The session, as this device holds it.
@@ -102,7 +103,14 @@ enum TokenStore {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         if !promptIfNeeded {
-            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+            // Verified equivalent to the deprecated kSecUseAuthenticationUIFail on the
+            // file-based Keychain these items live in, which is not obvious: LAContext
+            // reads as being about Touch ID, and this needs the plain access-list dialog
+            // suppressed. Both return errSecInvalidOwnerEdit on an operation the access
+            // list refuses, rather than stopping to ask.
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            query[kSecUseAuthenticationContext as String] = context
         }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
