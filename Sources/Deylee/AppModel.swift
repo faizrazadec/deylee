@@ -97,6 +97,31 @@ final class AppModel {
     func openHistory() { openHistoryWindow() }
     func openSettings() { openSettingsWindow() }
 
+    /// Where feedback goes. One line, because it is the only thing about this feature
+    /// worth configuring.
+    private static let feedbackAddress = "faiz.raza.dec@gmail.com"
+
+    /// Opens a mail draft. It lives on the panel rather than in Settings because a bug
+    /// is reported at the moment it is noticed, and nobody goes hunting through
+    /// preferences at that moment.
+    ///
+    /// The version and OS go in as plain readable text the person can delete before
+    /// sending. Nothing is attached and no request is made: the moment something travels
+    /// that they cannot see, this has become the thing it was avoiding.
+    func sendFeedback() {
+        let body = "\n\n---\nDeylee \(DeyleeKit.version) · "
+            + ProcessInfo.processInfo.operatingSystemVersionString
+        guard var components = URLComponents(
+            string: "mailto:\(AppModel.feedbackAddress)"
+        ) else { return }
+        components.queryItems = [
+            .init(name: "subject", value: "Deylee feedback"),
+            .init(name: "body", value: body),
+        ]
+        guard let url = components.url else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     func post(_ notice: Notice) {
         notices.append(notice)
     }

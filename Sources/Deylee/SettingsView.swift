@@ -69,9 +69,6 @@ final class SettingsModel {
         "This build has no update feed — check the Releases page."
 
     private static let releasesURLString = "https://github.com/faizrazadec/deylee-ios/releases"
-    /// Where feedback goes. One line, because it is the only thing about this feature
-    /// that can be wrong.
-    static let feedbackAddress = "faiz.raza.dec@gmail.com"
 
     /// The last set the store returned. Defaults until ``load()`` has run, which is
     /// what ``loaded`` gates the whole body on.
@@ -325,31 +322,6 @@ final class SettingsModel {
 
     func applyUpdateStatus(_ status: SettingsUpdateStatus) {
         updateStatus = status
-    }
-
-    /// Open a prefilled draft in whatever the person uses for mail.
-    ///
-    /// Deliberately not an in-app form posting to the API. A free-text upload path is
-    /// a different promise from the one this product makes: a bug report carrying a
-    /// stack trace or a screenshot is a far harder privacy conversation than hours,
-    /// and the spec's list of what this app puts on the network is meant to stay
-    /// exhaustive. This makes no network request at all.
-    ///
-    /// The version and OS go in as plain readable text the person can delete before
-    /// sending. Nothing is attached: the moment something travels that they cannot
-    /// see, this has become the thing it was avoiding.
-    func sendFeedback() {
-        let body = "\n\n---\nDeylee \(DeyleeKit.version) · "
-            + ProcessInfo.processInfo.operatingSystemVersionString
-        guard var components = URLComponents(
-            string: "mailto:\(SettingsModel.feedbackAddress)"
-        ) else { return }
-        components.queryItems = [
-            .init(name: "subject", value: "Deylee feedback"),
-            .init(name: "body", value: body),
-        ]
-        guard let url = components.url else { return }
-        NSWorkspace.shared.open(url)
     }
 
     func openReleases() {
@@ -861,16 +833,6 @@ struct SettingsView: View {
                     onInstall: { model.installUpdate() },
                     onOpenReleases: { model.openReleases() }
                 )
-            }
-
-            SettingsHairline()
-
-            SettingsRow(
-                label: "Feedback",
-                description: "Opens a draft in your mail app. Nothing is sent from here."
-            ) {
-                Button("Send feedback") { model.sendFeedback() }
-                    .buttonStyle(DeyleeButtonStyle(variant: .secondary, size: .small))
             }
         }
     }

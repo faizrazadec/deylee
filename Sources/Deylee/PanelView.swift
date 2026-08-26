@@ -161,9 +161,17 @@ struct PanelView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack {
+        HStack(spacing: Space.xs) {
             Button("History") { model.openHistory() }
             Spacer()
+            // In reach of the thing that just went wrong. Reporting a bug is something
+            // people do in the second they notice it, and a trip through Settings is
+            // long enough for the thought to pass.
+            Button { model.sendFeedback() } label: {
+                Image(systemName: "ladybug")
+            }
+            .help("Report a bug — opens a draft in your mail app")
+            .accessibilityLabel("Report a bug")
             Button("Settings") { model.openSettings() }
         }
         .buttonStyle(DeyleeButtonStyle(variant: .ghost, size: .small))
