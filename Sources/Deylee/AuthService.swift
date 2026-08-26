@@ -83,12 +83,36 @@ final class AuthService: NSObject, ObservableObject {
         restore()
     }
 
-    /// Reload a session left by a previous launch. Absent or unreadable is simply
-    /// signed out — never a reason to fail to start.
+    /// Reload a session left by a previous launch.
+    ///
+    /// "No session" and "the Keychain would not hand it over" are different answers and
+    /// this used to give them the same one. A `try?` collapsed both into signed out, so
+    /// a person who dismissed the macOS authorisation prompt — which appears whenever
+    /// the item's access list does not name the running build, an app update being the
+    /// ordinary way that happens — was shown the sign-in screen while their tokens sat
+    /// in the Keychain, intact and unread.
+    ///
+    /// Never a reason to fail to start, either way: the app tracks time without an
+    /// account, so the worst case is a sentence on the sign-in screen.
     private func restore() {
-        guard let stored = try? TokenStore.load() else { return }
-        session = stored
-        state = .signedIn(email: stored.email, userID: stored.userID)
+        do {
+            // Nil is the honest absence: no item, nobody signed in.
+            guard let stored = try TokenStore.load() else { return }
+            session = stored
+            state = .signedIn(email: stored.email, userID: stored.userID)
+        } catch TokenStore.Failure.malformed {
+            // Written by a build that stored a different shape. The tokens are no use
+            // to this one and signing in again replaces them.
+            return
+        } catch {
+            // The item exists and macOS refused to unhand it — denied, cancelled, or
+            // asked at a moment when it could not ask. Saying "signed out" would be a
+            // guess, and the wrong one: nothing has been signed out of.
+            state = .failed(
+                "Deylee could not unlock your saved session. Quit and reopen to try "
+                    + "again, or sign in to replace it."
+            )
+        }
     }
 
     // MARK: - Sign in
