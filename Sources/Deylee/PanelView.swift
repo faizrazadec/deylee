@@ -161,22 +161,56 @@ struct PanelView: View {
     // MARK: - Footer
 
     private var footer: some View {
+        // Icons rather than words, so the footer stays quiet under the numbers that
+        // matter. Each carries a tooltip and an accessibility label, because a glyph
+        // with neither is a guess for a sighted user and nothing at all for VoiceOver.
         HStack(spacing: Space.xs) {
-            Button("History") { model.openHistory() }
+            FooterButton(
+                symbol: "clock.arrow.circlepath",
+                label: "History",
+                hint: "History — every day you have recorded",
+                action: model.openHistory
+            )
             Spacer()
             // In reach of the thing that just went wrong. Reporting a bug is something
             // people do in the second they notice it, and a trip through Settings is
             // long enough for the thought to pass.
-            Button { model.sendFeedback() } label: {
-                Image(systemName: "ladybug")
-            }
-            .help("Report a bug — opens a draft in your mail app")
-            .accessibilityLabel("Report a bug")
-            Button("Settings") { model.openSettings() }
+            FooterButton(
+                symbol: "ladybug",
+                label: "Report a bug",
+                hint: "Report a bug — opens a draft in your mail app",
+                action: model.sendFeedback
+            )
+            FooterButton(
+                symbol: "gearshape",
+                label: "Settings",
+                hint: "Settings",
+                action: model.openSettings
+            )
         }
         .buttonStyle(DeyleeButtonStyle(variant: .ghost, size: .small))
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.m)
+    }
+}
+
+/// One of the panel footer's glyphs.
+///
+/// A button with no words on it has to say what it is some other way: `help` for the
+/// pointer, `accessibilityLabel` for VoiceOver. Bundling the three together means
+/// neither can be forgotten when a fourth is added.
+private struct FooterButton: View {
+    let symbol: String
+    let label: String
+    let hint: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+        }
+        .help(hint)
+        .accessibilityLabel(label)
     }
 }
 
