@@ -3,6 +3,38 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## 0.4.5 — 2026-08-26 (pre-release)
+
+### Your Google picture, instead of a letter
+
+Signing in with Google shows the picture from your account rather than the first letter of
+your address. Google was already sending it — Deylee simply never read it.
+
+It is fetched once, when you sign in, and kept on your Mac. It is not loaded from Google's
+servers each time the row is drawn, which would mean an avatar that breaks with no network
+and a note to Google every time you opened Settings. It is removed when you sign out, and
+it is left out of exported backups: a face says whose file this is more plainly than any
+identifier.
+
+Accounts made with an email address keep the letter, which is the right answer for them.
+
+### Screen capture review is usable
+
+- Thumbnails are the pictures themselves rather than a placeholder, so you can find the one
+  you are looking for without opening each in turn.
+- Arrow keys step between captures while one is open, instead of closing and reopening.
+
+### Also
+
+- One more Keychain call moved off an API Apple deprecated; no behaviour change.
+
+### Upgrading
+
+Deylee can update itself — Settings → Updates → Check. Your history and session carry over.
+
+To see your picture you have to sign out and sign in again: the current session predates
+this and has no picture stored.
+
 ## 0.4.4 — 2026-08-26 (pre-release)
 
 ### The Keychain password prompt is actually fixed
