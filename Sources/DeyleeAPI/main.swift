@@ -93,6 +93,7 @@ AuthController(store: store, tokens: tokens, config: config, mailer: mailer,
     .addRoutes(to: router)
 SyncController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
 WitnessController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
+FeedbackController(store: store, tokens: tokens, logger: logger).addRoutes(to: router)
 
 var app = Application(
     router: router,
