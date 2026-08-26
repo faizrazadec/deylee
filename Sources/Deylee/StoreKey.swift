@@ -29,6 +29,7 @@ enum StoreKey {
         case keychain(OSStatus)
         case randomness(Int32)
         case malformed
+        case keyMissingForExistingStore
 
         var description: String {
             switch self {
@@ -38,6 +39,14 @@ enum StoreKey {
                 "The system could not generate a store key (status \(status))."
             case .malformed:
                 "The stored key was the wrong size."
+            case .keyMissingForExistingStore:
+                """
+                This Mac no longer holds the key that encrypts your Deylee history, so \
+                the existing database cannot be opened. Nothing has been changed or \
+                deleted. Signing in on a fresh store re-downloads whatever had synced; \
+                if you have a backup of the Keychain item, restoring it opens this file \
+                as it is.
+                """
             }
         }
     }
@@ -51,6 +60,15 @@ enum StoreKey {
         if found == nil { found = try load() }
 
         guard let existing = found else {
+            // No key. On a first run that is ordinary and a fresh one is minted.
+            //
+            // With a store already on disk it is the opposite of ordinary: that file was
+            // encrypted with a key this Mac no longer holds, and a new key cannot open
+            // it — it can only overwrite the last thing that ever could. Failing here is
+            // what keeps a recoverable situation recoverable.
+            if FileManager.default.fileExists(atPath: DataStore.databaseURL.path) {
+                throw Failure.keyMissingForExistingStore
+            }
             let fresh = try generate()
             try save(fresh)
             return fresh
