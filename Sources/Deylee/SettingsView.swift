@@ -70,9 +70,8 @@ final class SettingsModel {
 
     private static let releasesURLString = "https://github.com/faizrazadec/deylee-ios/releases"
     /// Where feedback goes. One line, because it is the only thing about this feature
-    /// that can be wrong — and it is the address the website documents rather than one
-    /// anybody has confirmed is read.
-    static let feedbackAddress = "hello@deylee.app"
+    /// that can be wrong.
+    static let feedbackAddress = "faiz.raza.dec@gmail.com"
 
     /// The last set the store returned. Defaults until ``load()`` has run, which is
     /// what ``loaded`` gates the whole body on.
