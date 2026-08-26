@@ -25,6 +25,13 @@ public final class TimerEngine {
     private let clock: () -> EpochMs
     private let zone: TimeZone
     private var listeners: [UUID: (TimerSnapshot) -> Void] = [:]
+    /// The local date of the last snapshot handed to the listeners.
+    ///
+    /// Kept so the rollover tick can tell a date that has turned from one that has
+    /// not. Nothing else recomputes it: the panel and the status item draw whatever
+    /// snapshot they were last given, and with no timer running nothing was ever
+    /// giving them a new one.
+    private var lastEmittedDate: DateKey?
 
     public init(
         repo: Repository,
@@ -243,6 +250,17 @@ public final class TimerEngine {
         guard let open = try repo.findOpenSegment(),
               let split = splitOpenSpanAt(open, now: now, in: zone)
         else {
+            // Nothing is running, so there is no span to split — but the date can
+            // still have turned, and until this emitted, nobody was told.
+            //
+            // That is what left the panel showing yesterday after a day was ended:
+            // this tick ran every second, found nothing open, computed a snapshot and
+            // dropped it on the floor. The listeners went on drawing the last one they
+            // were handed until some other action emitted — pressing Start, usually,
+            // which is a poor way to learn what day it is.
+            if lastEmittedDate != dateKeyOf(now, in: zone) {
+                return try emit(now: now)
+            }
             return try snapshot(now: now)
         }
 
@@ -306,8 +324,9 @@ public final class TimerEngine {
     }
 
     @discardableResult
-    public func emit() throws -> TimerSnapshot {
-        let snapshot = try snapshot()
+    public func emit(now: EpochMs? = nil) throws -> TimerSnapshot {
+        let snapshot = try snapshot(now: now)
+        lastEmittedDate = snapshot.date
         // Copied so a listener that unsubscribes itself cannot disturb the iteration.
         for listener in Array(listeners.values) {
             listener(snapshot)

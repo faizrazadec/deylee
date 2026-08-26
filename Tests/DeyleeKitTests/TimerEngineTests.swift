@@ -608,3 +608,68 @@ private final class Harness {
         #expect(tables.isEmpty)
     }
 }
+
+/// The rollover tick is the only thing running once a day has been ended, so it is
+/// the only thing that can notice the date turning.
+@MainActor
+@Suite struct RolloverWithNothingRunning {
+    /// Ending the day and coming back the next morning used to show yesterday.
+    ///
+    /// The tick ran every second, found no open segment, computed a snapshot and
+    /// dropped it — the listeners went on drawing the last one they were handed. The
+    /// panel only caught up when some other action emitted, which in practice meant
+    /// pressing Start. Learning what day it is by starting a timer is backwards.
+    @Test func theDateTurningReachesTheListeners() throws {
+        let h = try Harness(now: local(2025, 8, 4, 9, 0))
+        try h.engine.start()
+        try h.engine.endDay()
+
+        var seen: [DateKey] = []
+        _ = h.engine.onSnapshot { seen.append($0.date) }
+        // The listener joins mid-life, exactly as the panel does, so it starts with
+        // whatever the app last applied rather than with a fresh read.
+        _ = try h.engine.emit()
+        #expect(seen == [key("2025-08-04")])
+
+        h.advance(to: local(2025, 8, 5, 8, 30))
+        _ = try h.engine.rollOverMidnight()
+
+        #expect(seen.last == key("2025-08-05"), "the new day never reached the panel")
+    }
+
+    /// It must not chatter. The tick fires once a second for the life of the app, and
+    /// an emit on every one of them would redraw the panel and the status item sixty
+    /// times a minute for nothing.
+    @Test func aDateThatHasNotTurnedSaysNothing() throws {
+        let h = try Harness(now: local(2025, 8, 4, 9, 0))
+        try h.engine.start()
+        try h.engine.endDay()
+
+        var emits = 0
+        _ = h.engine.onSnapshot { _ in emits += 1 }
+        _ = try h.engine.emit()
+        #expect(emits == 1)
+
+        for minute in 1...5 {
+            h.advance(to: local(2025, 8, 4, 9, minute))
+            _ = try h.engine.rollOverMidnight()
+        }
+        #expect(emits == 1, "the tick emitted while the date stood still")
+    }
+
+    /// The running case still works the way it always did: the span is split and the
+    /// split itself emits.
+    @Test func aRunningTimerStillSplitsAndEmits() throws {
+        let h = try Harness(now: local(2025, 8, 4, 23, 30))
+        try h.engine.start()
+
+        var seen: [DateKey] = []
+        _ = h.engine.onSnapshot { seen.append($0.date) }
+
+        h.advance(to: local(2025, 8, 5, 0, 30))
+        _ = try h.engine.rollOverMidnight()
+
+        #expect(seen.last == key("2025-08-05"))
+        #expect(try h.repo.findOpenSegment() != nil, "the timer must still be running")
+    }
+}
