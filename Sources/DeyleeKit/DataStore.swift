@@ -172,6 +172,12 @@ public enum DataStore {
         for table in tablesWithheldFromBackup {
             try copy.execute("DROP TABLE IF EXISTS \(table);")
         }
+        // A face says whose file this is more plainly than any identifier, and 0.2.1
+        // took the identifiers out for exactly that reason. The rest of app_state is
+        // bookkeeping worth keeping, so this is one row rather than the table.
+        try copy.execute(
+            "DELETE FROM app_state WHERE key = '\(Repository.appStateAvatar)';"
+        )
         try copy.execute("VACUUM;")
     }
 }

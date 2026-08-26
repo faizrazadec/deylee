@@ -48,6 +48,9 @@ final class AuthService: NSObject, ObservableObject {
     /// Kept apart from `.failed` on purpose. Moving to `.failed` would take the code
     /// screen off the display and drop the person back at the form, having to start
     /// the whole sign-up again because they mistyped one digit.
+    /// The signed-in account's picture, once, if Google supplied one.
+    @Published private(set) var avatar: Data?
+
     @Published private(set) var codeError: String?
 
     /// When another code may be asked for. The server owns the cooldown; this is only
@@ -81,6 +84,10 @@ final class AuthService: NSObject, ObservableObject {
         self.repo = repo
         super.init()
         restore()
+        // Cheap and local: the bytes are already in the store, so the row is right on
+        // the first frame rather than popping in after a request.
+        avatar = (try? repo.appState(Repository.appStateAvatar))
+            .flatMap { $0.isEmpty ? nil : Data(base64Encoded: $0) }
     }
 
     /// Reload a session left by a previous launch.
@@ -136,6 +143,10 @@ final class AuthService: NSObject, ObservableObject {
             // the first sync — and parks the session instead if the store turns out
             // to belong to somebody else.
             try adopt(session)
+
+            // After the session, never before it. This is decoration: a picture that
+            // fails to arrive must not turn a successful sign-in into a failed one.
+            adoptAvatar(fromIDToken: idToken)
         } catch let error as MutationError {
             state = .failed(error.message)
         } catch is CancellationError {
@@ -436,6 +447,10 @@ final class AuthService: NSObject, ObservableObject {
         TokenStore.clear()
         session = nil
         state = .signedOut
+        // Goes with the session. A face left behind after signing out is the store
+        // still saying who used to own it.
+        avatar = nil
+        try? repo.setAppState(Repository.appStateAvatar, "")
 
         // A session whose access token has already expired cannot be presented, and
         // there is nothing to send: the server will refuse it, and the refresh token
@@ -676,6 +691,50 @@ enum AuthError: Error, CustomStringConvertible {
     }
 }
 
+extension AuthService {
+    // MARK: - Account picture
+
+    /// The `picture` claim, fetched once and kept on this Mac.
+    ///
+    /// Google already sends this — the app asks for the `profile` scope, which is what
+    /// puts `name` and `picture` in the token — so nothing new is requested of anybody.
+    ///
+    /// Fetched once, at sign-in, and stored. The obvious alternative is to hand the URL
+    /// to `AsyncImage` and let it load whenever the row draws, and that would put a
+    /// request to googleusercontent.com in the render path: an avatar that breaks with
+    /// no network, in an app whose whole claim is that it needs none, and a timestamped
+    /// signal to Google every time somebody opens Settings. Hours are not the only thing
+    /// that should not leave without being chosen.
+    private func adoptAvatar(fromIDToken token: String) {
+        guard let url = IDToken.pictureURL(in: token) else { return }
+        Task { [weak self] in
+            guard let bytes = await Self.fetchAvatar(from: url) else { return }
+            guard let self else { return }
+            self.avatar = bytes
+            try? self.repo.setAppState(
+                Repository.appStateAvatar, bytes.base64EncodedString()
+            )
+        }
+    }
+
+
+    /// A cap, because this writes into the store and the URL is somebody else's to
+    /// change. Google's default is a 96px square well under a hundred kilobytes.
+    private static let avatarByteLimit = 512 * 1024
+
+    private static func fetchAvatar(from url: URL) async -> Data? {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              data.count <= avatarByteLimit,
+              NSImage(data: data) != nil
+        else { return nil }
+        return data
+    }
+
+}
+
 extension AuthService: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
         // A menu-bar app often has no window at all, so one is conjured rather than
@@ -712,4 +771,5 @@ struct SessionResponseDTO: Decodable {
             provider: provider
         )
     }
+
 }

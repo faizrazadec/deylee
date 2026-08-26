@@ -73,6 +73,7 @@ struct AccountSection: View {
             case .signedIn(let email, _):
                 AccountRow(
                     initial: email.first.map(String.init)?.uppercased(),
+                    image: auth.avatar,
                     title: email,
                     detail: syncDetail,
                     action: "Sign out",
@@ -139,6 +140,8 @@ private struct AccountRow: View {
     enum Tone { case normal, warning }
 
     var initial: String?
+    /// The account's own picture, when there is one. Falls back to the initial.
+    var image: Data?
     var title: String
     var detail: String
     var action: String
@@ -182,7 +185,13 @@ private struct AccountRow: View {
             Circle()
                 .fill(initial == nil ? Color.clear : Palette.hover)
                 .overlay(Circle().strokeBorder(Palette.border, lineWidth: 1))
-            if let initial {
+            if let image, let picture = NSImage(data: image) {
+                Image(nsImage: picture)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(Palette.border, lineWidth: 1))
+            } else if let initial {
                 Text(initial)
                     .font(Type.small.weight(.medium))
                     .foregroundStyle(Palette.fgMuted)

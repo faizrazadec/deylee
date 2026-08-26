@@ -12,6 +12,12 @@ import Foundation
 public final class Repository {
     /// Where the heartbeat records the last instant the app was known to be alive.
     public static let appStateHeartbeat = "heartbeat_at"
+    /// The signed-in Google account's picture, as raw image bytes.
+    ///
+    /// In `app_state` rather than a table of its own, because one optional image for
+    /// one account is not a schema — and a migration here would bump the store version,
+    /// which makes an older Deylee refuse the file. That is a steep price for a face.
+    public static let appStateAvatar = "account_avatar"
     /// Mirrors `segments_note_bounded` on the server. Two copies of one number, and
     /// the alternative is a row the app can create and never send.
     public static let maximumNoteLength = 2000
