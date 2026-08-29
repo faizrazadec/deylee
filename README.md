@@ -134,7 +134,9 @@ apps/
     Resources/            Info.plist and the 1024 px icon master
     scripts/              test.sh, make-app.sh
     docs/                 the binding macOS spec, and the visual document
-server/                   the sync API — a separate package, its own dependencies
+server/                   the sync API — a separate Python package (FastAPI, uv)
+  src/deylee_api/         the service: config, store, tokens, rate limits, routes
+  tests/                  its suite (pytest)
   supabase/migrations/    the server schema; nothing else deploys it
   scripts/                test-server.sh, dev-db.sh, the smoke suites
 web/                      the marketing site — Next.js, static export, deployed to Vercel
