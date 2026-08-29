@@ -37,11 +37,8 @@ logs/
 !.vscode/extensions.json
 !.vscode/settings.json
 
-# Claude Code. `.claude/` holds per-machine state such as tool permissions; CLAUDE.md
-# is the agent rules file. Both are kept local, so the commit convention they describe
-# is enforced by the .husky/commit-msg hook rather than by this file being present.
+# Claude Code. `.claude/` holds per-machine state such as tool permissions.
 .claude/
-CLAUDE.md
 
 # OS
 .DS_Store
