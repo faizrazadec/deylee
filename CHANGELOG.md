@@ -3,6 +3,14 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## 0.4.6 — 2026-08-29 (pre-release)
+
+**A new app icon.** The purple tile with a clock face is replaced by the dark tile and
+progress ring the brand now uses.
+
+Nothing else changed. If your Dock still shows the old icon after updating, macOS is
+holding a cached copy — it catches up on its own, and logging out and back in forces it.
+
 ## 0.4.5 — 2026-08-26 (pre-release)
 
 ### Your Google picture, instead of a letter
