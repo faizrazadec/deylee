@@ -137,11 +137,12 @@ apps/
 server/                   the sync API — a separate package, its own dependencies
   supabase/migrations/    the server schema; nothing else deploys it
   scripts/                test-server.sh, dev-db.sh, the smoke suites
+web/                      the marketing site — Next.js, static export, deployed to Vercel
 ```
 
 Anything general enough to bind more than one of them is in the root `docs/`.
-Anything true of one client only lives beside that client. `apps/windows`,
-`apps/linux` and `web/` are named in that plan and do not exist yet.
+Anything true of one client only lives beside that client. `apps/windows` and
+`apps/linux` are named in that plan and do not exist yet.
 
 - **Two targets, one boundary.** `DeyleeKit` is the core — segment and day models,
   DST-correct day-boundary maths, a dependency-free wrapper over the system SQLite,
