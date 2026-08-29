@@ -223,6 +223,45 @@ async def test_the_stored_address_is_the_folded_one(client):
     assert await rows_for(email) == [("teams", None, None)]
 
 
+@requires_owner_db
+async def test_a_correction_keeps_the_message_but_no_headcount(client):
+    """The third route. A correction has something to say and no team size, so the message
+    is kept and a headcount posted alongside it is dropped — the same split the form draws,
+    enforced where it cannot be bypassed by a client that drifted."""
+    email = an_address()
+    response = await client.post(
+        "/v1/contact",
+        json={
+            "kind": "fix",
+            "email": email,
+            "teamSize": "More than 100",
+            "message": "The pricing page says Teams is available. It is not.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert await rows_for(email) == [
+        ("fix", None, "The pricing page says Teams is available. It is not.")
+    ]
+
+
+async def test_two_corrections_are_two_rows(client):
+    """Two reports from one address are two things somebody noticed, so the waitlist's
+    idempotency must not reach this route — the fourth inside the hour is the allowance,
+    which is the proof the first three were all written."""
+    email = an_address()
+    codes = [
+        (
+            await client.post(
+                "/v1/contact", json={"kind": "fix", "email": email, "message": f"bug {n}"}
+            )
+        ).status_code
+        for n in range(4)
+    ]
+
+    assert codes == [200, 200, 200, 429]
+
+
 # ------------------------------------------------------------------------- The refusals
 
 

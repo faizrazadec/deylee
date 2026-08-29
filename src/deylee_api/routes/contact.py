@@ -9,7 +9,8 @@ account that is not there:
 * an IP allowance of its own, well under the global one, because the global limiter is
   sized for a syncing client and would let a script file thousands of these an hour;
 * a per-address allowance inside the SECURITY DEFINER function, which is what stops one
-  mailbox being used as a notepad;
+  mailbox being used as a notepad — somebody with a fourth bug inside the hour has the
+  app's own feedback window, which is authenticated and says so on the form;
 * a body ceiling checked before the database is touched at all.
 
 Nothing about the request is stored beyond what the form asks for. The IP is used to
@@ -25,8 +26,9 @@ from deylee_api.ratelimit import caller_of
 
 router = APIRouter()
 
-#: The two sides of the form. Anything else is a client that has drifted from the site.
-KINDS = frozenset({"teams", "enterprise"})
+#: The three routes the form offers. Anything else is a client that has drifted from the
+#: site. `fix` is a correction — a bug, or a claim on a page that does not hold.
+KINDS = frozenset({"teams", "enterprise", "fix"})
 
 #: The column's limit is 4000 characters. This one is the wire's, in bytes, sized to
 #: refuse an obviously absurd body before it reaches the database rather than after —
