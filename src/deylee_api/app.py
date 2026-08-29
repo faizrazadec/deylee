@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException
 from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
@@ -24,7 +25,7 @@ from deylee_api.db import UNAVAILABLE_MESSAGE, Store, StoreTimedOut
 from deylee_api.errors import APIError, error_response
 from deylee_api.mail import Mailer
 from deylee_api.ratelimit import BodyLimitMiddleware, RateLimiter, RateLimitMiddleware
-from deylee_api.routes import auth, feedback, sync, witness
+from deylee_api.routes import auth, contact, feedback, sync, witness
 from deylee_api.tokens import TokenService
 
 # See BodyLimitMiddleware: a conforming push of 500 changes with 2000-character notes is
@@ -174,6 +175,21 @@ def create_app(
     # real one, which is why this lands with it rather than after it.
     app.add_middleware(RateLimitMiddleware, limiter=limiter, limit=600, window=60.0, logger=logger)
     app.add_middleware(UnhandledErrorMiddleware, logger=logger)
+    # Outermost, so a preflight is answered before the rate limiter counts it — an OPTIONS
+    # the browser sends on its own is not the caller spending anything.
+    #
+    # Credentials are off and the origin list is explicit. Together those mean this grants
+    # the marketing site the ability to post its contact form and grants nobody the
+    # ability to ride a session: no cookie is attached, and every other route reads its
+    # identity from an Authorization header the browser will not add by itself.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=sorted(config.web_origins),
+        allow_methods=["POST", "OPTIONS"],
+        allow_headers=["content-type"],
+        allow_credentials=False,
+        max_age=600,
+    )
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -197,7 +213,7 @@ def create_app(
         app.mount("/updates", _CachedStatic(directory=config.updates_directory), name="updates")
         logger.info("serving updates directory=%s", config.updates_directory)
 
-    for module in (auth, sync, witness, feedback):
+    for module in (auth, sync, witness, feedback, contact):
         app.include_router(module.router)
 
     return app

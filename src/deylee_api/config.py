@@ -91,6 +91,18 @@ class Config:
     logs say only that the server started.
     """
 
+    web_origins: frozenset[str]
+    """Browser origins allowed to call the API cross-origin, for `/v1/contact`.
+
+    The marketing site is a static export on another host, so its contact form is a
+    cross-origin POST and a browser will not send one without this. Nothing else needs
+    it: the Mac app is not a browser and never asks.
+
+    An allow-list rather than `*`, and paired with credentials off, so this grants the
+    site the ability to post a form and grants nobody the ability to ride somebody's
+    session. Comma-separated, for running the site locally against a local API.
+    """
+
     updates_directory: str | None
     """Where the update feed and its archives are read from, or None to serve none.
 
@@ -201,6 +213,13 @@ def load_config(lookup: Lookup = os.environ.get) -> Config:
         signup_code_resend_cooldown=integer("SIGNUP_CODE_RESEND_SECONDS", 60),
         port=integer("PORT", 8080),
         host=optional("HOST") or "127.0.0.1",
+        # Defaulted rather than required: the site is deployed and its form has to work,
+        # and a deployment that forgot this would fail only in a browser's console.
+        web_origins=frozenset(
+            origin
+            for raw in (optional("WEB_ORIGIN") or "https://deylee.faizraza.me").split(",")
+            if (origin := raw.strip())
+        ),
         updates_directory=optional("DEYLEE_UPDATES_DIR"),
     )
 
