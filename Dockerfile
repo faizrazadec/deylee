@@ -5,8 +5,8 @@
 #
 #     docker build -f server/Dockerfile -t deylee-api .
 #
-# The API depends on DeyleeKit by path, so the root package has to be in the build
-# context. That dependency is the whole point of the server being Swift: the
+# The API depends on DeyleeKit by path, so the app's package at apps/macos has to be
+# in the build context. That dependency is the whole point of the server being Swift: the
 # day-boundary, overlap and midnight-split rules are the same code the Mac app
 # runs, not a port of it that drifts.
 
@@ -18,13 +18,13 @@ FROM swift:6.0-noble AS build
 WORKDIR /src
 
 # Manifests first, so a change to source alone reuses the resolved-dependency layer.
-COPY Package.swift ./
+COPY apps/macos/Package.swift ./apps/macos/
 COPY server/Package.swift server/Package.resolved ./server/
-# The root manifest declares the macOS app target too, and SwiftPM validates that a
-# declared target's directory exists even when nothing asks it to build one. These
-# are never compiled here — Linux has no AppKit — they simply have to be present.
-COPY Sources ./Sources
-COPY Resources ./Resources
+# The app's manifest declares the macOS executable target too, and SwiftPM validates
+# that a declared target's directory exists even when nothing asks it to build one.
+# These are never compiled here — Linux has no AppKit — they simply have to be present.
+COPY apps/macos/Sources ./apps/macos/Sources
+COPY apps/macos/Resources ./apps/macos/Resources
 RUN swift package --package-path server resolve
 
 COPY server/Sources ./server/Sources

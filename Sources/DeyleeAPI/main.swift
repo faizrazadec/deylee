@@ -7,7 +7,7 @@ import PostgresNIO
 // stop the process here, with the name of the variable, rather than surface as a
 // 500 on whichever request first needed it.
 let envPath = ProcessInfo.processInfo.environment["DEYLEE_ENV_FILE"]
-    ?? FileManager.default.currentDirectoryPath + "/../.env"
+    ?? FileManager.default.currentDirectoryPath + "/.env"
 
 let config: Config
 do {

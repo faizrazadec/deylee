@@ -21,7 +21,7 @@ let package = Package(
     name: "DeyleeServer",
     platforms: [.macOS(.v14)],
     dependencies: [
-        .package(name: "Deylee", path: ".."),
+        .package(name: "Deylee", path: "../apps/macos"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
         .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
