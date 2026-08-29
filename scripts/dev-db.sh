@@ -90,3 +90,11 @@ echo
 echo "DEYLEE_DB_URL for .env.dev:"
 echo "  postgresql://deylee_api_user:devpassword@$NAME:5432/postgres"
 echo "(the container name, because the API reaches it across the docker network)"
+echo
+echo "for the suite:"
+echo "  DEYLEE_TEST_DB_URL='postgresql://deylee_api_user:devpassword@127.0.0.1:$PORT/postgres' \\"
+echo "  DEYLEE_TEST_DB_OWNER_URL='$DEV' \\"
+echo "    ./scripts/test-server.sh"
+echo "(the first must be the restricted login — as the owner every tenancy test passes"
+echo " while proving nothing. The second only reads the append-only tables the"
+echo " restricted role is deliberately not granted.)"

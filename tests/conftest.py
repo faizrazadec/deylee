@@ -55,3 +55,16 @@ def load_env(env: dict[str, str]) -> Config:
 TEST_DB_URL = os.environ.get("DEYLEE_TEST_DB_URL")
 
 requires_db = pytest.mark.skipif(TEST_DB_URL is None, reason="set DEYLEE_TEST_DB_URL to run")
+
+#: The owner login, or None. Only for reading tables the API role deliberately cannot —
+#: `contact_requests` and `feedback` are append-only by having no grant at all, so the
+#: restricted role cannot check what a route actually wrote.
+#:
+#: Separate from TEST_DB_URL rather than replacing it, because a suite that connected as
+#: the owner throughout would pass every tenancy assertion while proving nothing.
+#: `./scripts/dev-db.sh` prints both.
+TEST_DB_OWNER_URL = os.environ.get("DEYLEE_TEST_DB_OWNER_URL")
+
+requires_owner_db = pytest.mark.skipif(
+    TEST_DB_OWNER_URL is None, reason="set DEYLEE_TEST_DB_OWNER_URL to read append-only tables"
+)
