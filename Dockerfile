@@ -5,58 +5,41 @@
 #
 #     docker build -f server/Dockerfile -t deylee-api .
 #
-# The API depends on DeyleeKit by path, so the app's package at apps/macos has to be
-# in the build context. That dependency is the whole point of the server being Swift: the
-# day-boundary, overlap and midnight-split rules are the same code the Mac app
-# runs, not a port of it that drifts.
+# The context stays the repository root because that is what the deployment notes and
+# cli_commands.md tell people to type. Every COPY below names a server/ path, so
+# nothing outside server/ reaches a layer.
 
-FROM swift:6.0-noble AS build
-# No SQLite package is needed any more. DeyleeKit used to link the system libsqlite3;
-# it now compiles its own SQLite from the vendored amalgamation (CSQLCipher), as plain
-# SQLite on Linux — the codec is Apple-only, because the server never opens a store.
-# One fewer build and runtime dependency as a result.
-WORKDIR /src
-
-# Manifests first, so a change to source alone reuses the resolved-dependency layer.
-COPY apps/macos/Package.swift ./apps/macos/
-COPY server/Package.swift server/Package.resolved ./server/
-# The app's manifest declares the macOS executable target too, and SwiftPM validates
-# that a declared target's directory exists even when nothing asks it to build one.
-# These are never compiled here — Linux has no AppKit — they simply have to be present.
-COPY apps/macos/Sources ./apps/macos/Sources
-COPY apps/macos/Resources ./apps/macos/Resources
-RUN swift package --package-path server resolve
-
-COPY server/Sources ./server/Sources
-# The test target too, even though nothing here runs it. SwiftPM validates every
-# target in the manifest before building any of them, and a test target whose
-# directory is absent does not resolve to nothing — it falls back to searching, finds
-# the executable's sources, and fails with "overlapping sources".
-COPY server/Tests ./server/Tests
-RUN swift build --package-path server -c release --product DeyleeAPI
-
-# Collect the runtime pieces into one place for a clean copy into the final image.
-RUN mkdir -p /out && \
-    cp "$(swift build --package-path server -c release --show-bin-path)/DeyleeAPI" /out/
-
-FROM swift:6.0-noble-slim
+FROM python:3.14-slim AS build
+# uv, not pip: it is what writes and reads uv.lock, so the image installs exactly the
+# resolved set rather than whatever the index serves today.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Precompiled .pyc means the first request does not pay for byte-compiling, and the
+# runtime user never needs to write into the image to cache it. copy, not hardlink,
+# because the cache and the venv are on different layers.
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
 
-# Certificates for two different jobs: the system store to verify Google's JWKS
-# endpoint over HTTPS, and Supabase's own CA to verify the database — Supabase
-# signs Postgres with a root no public store carries.
-# Certificates for two different jobs: the system store to verify Google's JWKS
-# endpoint over HTTPS, and Supabase's own CA below to verify the database.
-#
-# Only certificates now. SQLite is compiled into the binary from the vendored
-# amalgamation, so there is no libsqlite3 shared library to carry at runtime.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Manifests first, so a change to source alone reuses the resolved-dependency layer.
+COPY server/pyproject.toml server/uv.lock ./
+RUN uv sync --locked --no-install-project --no-dev
 
-COPY --from=build /out/DeyleeAPI /app/DeyleeAPI
+COPY server/src ./src
+RUN uv sync --locked --no-dev
+
+FROM python:3.14-slim
+WORKDIR /app
+
+# No apt layer. The slim image already carries ca-certificates, which is what verifies
+# Google's JWKS endpoint over HTTPS; Supabase's own root is a separate matter, because
+# it signs Postgres with a CA no public store carries.
 COPY server/certs/supabase-prod-ca-2021.crt /app/certs/supabase-prod-ca-2021.crt
 ENV DEYLEE_DB_CA_CERT=/app/certs/supabase-prod-ca-2021.crt
+
+# Only the environment and the sources. No uv, no lockfile, no wheel cache.
+# The venv records the project as an editable install at /app/src, so both paths have
+# to land where the build stage left them.
+COPY --from=build /app/.venv /app/.venv
+COPY --from=build /app/src /app/src
 
 # Without this the process listens on loopback only, and nothing outside the
 # container — including the platform's health check — can reach it.
@@ -66,9 +49,9 @@ ENV HOST=0.0.0.0
 ENV PORT=8080
 EXPOSE 8080
 
-# Runs as a normal user: nothing here needs root, and a process that cannot write
-# to its own image is one fewer thing to reason about.
-RUN useradd --create-home --shell /usr/sbin/nologin deylee && chown -R deylee /app
+# Runs as a normal user, and deliberately does not own /app: nothing here needs to
+# write to its own image, and the bytecode is already compiled, so read-only is enough.
+RUN useradd --create-home --shell /usr/sbin/nologin deylee
 USER deylee
 
 # Asks /health over bash's own TCP redirection rather than curl. The slim image
@@ -80,4 +63,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
         && printf "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 \
         && head -1 <&3 | grep -q " 200 "'
 
-CMD ["/app/DeyleeAPI"]
+# The venv's interpreter by absolute path: no activation script, no PATH to get wrong.
+CMD ["/app/.venv/bin/python", "-m", "deylee_api"]

@@ -36,7 +36,7 @@ FAILURES=0
 if [ -z "$DBURL" ]; then echo "SUPABASE_DB_URL is not set in .env" >&2; exit 1; fi
 if ! curl -s --max-time 5 "$API/health" >/dev/null; then
   echo "The API is not answering at $API" >&2
-  echo "Start it with: DEYLEE_ENV_FILE=\$PWD/.env ./server/.build/debug/DeyleeAPI" >&2
+  echo "Start it with: DEYLEE_ENV_FILE=\$PWD/server/.env uv run --project server python -m deylee_api" >&2
   exit 1
 fi
 

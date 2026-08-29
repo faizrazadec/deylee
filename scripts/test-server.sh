@@ -1,16 +1,16 @@
 #!/bin/bash
-# The sync API's suite. Same Command Line Tools workaround as the app's
-# apps/macos/scripts/test.sh — Testing.framework ships with the CLT but is not on
-# SwiftPM's search paths. Run from server/, which is its own package so that the app
-# keeps building without a resolution step.
+# The sync API's suite. Re-enters server/ — its own package, separate from the app —
+# so this runs from anywhere in the repository.
+#
+# The tenancy suites are skipped unless a database is pointed at them, because
+# row-level security is the thing under test and a mock would only prove the mock.
+# `./scripts/dev-db.sh` builds one; then:
+#
+#   DEYLEE_TEST_DB_URL='postgresql://deylee_api_user:devpassword@127.0.0.1:5433/postgres' \
+#     ./scripts/test-server.sh
+#
+# It must be the restricted login. As `postgres` every one of them passes while
+# proving nothing.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-FW=/Library/Developer/CommandLineTools/Library/Developer/Frameworks
-LIB=/Library/Developer/CommandLineTools/Library/Developer/usr/lib
-exec swift test \
-  -Xswiftc -F"$FW" \
-  -Xlinker -F"$FW" \
-  -Xlinker -rpath -Xlinker "$FW" \
-  -Xlinker -rpath -Xlinker "$LIB" \
-  "$@"
+exec uv run pytest "$@"
