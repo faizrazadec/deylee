@@ -31,7 +31,7 @@ Merge*|Revert*|fixup!*|squash!*) exit 0 ;;
 esac
 
 types='feat|fix|perf|refactor|docs|test|chore|build|ci|style|revert'
-scopes='mac|db|domain|timer|tray|platform|windows|panel|mini|history|settings|updater|icons|build|deps|docs|ci'
+scopes='mac|server|web|db|domain|timer|tray|platform|windows|panel|mini|history|settings|updater|icons|build|deps|docs|ci'
 
 echo "$header" | grep -Eq "^($types)(\(($scopes)\))?!?: .+" || fail \
 	"The header is not a conventional commit." \
@@ -50,8 +50,12 @@ case "$subject" in
 *.) fail "The description must not end with a full stop." "Got: $subject" ;;
 esac
 
+# [[:upper:]] rather than [A-Z]. A bracket *range* is resolved against the locale's
+# collation order, and under en_US.UTF-8 that order is a A b B c C ... z Z — so A-Z
+# sweeps up every letter except a lowercase 'a' and this check rejected almost
+# everything. The character class asks the question the rule actually means.
 case "$(printf '%s' "$subject" | cut -c1)" in
-[A-Z]) fail "The description must start in lower case." "Got: $subject" ;;
+[[:upper:]]) fail "The description must start in lower case." "Got: $subject" ;;
 esac
 
 # An over-long body line is only a warning in most setups. Here it fails, because

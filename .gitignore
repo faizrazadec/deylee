@@ -23,7 +23,7 @@ deylee-*_to_*.json
 .env
 .env.*
 !.env.example
-supabase/.temp/
+server/supabase/.temp/
 
 # Logs
 *.log
