@@ -54,3 +54,10 @@ Desktop.ini
 # docs/PRODUCT.md when the repository went public — it constrains nothing in the
 # software and would only help somebody selling against us. Keep it backed up.
 docs/STRATEGY.md
+
+# The API is Python. uv writes `.venv/.gitignore` itself, so the environment ignores
+# itself; the caches below do not, and bytecode in a diff helps nobody.
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
