@@ -1,6 +1,6 @@
 # Deylee
 
-A local-only time tracker that lives in the macOS menu bar. Start the day, pause for a
+A local-first time tracker that lives in the macOS menu bar. Start the day, pause for a
 coffee, end the day — Deylee keeps the running total beside the clock glyph and the full
 history in a SQLite file you own.
 
@@ -12,18 +12,24 @@ specified in
 
 ---
 
-## Local-only, and that is the whole point
+## Local-first, and that is the whole point
 
-- **No accounts.** There is nothing to sign up for and nothing to sign in to.
-- **No cloud.** Your hours never leave the machine they were recorded on.
+Local-first is not local-only, and the distinction is load-bearing. Every write hits
+SQLite on your disk first and the UI reads only from there, so the app tracks with no
+network at all. Sync is a background reconciliation on top of that — never in front of
+it. A timer that stopped working on a train would be worse than one that never synced.
+
+- **Only hours leave the machine — never how the work was done.** Sync sends days and
+  segments: when you started, when you stopped, work or break. That is the entire
+  payload. Screen captures stay in the encrypted local store and have no upload path at
+  all; grep `Sources/Deylee/SyncService.swift` for `capture` and you will find nothing.
+- **An account is required once.** Signing in with Google is needed to start a day. After
+  that the app runs offline indefinitely — the account exists so your history can reach
+  your other devices, not so the app can phone home.
 - **No telemetry.** No analytics, no crash reporting, no "anonymous usage data".
-- **No network requests at all.** The Electron build made exactly one — a
-  preference-gated version check against GitHub Releases. The rewrite has not brought
-  even that back yet: there is no update code in the Swift app and no other networking
-  either. Grep `Sources/` for `URLSession` and you will find nothing. If an
-  update check returns it will be the same deal as before — a version comparison
-  against a public feed, no identifier, no payload, off by a single preference — but
-  today the honest statement is simpler: Deylee opens no sockets.
+- **No local counters.** Totals are always derived by summing stored segments, never
+  accumulated, which is what keeps them correct across sleep, a clock change and
+  midnight.
 
 Everything lives in one SQLite file you own, can copy, can inspect with any SQLite
 browser, and can delete.
@@ -53,9 +59,10 @@ app does not read it — it is a leftover.
 - **Swift 6**, which current Command Line Tools ship.
 
 That is the whole list. No Node.js, no C++ toolchain, no `better-sqlite3` to rebuild
-against anyone's ABI. There are **zero third-party dependencies**: `Package.swift`
-declares none, SQLite comes from the system (`import SQLite3`), and the UI is
-SwiftUI and AppKit. Nothing to audit, nothing to bump, nothing that can drift.
+against anyone's ABI. `Package.swift` resolves **no remote dependencies at all** —
+SQLite is vendored as amalgamated C, the UI is SwiftUI and AppKit, and the one
+third-party framework, [Sparkle](https://sparkle-project.org) for updates, is checked
+into `Vendor/` as a prebuilt xcframework. Nothing is fetched at build time.
 
 ## Getting started
 
@@ -106,7 +113,7 @@ Every surface is built. What is missing is everything downstream of shipping it.
 | Mini window | Built |
 | Recovery / idle / wake prompt modals, end-day confirmation | Built |
 | System notifications | Not built — every prompt opens the panel instead, which was always the reliable path |
-| Update checking | Not built, and it needs a signed build to be worth anything |
+| Update checking | Built on Sparkle — `UpdaterService.swift`, against a signed appcast |
 | Signing, notarisation, distribution | Not started — see *Releasing* |
 
 None of it has been through real use yet. The core is covered by tests; the windows
@@ -204,8 +211,7 @@ Plus two bookkeeping tables: `app_state` (the heartbeat) and `schema_version`, w
 drives ordered, transactional, idempotent migrations — and which is also the downgrade
 guard described above.
 
-**Export** is not available yet: it belongs to the History window, which is not
-built to the formats pinned down in
+**Export** is built into the History window, to the CSV and JSON formats pinned down in
 [`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md), so a spreadsheet built on an
 Electron-era export still reads. Any SQLite browser reads the file directly too.
 
@@ -219,8 +225,8 @@ folder, start it again.
 
 ## Releasing
 
-Nothing has been released yet — this repository has no tags and no releases, and the
-first one will be 0.1.0. Commits are Conventional Commits, enforced by a dependency-free
+Deylee is pre-1.0 and shipping pre-releases — 0.4.6 at the time of writing; see
+[CHANGELOG.md](CHANGELOG.md), which is maintained by hand. Commits are Conventional Commits, enforced by a dependency-free
 `.husky/commit-msg` shell script; the types and scopes are in [`.husky/commit-msg`](.husky/commit-msg).
 
 Distribution of the native app is unresolved, and it is worth being precise about
