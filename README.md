@@ -8,7 +8,7 @@ Native Swift, SwiftUI and AppKit. Deylee used to be an Electron app for macOS, W
 and Linux; that build has been removed — it survives in git history alone. The app
 is a single Swift package at the root of this repository, targets macOS only, and is
 specified in
-[`apps/macos/docs/MAC_REWRITE_SPEC.md`](apps/macos/docs/MAC_REWRITE_SPEC.md), which is binding.
+[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md), which is binding.
 
 ---
 
@@ -20,7 +20,7 @@ specified in
 - **No network requests at all.** The Electron build made exactly one — a
   preference-gated version check against GitHub Releases. The rewrite has not brought
   even that back yet: there is no update code in the Swift app and no other networking
-  either. Grep `apps/macos/Sources/` for `URLSession` and you will find nothing. If an
+  either. Grep `Sources/` for `URLSession` and you will find nothing. If an
   update check returns it will be the same deal as before — a version comparison
   against a public feed, no identifier, no payload, off by a single preference — but
   today the honest statement is simpler: Deylee opens no sockets.
@@ -60,15 +60,12 @@ SwiftUI and AppKit. Nothing to audit, nothing to bump, nothing that can drift.
 ## Getting started
 
 ```sh
-cd apps/macos
 swift build            # compile DeyleeKit and the app
 ./scripts/test.sh      # run the suite — NOT bare `swift test`, see below
 ./scripts/make-app.sh  # assemble dist/Deylee.app (release by default; pass `debug`)
 ```
 
-Every script is run from the package it belongs to, so `cd apps/macos` first for the
-app and `cd server` for the API. Each one re-enters its own directory anyway, so
-`./apps/macos/scripts/test.sh` from the repository root works just as well.
+Every script re-enters the package it belongs to, so it can be run from anywhere.
 
 `./scripts/test.sh` exists because the Command Line Tools ship `Testing.framework`
 and `lib_TestingInterop.dylib` but do not put them on SwiftPM's search paths, so bare
@@ -82,16 +79,16 @@ not exist), so DST is exercised on every run.
 To point a development run at a throwaway store instead of your real history:
 
 ```sh
-DEYLEE_DATA_DIR=/tmp/deylee-test ./apps/macos/dist/Deylee.app/Contents/MacOS/Deylee
+DEYLEE_DATA_DIR=/tmp/deylee-test ./dist/Deylee.app/Contents/MacOS/Deylee
 ```
 
 ### Packaging
 
 SwiftPM produces a bare binary, and a menu-bar app needs a bundle — `LSUIElement`
-and the bundle id only apply inside one. `apps/macos/scripts/make-app.sh` builds, copies
-`apps/macos/Resources/Info.plist`, renders `AppIcon.icns` from the repo's generated icon master,
+and the bundle id only apply inside one. `scripts/make-app.sh` builds, copies
+`Resources/Info.plist`, renders `AppIcon.icns` from the repo's generated icon master,
 and ad-hoc signs the bundle so Gatekeeper and TCC treat it as a stable identity. The
-result is `apps/macos/dist/Deylee.app`.
+result is `dist/Deylee.app`.
 
 ---
 
@@ -119,32 +116,17 @@ have been compiled and launched, not lived with.
 
 ## Architecture
 
-One repository, one product. The clients, the API and the wire contract are released
-together, so they live together — a protocol change that touched three repositories
-would be three pull requests that can merge out of order.
+One SwiftPM package, two targets.
 
 ```
-docs/                     what holds for every client: PRODUCT.md, SYNC_PROTOCOL.md
-apps/
-  macos/                  this app — its own SwiftPM package
-    Package.swift
-    Sources/DeyleeKit/    platform-free core: models, time maths, SQLite, repository, engine
-    Sources/Deylee/       the app: status item, panel, SwiftUI views, idle/power monitors
-    Tests/DeyleeKitTests/ the core's suite (Swift Testing)
-    Resources/            Info.plist and the 1024 px icon master
-    scripts/              test.sh, make-app.sh
-    docs/                 the binding macOS spec, and the visual document
-server/                   the sync API — a separate Python package (FastAPI, uv)
-  src/deylee_api/         the service: config, store, tokens, rate limits, routes
-  tests/                  its suite (pytest)
-  supabase/migrations/    the server schema; nothing else deploys it
-  scripts/                test-server.sh, dev-db.sh, the smoke suites
-web/                      the marketing site — Next.js, static export, deployed to Vercel
+Package.swift
+Sources/DeyleeKit/    platform-free core: models, time maths, SQLite, repository, engine
+Sources/Deylee/       the app: status item, panel, SwiftUI views, idle/power monitors
+Tests/DeyleeKitTests/ the core's suite (Swift Testing)
+Resources/            Info.plist and the 1024 px icon master
+scripts/              test.sh, make-app.sh
+docs/                 the binding macOS spec, and the visual document
 ```
-
-Anything general enough to bind more than one of them is in the root `docs/`.
-Anything true of one client only lives beside that client. `apps/windows` and
-`apps/linux` are named in that plan and do not exist yet.
 
 - **Two targets, one boundary.** `DeyleeKit` is the core — segment and day models,
   DST-correct day-boundary maths, a dependency-free wrapper over the system SQLite,
@@ -224,7 +206,7 @@ guard described above.
 
 **Export** is not available yet: it belongs to the History window, which is not
 built to the formats pinned down in
-[`apps/macos/docs/MAC_REWRITE_SPEC.md`](apps/macos/docs/MAC_REWRITE_SPEC.md), so a spreadsheet built on an
+[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md), so a spreadsheet built on an
 Electron-era export still reads. Any SQLite browser reads the file directly too.
 
 **Backup** exists as an API (`DataStore.backup`) built on SQLite's online backup, so
@@ -239,7 +221,7 @@ folder, start it again.
 
 Nothing has been released yet — this repository has no tags and no releases, and the
 first one will be 0.1.0. Commits are Conventional Commits, enforced by a dependency-free
-`.husky/commit-msg` shell script; the types and scopes are in [CLAUDE.md](CLAUDE.md).
+`.husky/commit-msg` shell script; the types and scopes are in [`.husky/commit-msg`](.husky/commit-msg).
 
 Distribution of the native app is unresolved, and it is worth being precise about
 why. The open prerequisite is signing and notarisation with an Apple Developer ID:
@@ -255,7 +237,7 @@ as described under *Getting started*.
 
 **`no such module 'Testing'` when running `swift test`.**
 Expected with the Command Line Tools: they ship `Testing.framework` but do not put it
-on SwiftPM's search paths. Run `./apps/macos/scripts/test.sh` instead, which passes the
+on SwiftPM's search paths. Run `./scripts/test.sh` instead, which passes the
 framework and rpath flags explicitly.
 
 **Deylee refuses to start, saying the database was written by a newer version.**
