@@ -20,6 +20,7 @@ def test_loads_a_minimal_valid_environment():
     assert config.port == 8080
     assert config.access_token_ttl == 3600
     assert config.refresh_token_ttl == 90 * 86_400
+    assert config.refresh_token_reuse_interval == 10
     assert config.google_allowed_hosted_domain is None
 
 

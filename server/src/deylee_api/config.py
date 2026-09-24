@@ -39,6 +39,10 @@ class Config:
     session_issuer: str
     access_token_ttl: float
     refresh_token_ttl: float
+    refresh_token_reuse_interval: float
+    """Seconds during which the refresh token just replaced may be exchanged again
+    without reading as theft. Supabase's SECURITY_REFRESH_TOKEN_REUSE_INTERVAL, with its
+    default; zero restores the strict rule."""
 
     database_url: str
     """The restricted login. Not the migration credential: this one is subject to
@@ -201,6 +205,7 @@ def load_config(lookup: Lookup = os.environ.get) -> Config:
         session_issuer=optional("SESSION_JWT_ISSUER") or "https://api.deylee.app",
         access_token_ttl=float(integer("ACCESS_TOKEN_TTL_SECONDS", 3600)),
         refresh_token_ttl=float(integer("REFRESH_TOKEN_TTL_DAYS", 90) * 86_400),
+        refresh_token_reuse_interval=float(integer("REFRESH_TOKEN_REUSE_INTERVAL_SECONDS", 10)),
         database_url=required("DEYLEE_DB_URL"),
         database_tls=(optional("DEYLEE_DB_TLS") or "require").lower() != "disable",
         database_ca_certificate_path=optional("DEYLEE_DB_CA_CERT"),

@@ -376,11 +376,12 @@ async def refresh(request: Request) -> SessionResponse:
             row = await connection.fetchrow(
                 """
                 SELECT outcome, user_id, email, display_name, timezone
-                FROM public.auth_rotate_refresh_token($1, $2, $3)
+                FROM public.auth_rotate_refresh_token($1, $2, $3, $4)
                 """,
                 old_hash,
                 new_hash,
                 expiry,
+                int(config.refresh_token_reuse_interval * 1000),
             )
     outcome, user = _outcome_of(row)
 
