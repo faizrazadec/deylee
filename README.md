@@ -38,9 +38,15 @@ is what keeps the numbers right across a crash, a restart, a machine sleep or a 
 
 ## Does my data leave my Mac?
 
-Only hours, and only if you are signed in. Sync sends days and segments: when you started,
-when you stopped, work or break. That is the entire payload. Screen captures stay in the
-encrypted local store and have no upload path at all — grep
+Only hours, and only if you are signed in. Three things are ever sent:
+
+- **Sync** — days and segments: when you started, when you stopped, work or break.
+- **A heartbeat** while a timer is running — your device's id every 30 seconds and nothing
+  else, so the server can vouch that the time was tracked live rather than typed in later.
+- **Feedback**, only when you write some — your text, the app version and the macOS
+  version.
+
+Screen captures stay in the encrypted local store and have no upload path at all — grep
 [`Sources/Deylee/SyncService.swift`](Sources/Deylee/SyncService.swift) for `capture` and
 you will find nothing.
 
@@ -52,8 +58,8 @@ all. Sync is a background reconciliation on top of that, never in front of it.
 
 ## Why does it need an account, then?
 
-Signing in with Google is needed once, to start a day. After that the app runs offline
-indefinitely. The account exists so your history can reach your other devices — not so the
+Signing in — with Google, or an email address and password — is needed once, to start a
+day. After that the app runs offline indefinitely. The account exists so your history can reach your other devices — not so the
 app can phone home.
 
 ## Where is my history kept?
@@ -84,7 +90,10 @@ Every surface is built. What is missing is everything downstream of shipping it.
 | Settings window | Built |
 | Recovery / idle / wake prompts, end-day confirmation | Built |
 | System notifications | Not built — every prompt opens the panel instead |
+| Sign-in and sync — Google or email and password | Built |
+| Screen captures, kept encrypted on the Mac | Built |
 | Update checking | Built on Sparkle, against a signed appcast |
+| Sync API (`server/`) | Built and running |
 | Signing, notarisation, distribution | Not started |
 
 None of it has been through real use yet. The core is covered by tests; the windows have
@@ -111,13 +120,18 @@ To point a development run at a throwaway store instead of your real history:
 DEYLEE_DATA_DIR=/tmp/deylee-test ./dist/Deylee.app/Contents/MacOS/Deylee
 ```
 
+The sync API is a separate Python package in [`server/`](server/), run with
+[uv](https://docs.astral.sh/uv/) and Docker. Its suite is `./server/scripts/test-server.sh`;
+the database tests need a local Postgres, which `./server/scripts/dev-db.sh` builds.
+
 ## Contributing
 
 Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the layout,
 the commit convention the repository enforces, and what a reviewable pull request looks
 like. [`docs/INTERNALS.md`](docs/INTERNALS.md) explains why the app is built the way it is;
 [`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) and
-[`docs/DESIGN.md`](docs/DESIGN.md) are binding on behaviour and on visuals.
+[`docs/DESIGN.md`](docs/DESIGN.md) are binding on behaviour and on visuals, and
+[`docs/SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) on the wire between the app and the API.
 
 ## Troubleshooting
 

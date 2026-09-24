@@ -26,6 +26,11 @@ swift build
 You need macOS 14 or newer and the Xcode Command Line Tools (`xcode-select --install`).
 Full Xcode is not needed, and nothing is fetched at build time.
 
+Working on the sync API in `server/` also needs [uv](https://docs.astral.sh/uv/) and
+Docker. `./server/scripts/dev-db.sh` builds a throwaway Postgres with the full schema, and
+prints the `DEYLEE_TEST_DB_URL` that `./server/scripts/test-server.sh` needs to run the
+database tests rather than skip them.
+
 Run a development build against a throwaway database rather than your own history:
 
 ```sh
@@ -44,7 +49,8 @@ flags that fix it.
 | `Sources/DeyleeKit/` | the core: models, time maths, SQLite, repository, timer engine. No AppKit, no SwiftUI. |
 | `Sources/Deylee/` | the app: status item, panel, windows, idle and power monitors. |
 | `Tests/DeyleeKitTests/` | the core's suite, Swift Testing. |
-| `docs/` | [`MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) is binding on behaviour, [`DESIGN.md`](docs/DESIGN.md) on visuals, [`INTERNALS.md`](docs/INTERNALS.md) explains the reasoning. |
+| `server/` | the sync API: Python, uv, Docker, with its migrations in `server/supabase/migrations/`. |
+| `docs/` | [`MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) is binding on behaviour, [`DESIGN.md`](docs/DESIGN.md) on visuals, [`SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) on the wire; [`PRODUCT.md`](docs/PRODUCT.md) says what we build and refuse to, [`INTERNALS.md`](docs/INTERNALS.md) explains the reasoning. |
 
 Two constraints worth knowing before you write anything:
 
@@ -77,6 +83,10 @@ The description becomes the changelog entry, so write it as the line a user woul
   Europe/Berlin and America/Santiago so DST and a missing midnight are exercised on every
   run, and a change that survives those is a change that survives a user's calendar.
 - `./scripts/test.sh` passes.
+- Anything touching `server/` needs a server test, and `./server/scripts/test-server.sh`
+  passes with `DEYLEE_TEST_DB_URL` set — without it the database tests skip, and a green
+  run proves nothing about them. A payload change updates
+  [`docs/SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) in the same pull request.
 - Behaviour that contradicts [`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) needs
   the spec changed in the same pull request, with the reasoning. The spec is binding; it is
   not a record of what the code happens to do.
