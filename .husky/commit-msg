@@ -15,7 +15,7 @@ fail() {
 	printf '\n\033[31mx\033[0m %s\n' "$1" >&2
 	shift
 	for line in "$@"; do printf '  %s\n' "$line" >&2; done
-	printf '\n  See CLAUDE.md for the full rules.\n\n' >&2
+	printf '\n  See CONTRIBUTING.md for the full rules.\n\n' >&2
 	exit 1
 }
 
