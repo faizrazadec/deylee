@@ -94,24 +94,51 @@ Work happens on a branch and lands through a pull request. **Never commit to `ma
 - `CHANGELOG.md` is written by hand, in prose, for users rather than for developers.
   Update it for anything a user would notice; skip it for refactors and docs.
 
+## The sync API
+
+The Python sync API is in `server/` — its own package (uv, Docker), deployed at
+`api.faizraza.me`. It moved here from the `deylee-ios` monorepo with its history, so
+an auth or wire change to the app and the API can land in one pull request.
+
+```sh
+./server/scripts/dev-db.sh       # throwaway Postgres on 127.0.0.1:5433, full schema
+DEYLEE_TEST_DB_URL='postgresql://deylee_api_user:devpassword@127.0.0.1:5433/postgres' \
+  ./server/scripts/test-server.sh
+```
+
+Without `DEYLEE_TEST_DB_URL` the database suites skip rather than fail, so a green run
+without it proves nothing about row-level security or the auth functions. Point it at
+the restricted login, never `postgres`, which bypasses RLS and passes everything.
+
+Migrations in `server/supabase/migrations/` follow the same rule as the app's: forwards
+only, never edit one that shipped. Changing a function's arguments means a new migration
+that drops the old signature, and giving the new argument a default keeps an API that
+has not deployed yet working against it.
+
 ## The other repository
 
-The sync API and the marketing site are not here. They live in the `deylee-ios`
-monorepo, checked out beside this one at `../deylee`:
+The marketing site and the product docs are still in the `deylee-ios` monorepo, checked
+out beside this one at `../deylee`:
 
 ```
-server/            the Python sync API (uv, Docker) — api.faizraza.me
 web/               the Next.js marketing site
 docs/PRODUCT.md    what the product is, who buys it, what we refuse to build
 docs/SYNC_PROTOCOL.md   the binding wire contract, shared by every client
 apps/macos/        STALE — a snapshot from the monorepo split; this repo is the app
+server/            STALE — moved here; the copy there is no longer the source
 ```
 
 `docs/SYNC_PROTOCOL.md` over there binds anything touching `SyncService.swift`,
-`APIClient.swift` or `AuthService.swift` — read it before changing a payload. Never
-read `apps/macos/` there for current behaviour; it has not moved since the split and
-this repository has.
+`APIClient.swift`, `AuthService.swift` or `server/` — read it before changing a payload.
+Never read `apps/macos/` or `server/` there for current behaviour.
 
 A debug bundle points at `http://127.0.0.1:8081` and a release at
 `https://api.faizraza.me`; `scripts/make-app.sh` writes the value into the bundle's
 `Info.plist`, so the plist in git is not the answer to which API a build talks to.
+
+## Notes about one machine
+
+This file is shared. Anything true only of one person's setup — where Docker runs, a
+toolchain that is missing, a local path — goes in `AGENTS.local.md` at the repository
+root, which is gitignored; `CLAUDE.local.md` imports it for Claude Code the way
+`CLAUDE.md` imports this file. Read it if it exists, and never copy it in here.
