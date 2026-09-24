@@ -135,8 +135,11 @@ DEYLEE_ENV_FILE=$PWD/server/.env uv run --project server python -m deylee_api
 ```
 
 Two commands care where you stand: `supabase db push` runs from `server/`, and the image
-builds from the repository root (`docker build -f server/Dockerfile .`), which is the
-context the Dockerfile's `COPY` lines and the root `.dockerignore` are written against.
+builds from the repository root, which is the context the Dockerfile's `COPY` lines and the
+root `.dockerignore` are written against. `compose.yaml` at the root is how production
+builds and runs the API and its tunnel (`docker compose build api`, then
+`docker compose up -d --no-deps api`). Its project name is pinned to `deylee-s` so it
+adopts the running stack; do not change it.
 
 ### Production is not yours to touch
 
