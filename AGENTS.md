@@ -34,7 +34,9 @@ Sources/DeyleeKit/     platform-free core: models, time maths, SQLite store, eng
 Sources/Deylee/        the app: status item, panel, windows, idle/power monitors
 Sources/CSQLCipher/    vendored SQLCipher amalgamation
 Tests/DeyleeKitTests/  the core's suite (Swift Testing)
-docs/                  MAC_REWRITE_SPEC.md (binding), DESIGN.md (binding, visual)
+server/                the Python sync API (see "The sync API" below)
+docs/                  MAC_REWRITE_SPEC.md (binding), DESIGN.md (binding, visual),
+                       SYNC_PROTOCOL.md (binding, wire), PRODUCT.md (what we build)
 ```
 
 **`DeyleeKit` imports no AppKit and no SwiftUI.** That is what keeps the engine
@@ -115,22 +117,56 @@ only, never edit one that shipped. Changing a function's arguments means a new m
 that drops the old signature, and giving the new argument a default keeps an API that
 has not deployed yet working against it.
 
-## The other repository
+**Two schemas have to agree:** `Sources/DeyleeKit/Migrations.swift` for the local store
+and `server/supabase/migrations/` for the server. Change a column in one and not the
+other and sync breaks in a way that is awkward to trace.
 
-The marketing site and the product docs are still in the `deylee-ios` monorepo, checked
-out beside this one at `../deylee`:
+The API reads `server/.env` (untracked; `server/.env.example` documents every variable).
+`DEYLEE_ENV_FILE` names the file and defaults to `./.env`, which from the repository root
+is the wrong one:
+
+```sh
+DEYLEE_ENV_FILE=$PWD/server/.env uv run --project server python -m deylee_api
+```
+
+Two commands care where you stand: `supabase db push` runs from `server/`, and the image
+builds from the repository root (`docker build -f server/Dockerfile .`), which is the
+context the Dockerfile's `COPY` lines and the root `.dockerignore` are written against.
+
+### Production is not yours to touch
+
+**Never build, rebuild, stop, restart or redeploy the production API, or push a
+migration to the production database, unless the person you are working for asks for
+it in those words.** It serves every customer's sync and the appcast every installed
+copy of the app updates from; taking it down stops people working and stops the product
+being able to fix itself. Writing a Dockerfile is not permission to run it, and a green
+suite or a certainly-correct fix is not permission to ship it. The same goes for editing
+the production `.env`: it is untracked, and a wrong value there shows in no diff. Prove a
+change on the dev API and the dev database; how production itself is run belongs in the
+operator's local notes, not in this file.
+
+## The wire contract, and the other repository
+
+`docs/SYNC_PROTOCOL.md` binds anything touching `SyncService.swift`, `APIClient.swift`,
+`AuthService.swift` or `server/` — six clients implement it, so read it before changing
+a payload, and change it in the same pull request as any behaviour that departs from it.
+`docs/PRODUCT.md` says what the product is and what it refuses to build; the code cites
+its sections, so keep the numbering.
+
+Only the marketing site is still elsewhere, in the private `deylee-ios` monorepo checked
+out beside this one at `../deylee`. Everything else there is stale:
 
 ```
-web/               the Next.js marketing site
-docs/PRODUCT.md    what the product is, who buys it, what we refuse to build
-docs/SYNC_PROTOCOL.md   the binding wire contract, shared by every client
-apps/macos/        STALE — a snapshot from the monorepo split; this repo is the app
-server/            STALE — moved here; the copy there is no longer the source
+web/               the Next.js marketing site — the one live thing left there
+apps/macos/        STALE — a snapshot from the split; this repository is the app
+server/            STALE — moved here with its history
+docs/              STALE — SYNC_PROTOCOL.md and PRODUCT.md moved here
 ```
 
-`docs/SYNC_PROTOCOL.md` over there binds anything touching `SyncService.swift`,
-`APIClient.swift`, `AuthService.swift` or `server/` — read it before changing a payload.
-Never read `apps/macos/` or `server/` there for current behaviour.
+This repository is public and that one is not. Nothing from there comes here without
+being read for what it would publish: strategy stays in the gitignored
+`docs/STRATEGY.md`, and operator details — hosts, local paths, how production is run —
+stay in local notes.
 
 A debug bundle points at `http://127.0.0.1:8081` and a release at
 `https://api.faizraza.me`; `scripts/make-app.sh` writes the value into the bundle's
@@ -139,6 +175,6 @@ A debug bundle points at `http://127.0.0.1:8081` and a release at
 ## Notes about one machine
 
 This file is shared. Anything true only of one person's setup — where Docker runs, a
-toolchain that is missing, a local path — goes in `AGENTS.local.md` at the repository
-root, which is gitignored; `CLAUDE.local.md` imports it for Claude Code the way
+toolchain that is missing, a local path, how production is operated — goes in
+`AGENTS.local.md` at the repository root (any `*.local.md` is gitignored); `CLAUDE.local.md` imports it for Claude Code the way
 `CLAUDE.md` imports this file. Read it if it exists, and never copy it in here.
