@@ -1,0 +1,53 @@
+# The sync API and the Cloudflare tunnel in front of it, as production runs them.
+#
+#     docker compose build api
+#     docker compose up -d --no-deps api     # replace the API, leave the tunnel running
+#
+# Run from the repository root: the image's build context is this directory, narrowed by
+# the root .dockerignore to the four server/ paths the Dockerfile copies.
+#
+# Both services read server/.env, which is untracked and holds every secret — including
+# the tunnel token. Nothing in this file is a secret, and nothing secret belongs in it.
+#
+# The project name is pinned rather than taken from the directory, so this adopts the
+# containers and the network production already has (deylee-s_deylee-v6) wherever the
+# checkout lives. Change it and compose starts a second stack beside the first.
+name: deylee-s
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: deylee-api:latest
+    container_name: deylee-api
+    restart: unless-stopped
+    env_file: server/.env
+    ports:
+      - "8080:8080"
+    # The signed Sparkle appcast and update archives. Read-only: the API serves them and
+    # must never be able to change what every installed copy of the app will download.
+    volumes:
+      - /srv/deylee-updates:/srv/updates:ro
+    networks: [deylee-v6]
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: deylee-tunnel
+    restart: unless-stopped
+    env_file: server/.env
+    command: tunnel --no-autoupdate run
+    networks: [deylee-v6]
+    depends_on:
+      api:
+        condition: service_healthy
+
+# IPv6 because Supabase publishes its direct database host as AAAA only; a container on
+# an IPv4-only network cannot resolve it. The pooler in DEYLEE_DB_URL has A records, so
+# this is the fallback path, but dropping it is how a VPN once broke every sign-in.
+networks:
+  deylee-v6:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:de00::/64
