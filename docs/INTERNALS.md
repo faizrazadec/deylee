@@ -14,10 +14,13 @@ network at all. Sync is a background reconciliation on top of that — never in 
 it. A timer that stopped working on a train would be worse than one that never synced.
 
 - **Only hours leave the machine — never how the work was done.** Sync sends days and
-  segments: when you started, when you stopped, work or break. That is the entire
-  payload. Screen captures stay in the encrypted local store and have no upload path at
+  segments: when you started, when you stopped, work or break. Beside it, a heartbeat
+  sends the device id every 30 seconds while a timer runs, so the server can vouch the
+  time was tracked live, and feedback goes only when you write some. Nothing else is
+  sent. Screen captures stay in the encrypted local store and have no upload path at
   all; grep `Sources/Deylee/SyncService.swift` for `capture` and you will find nothing.
-- **An account is required once.** Signing in with Google is needed to start a day. After
+- **An account is required once.** Signing in, with Google or an email address and password, is needed to start
+  a day. After
   that the app runs offline indefinitely — the account exists so your history can reach
   your other devices, not so the app can phone home.
 - **No telemetry.** No analytics, no crash reporting, no "anonymous usage data".

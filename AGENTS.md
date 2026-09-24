@@ -1,8 +1,9 @@
 # Agent rules — Deylee
 
-A local-first macOS menu-bar time tracker. One SwiftPM package at the repo root, two
-targets, no remote dependencies. Read [README.md](README.md) for what the app does;
-this file is only what an agent needs before touching the code.
+A local-first macOS menu-bar time tracker. The app is one SwiftPM package at the repo
+root with no remote dependencies; the Python sync API behind it is in `server/`. Read
+[README.md](README.md) for what the app does; this file is only what an agent needs
+before touching the code.
 
 ## Commands
 
@@ -10,6 +11,7 @@ this file is only what an agent needs before touching the code.
 swift build                  # compile DeyleeKit and the app
 ./scripts/test.sh            # the suite — NEVER bare `swift test`
 ./scripts/make-app.sh        # dist/Deylee.app (release; pass `debug` for loopback API)
+./server/scripts/test-server.sh   # the API's suite — see "The sync API" for the DB gate
 ```
 
 `swift test` fails with `no such module 'Testing'`: the Command Line Tools ship
@@ -53,9 +55,11 @@ improving them.
   SQLCipher is vendored as C, Sparkle as a prebuilt xcframework in `Vendor/`. Adding a
   `.package(url:)` breaks a clean build with the Command Line Tools alone. The manifest
   is also read on Linux, so macOS-only targets stay inside `#if os(macOS)`.
-- **No telemetry, no analytics, no crash reporting.** Sync sends days and segments —
-  start, end, work or break — and nothing else. Screen captures have no upload path;
-  keep it that way.
+- **No telemetry, no analytics, no crash reporting.** Exactly three things leave the
+  machine: sync (days and segments — start, end, work or break), a heartbeat carrying
+  only the device id every 30 seconds while a timer runs, and feedback the user chooses
+  to send. Screen captures have no upload path. Keep it that way, and if any of it
+  changes, change the privacy sections of `README.md` and `docs/INTERNALS.md` with it.
 - **Totals are derived, never stored.** Sum stored segments on every tick. Do not add a
   counter to accumulate — that is what drifts across sleep, a clock change and midnight.
 - **Instants are UTC epoch milliseconds; local time is a rendering concern only.** Day
@@ -76,7 +80,8 @@ does not exist — rather than inheriting the machine's. Build expected instants
 calendar components, never by adding fixed offsets: adding offsets is the bug these
 tests exist to catch.
 
-Non-trivial domain logic lands with a test. UI does not.
+Non-trivial domain logic lands with a test. UI does not. A change under `server/` lands
+with a server test, run against the dev database (see "The sync API").
 
 ## Commits, branches, pull requests
 
@@ -176,5 +181,6 @@ A debug bundle points at `http://127.0.0.1:8081` and a release at
 
 This file is shared. Anything true only of one person's setup — where Docker runs, a
 toolchain that is missing, a local path, how production is operated — goes in
-`AGENTS.local.md` at the repository root (any `*.local.md` is gitignored); `CLAUDE.local.md` imports it for Claude Code the way
-`CLAUDE.md` imports this file. Read it if it exists, and never copy it in here.
+`AGENTS.local.md` at the repository root (any `*.local.md` is gitignored);
+`CLAUDE.local.md` imports it for Claude Code the way `CLAUDE.md` imports this file. Read
+it if it exists, and never copy it in here.
