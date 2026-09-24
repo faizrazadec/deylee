@@ -4,67 +4,94 @@ A local-first time tracker that lives in the macOS menu bar. Start the day, paus
 coffee, end the day — Deylee keeps the running total beside the clock glyph and the full
 history in a SQLite file you own.
 
-Native Swift, SwiftUI and AppKit. Deylee used to be an Electron app for macOS, Windows
-and Linux; that build has been removed — it survives in git history alone. The app
-is a single Swift package at the root of this repository, targets macOS only, and is
-specified in
-[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md), which is binding.
+![The Deylee panel](docs/screenshots/panel.png)
 
----
+Native Swift, SwiftUI and AppKit. No Electron, no Node, and `Package.swift` resolves no
+remote dependencies at all.
 
-## Local-first, and that is the whole point
+## Installation
 
-Local-first is not local-only, and the distinction is load-bearing. Every write hits
-SQLite on your disk first and the UI reads only from there, so the app tracks with no
-network at all. Sync is a background reconciliation on top of that — never in front of
-it. A timer that stopped working on a train would be worse than one that never synced.
+Deylee is pre-1.0 and there is no download yet, so building it is the way to install it.
+It is three commands and no toolchain to assemble:
 
-- **Only hours leave the machine — never how the work was done.** Sync sends days and
-  segments: when you started, when you stopped, work or break. That is the entire
-  payload. Screen captures stay in the encrypted local store and have no upload path at
-  all; grep `Sources/Deylee/SyncService.swift` for `capture` and you will find nothing.
-- **An account is required once.** Signing in with Google is needed to start a day. After
-  that the app runs offline indefinitely — the account exists so your history can reach
-  your other devices, not so the app can phone home.
-- **No telemetry.** No analytics, no crash reporting, no "anonymous usage data".
-- **No local counters.** Totals are always derived by summing stored segments, never
-  accumulated, which is what keeps them correct across sleep, a clock change and
-  midnight.
+```sh
+git clone https://github.com/faizrazadec/deylee.git
+cd deylee
+./scripts/make-app.sh                 # writes dist/Deylee.app
+cp -R dist/Deylee.app /Applications/  # optional
+```
 
-Everything lives in one SQLite file you own, can copy, can inspect with any SQLite
-browser, and can delete.
+You need **macOS 14 or newer** and the **Xcode Command Line Tools**
+(`xcode-select --install`). Full Xcode is not needed.
 
-### Where your data lives
+There is no Homebrew cask and no signed release because the app has no Apple Developer ID
+yet. Shipping unsigned is exactly what left the old Electron build unable to auto-update,
+and repeating that is worse than waiting — see [Releasing](docs/INTERNALS.md#releasing).
 
-The database is `~/Library/Application Support/deylee/deylee.sqlite` — and that path is
-deliberate down to the lower-case `deylee`. It is exactly where the Electron build kept
-its database, so an existing user's history opens untouched, with nothing to import
-and nothing to migrate. The file is in WAL mode, so `deylee.sqlite-wal` and
-`deylee.sqlite-shm` sidecars sit beside it while the app runs; the newest commits live
-in the `-wal` file, which is why a copy of the `.sqlite` file alone can silently miss
-them — copy all three, or use the online-backup API (see *Data model*).
+## How does it work?
 
-Preferences moved: the Swift app stores them in `UserDefaults` under the
-`me.faizraza.deylee` domain, validated and clamped on every read and write. The
-`preferences.json` the Electron build wrote still sits beside the database, but the
-app does not read it — it is a leftover.
+You start the day from the menu-bar item or the panel, and Deylee writes a `work` segment
+to SQLite. Pausing closes it and opens a `break`; ending the day closes the last one. Every
+total you see — the menu-bar title, the panel, the History window — is the sum of those
+stored spans, recomputed from timestamps every second. There is no counter to drift, which
+is what keeps the numbers right across a crash, a restart, a machine sleep or a DST change.
 
----
+## Does my data leave my Mac?
 
-## Requirements
+Only hours, and only if you are signed in. Sync sends days and segments: when you started,
+when you stopped, work or break. That is the entire payload. Screen captures stay in the
+encrypted local store and have no upload path at all — grep
+[`Sources/Deylee/SyncService.swift`](Sources/Deylee/SyncService.swift) for `capture` and
+you will find nothing.
 
-- **macOS 14 or newer.**
-- **The Xcode Command Line Tools** — `xcode-select --install`. Full Xcode is not
-  needed; the package builds with the Command Line Tools alone.
-- **Swift 6**, which current Command Line Tools ship.
+No telemetry, no analytics, no crash reporting.
 
-That is the whole list. No Node.js, no C++ toolchain, no `better-sqlite3` to rebuild
-against anyone's ABI. `Package.swift` resolves **no remote dependencies at all** —
-SQLite is vendored as amalgamated C, the UI is SwiftUI and AppKit, and the one
-third-party framework, [Sparkle](https://sparkle-project.org) for updates, is checked
-into `Vendor/` as a prebuilt xcframework. Nothing is fetched at build time.
+Local-first is not local-only, and the difference is load-bearing: every write hits SQLite
+on your disk first and the UI reads only from there, so the app tracks with no network at
+all. Sync is a background reconciliation on top of that, never in front of it.
 
-## Getting started
+## Why does it need an account, then?
+
+Signing in with Google is needed once, to start a day. After that the app runs offline
+indefinitely. The account exists so your history can reach your other devices — not so the
+app can phone home.
+
+## Where is my history kept?
+
+In `~/Library/Application Support/deylee/deylee.sqlite`, which you can copy, inspect with
+any SQLite browser, or delete. The History window exports CSV and JSON, and
+`DataStore.backup` takes a consistent copy while the timer is running.
+
+![The History window](docs/screenshots/history.png)
+
+## What happens when I sleep, lock or walk away?
+
+Deylee records only what it can account for. Sleep closes the open work segment at the
+moment it happened; idle past your threshold opens the panel and asks whether to keep the
+stretch or drop it; a segment crossing midnight is split so every stored segment belongs to
+exactly one day. The full list, including what happens after a force-quit, is in
+[Internals](docs/INTERNALS.md#the-awkward-cases-and-what-deylee-does-about-them).
+
+## What is built, and what is not?
+
+Every surface is built. What is missing is everything downstream of shipping it.
+
+| Surface | Status |
+|---|---|
+| `DeyleeKit` — models, time maths, SQLite store, repository, timer engine | Complete, with tests |
+| Menu-bar item, panel, mini window | Built |
+| History window — calendar, roll-ups, manual edits, CSV/JSON export | Built |
+| Settings window | Built |
+| Recovery / idle / wake prompts, end-day confirmation | Built |
+| System notifications | Not built — every prompt opens the panel instead |
+| Update checking | Built on Sparkle, against a signed appcast |
+| Signing, notarisation, distribution | Not started |
+
+None of it has been through real use yet. The core is covered by tests; the windows have
+been compiled and launched, not lived with. Bug reports from anyone who does live with it
+are the most useful thing this repository can receive.
+
+## Building from source
 
 ```sh
 swift build            # compile DeyleeKit and the app
@@ -74,14 +101,9 @@ swift build            # compile DeyleeKit and the app
 
 Every script re-enters the package it belongs to, so it can be run from anywhere.
 
-`./scripts/test.sh` exists because the Command Line Tools ship `Testing.framework`
-and `lib_TestingInterop.dylib` but do not put them on SwiftPM's search paths, so bare
-`swift test` fails with `no such module 'Testing'`. The script passes the framework
-and rpath flags explicitly; that is the environment, not the code.
-
-The suite pins its time zones rather than inheriting the machine's: Europe/Berlin
-(one 23-hour and one 25-hour day a year) and America/Santiago (a midnight that does
-not exist), so DST is exercised on every run.
+`./scripts/test.sh` exists because the Command Line Tools ship `Testing.framework` but do
+not put it on SwiftPM's search paths, so bare `swift test` fails with
+`no such module 'Testing'`. The script passes the framework and rpath flags explicitly.
 
 To point a development run at a throwaway store instead of your real history:
 
@@ -89,175 +111,27 @@ To point a development run at a throwaway store instead of your real history:
 DEYLEE_DATA_DIR=/tmp/deylee-test ./dist/Deylee.app/Contents/MacOS/Deylee
 ```
 
-### Packaging
+## Contributing
 
-SwiftPM produces a bare binary, and a menu-bar app needs a bundle — `LSUIElement`
-and the bundle id only apply inside one. `scripts/make-app.sh` builds, copies
-`Resources/Info.plist`, renders `AppIcon.icns` from the repo's generated icon master,
-and ad-hoc signs the bundle so Gatekeeper and TCC treat it as a stable identity. The
-result is `dist/Deylee.app`.
-
----
-
-## What is built, and what is not yet
-
-Every surface is built. What is missing is everything downstream of shipping it.
-
-| Surface | Status |
-|---|---|
-| `DeyleeKit` — models, time maths, SQLite store, repository, timer engine | Complete, with the test suite ported |
-| Menu-bar item — live `H:MM` title, tooltip, context menu | Built |
-| Panel — timer, target progress, today's segments | Built |
-| History window — calendar, roll-ups, manual edits, CSV/JSON export | Built |
-| Settings window | Built |
-| Mini window | Built |
-| Recovery / idle / wake prompt modals, end-day confirmation | Built |
-| System notifications | Not built — every prompt opens the panel instead, which was always the reliable path |
-| Update checking | Built on Sparkle — `UpdaterService.swift`, against a signed appcast |
-| Signing, notarisation, distribution | Not started — see *Releasing* |
-
-None of it has been through real use yet. The core is covered by tests; the windows
-have been compiled and launched, not lived with.
-
----
-
-## Architecture
-
-One SwiftPM package, two targets.
-
-```
-Package.swift
-Sources/DeyleeKit/    platform-free core: models, time maths, SQLite, repository, engine
-Sources/Deylee/       the app: status item, panel, SwiftUI views, idle/power monitors
-Tests/DeyleeKitTests/ the core's suite (Swift Testing)
-Resources/            Info.plist and the 1024 px icon master
-scripts/              test.sh, make-app.sh
-docs/                 the binding macOS spec, and the visual document
-```
-
-- **Two targets, one boundary.** `DeyleeKit` is the core — segment and day models,
-  DST-correct day-boundary maths, a dependency-free wrapper over the system SQLite,
-  the repository, and the timer engine. It is deliberately free of AppKit and
-  SwiftUI: that is what would let an iOS companion sit on the same core later, and it
-  is why the engine is testable without a window. `Deylee` owns everything with a
-  lifetime — the `NSStatusItem`, the non-activating panel, the idle and power
-  monitors, the login item.
-- **IPC collapsed away.** The Electron build was a main process, a preload bridge and
-  four renderers, with every payload narrowed at a channel boundary. The Swift app is
-  one process: the engine pushes snapshots into an `@Observable` model and views
-  observe it. No channels, no serialisation, no trust boundary inside the app.
-- **Totals are always derived from segments, never stored.** There is no counter to
-  drift and no total to go stale. Every number you see is the sum of stored spans,
-  recomputed from timestamps on a 1-second tick — a SwiftUI `TimelineView` in the
-  panel, a timer for the menu-bar title — which is what makes the display correct
-  across a crash, a restart, a machine sleep or a clock change.
-
-## The awkward cases, and what Deylee does about them
-
-- **Crash or force-quit.** While a segment is open the app writes a heartbeat every
-  30 seconds, and once more first thing on a clean quit. On the next launch, an open
-  segment that carried less than a second of time is dropped silently rather than
-  interrupting you. The three-way choice for anything longer — resume it, close it at
-  the last heartbeat, discard it — is asked before anything else on screen, and the
-  question cannot be dismissed without answering it.
-- **Midnight.** A segment that crosses local midnight is split into one piece per
-  calendar day, so every stored segment belongs to exactly one day. A 1-second timer
-  on the main run loop performs the split even if you never touch the app — a timer
-  aimed at midnight itself would sleep through it.
-- **Time zones and DST.** Instants are stored as UTC epoch milliseconds and *only*
-  rendered in local time. Day boundaries are computed with `Foundation.Calendar`
-  local-calendar arithmetic, so a 23-hour or 25-hour DST day is handled correctly
-  rather than by adding 86,400,000 ms.
-- **Overlaps.** Segments may never overlap. Intervals are half-open (`[start, end)`),
-  so pause/resume closing one segment and opening the next at the same instant is the
-  normal shape, not a conflict. The validation that rejects a bad manual edit with a
-  readable message naming the colliding segment names it exactly as it always did.
-- **Sleep and lock.** Sleeping closes the open work segment at the moment it happened
-  (locking too, if you opt in — off by default, because a lock during a call is not
-  always a break); an open break is left alone, since it already accounts for the
-  gap. Sleep and wake come from `NSWorkspace` notifications, lock and unlock from the
-  `com.apple.screenIsLocked` distributed notifications — and because none of those is
-  guaranteed to arrive, a wall-clock watchdog ticks every 10 seconds and treats a
-  tick that lands more than a minute late as a sleep nobody announced. On wake the
-  panel opens and asks whether the gap was a break; either answer starts work again.
-- **Idle.** While the timer runs, system idle time is read from `CGEventSource` every
-  15 seconds and compared against your threshold. Detection is edge-triggered — one
-  absence, one report, re-armed only when you return. Past the threshold the panel
-  opens and asks whether to keep the idle stretch as work or drop it; dropping ends
-  the segment where you stopped and opens a fresh one now, so the gap is simply absent
-  from the day rather than recorded as anything.
-- **Installing an older build over a newer database.** Migrations run forwards only,
-  so an older build cannot understand a file a newer one wrote. Rather than opening
-  it anyway, Deylee refuses to start with a dialog saying which schema version the
-  file is at and which this build understands. Your history is untouched; install the
-  newer build again, or move the `.sqlite` file aside to start fresh. The protocol is
-  shared with the Electron build, so the two can never corrupt each other's files.
-- **Two copies of the app.** LaunchServices treats an app bundle as one instance;
-  opening Deylee again — from the Dock, Finder or Spotlight — just surfaces the panel.
-- **Closing windows.** The panel hides when you click elsewhere; nothing quits. Quit
-  lives in the menu-bar item's right-click menu.
-
-## Data model
-
-The schema is unchanged from the Electron build — the same file opens under either
-app. Two tables carry the data:
-
-- `days` — one row per local calendar date, with the daily target snapshotted at
-  creation and an `ended_at` that is set by *End Day* and cleared if you start again.
-- `segments` — one row per span of `work` or `break`, with `ended_at NULL` meaning
-  "still open". At most one segment is open app-wide at a time.
-
-Plus two bookkeeping tables: `app_state` (the heartbeat) and `schema_version`, which
-drives ordered, transactional, idempotent migrations — and which is also the downgrade
-guard described above.
-
-**Export** is built into the History window, to the CSV and JSON formats pinned down in
-[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md), so a spreadsheet built on an
-Electron-era export still reads. Any SQLite browser reads the file directly too.
-
-**Backup** exists as an API (`DataStore.backup`) built on SQLite's online backup, so
-it is safe to take while the timer is running and while WAL is active — unlike a
-plain file copy, which can miss the newest commits sitting in the `-wal` sidecar.
-Restoring is a file copy: quit Deylee, drop the `.sqlite` file back into the data
-folder, start it again.
-
----
-
-## Releasing
-
-Deylee is pre-1.0 and shipping pre-releases — 0.4.6 at the time of writing; see
-[CHANGELOG.md](CHANGELOG.md), which is maintained by hand. Commits are Conventional Commits, enforced by a dependency-free
-`.husky/commit-msg` shell script; the types and scopes are in [`.husky/commit-msg`](.husky/commit-msg).
-
-Distribution of the native app is unresolved, and it is worth being precise about
-why. The open prerequisite is signing and notarisation with an Apple Developer ID:
-the Electron build shipped unsigned, which is exactly why it could never auto-update
-and shipping the rewrite unsigned would repeat that mistake. There is no CI pipeline:
-the Electron one was deleted rather than left pointing at a build that no longer
-exists. Until signing is settled there is no download to point at; build from source
-as described under *Getting started*.
-
----
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the layout,
+the commit convention the repository enforces, and what a reviewable pull request looks
+like. [`docs/INTERNALS.md`](docs/INTERNALS.md) explains why the app is built the way it is;
+[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) and
+[`docs/DESIGN.md`](docs/DESIGN.md) are binding on behaviour and on visuals.
 
 ## Troubleshooting
 
 **`no such module 'Testing'` when running `swift test`.**
-Expected with the Command Line Tools: they ship `Testing.framework` but do not put it
-on SwiftPM's search paths. Run `./scripts/test.sh` instead, which passes the
-framework and rpath flags explicitly.
+Expected with the Command Line Tools. Run `./scripts/test.sh` instead.
 
 **Deylee refuses to start, saying the database was written by a newer version.**
-You installed an older build over a database a newer one wrote, and it stopped rather
-than corrupt your history. Install the newer version again — your data is exactly as
-you left it. If you genuinely want the older build, move `deylee.sqlite` out of
-`~/Library/Application Support/deylee/` first; it will start with an empty database
-and you can keep the old file as an archive.
+You installed an older build over a database a newer one wrote, and it stopped rather than
+corrupt your history. Install the newer version again — your data is exactly as you left
+it. To run the older build anyway, move `deylee.sqlite` out of
+`~/Library/Application Support/deylee/` first and keep it as an archive.
 
 **Nothing was tracked while I was away.**
-That is deliberate. Deylee records only what it can account for — see *The awkward
-cases* above for what a sleep, lock or idle gap becomes.
-
----
+That is deliberate — see *What happens when I sleep, lock or walk away?* above.
 
 ## Licence
 
