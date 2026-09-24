@@ -3,6 +3,24 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## Unreleased
+
+### No more signing in every morning
+
+Deylee asked you to sign in again about once a day, usually the first time you opened the
+lid. Nothing was wrong with the account. Waking made several parts of the app renew the
+same session at the same instant, and a session renewed twice at once looks exactly like a
+stolen one from the server's side, so it was ended on the spot. The app now renews once,
+however many parts of it ask together.
+
+Sessions that end for an honest reason still ask you to sign in: ninety days unused, or a
+sign-out from somewhere else.
+
+### Also
+
+- Settings described every account as signed in with Google, including one made with an
+  email address and a code. It now says which it was.
+
 ## 0.4.6 — 2026-08-29 (pre-release)
 
 **A new app icon.** The purple tile with a clock face is replaced by the dark tile and

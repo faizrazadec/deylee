@@ -477,9 +477,7 @@ final class AuthService: NSObject, ObservableObject {
         if current.isAccessTokenUsable(at: now) { return current.accessToken }
 
         do {
-            let renewed = try await refresh(current)
-            try TokenStore.save(renewed)
-            session = renewed
+            let renewed = try await (refreshInFlight ?? startRefresh(current)).value
             return renewed.accessToken
         } catch let failure as APIClient.HTTPFailure where failure.isUnauthorized {
             // A 401 from the refresh route is the only answer that means the chain is
@@ -504,13 +502,52 @@ final class AuthService: NSObject, ObservableObject {
         }
     }
 
+    /// The one exchange allowed to be in the air at a time.
+    ///
+    /// Three services ask for a token — sync, the heartbeat, feedback — and on a wake
+    /// they ask within the same instant, each holding the same expired one. Left alone
+    /// that is three exchanges of a single refresh token, and under rotation the second
+    /// and third are replays: the server revokes the whole family and the person signs
+    /// in again. Once a day, on the first lid-open of the morning.
+    ///
+    /// Supabase's client takes the same shape — one lock, one in-flight refresh — and
+    /// its server keeps a reuse interval underneath for the races a client-side lock
+    /// cannot cover. This is the client half, and the half we own.
+    private var refreshInFlight: Task<StoredSession, Error>?
+
+    /// Start the exchange, and make it responsible for keeping what it gets.
+    ///
+    /// Created synchronously, before any suspension, so two callers arriving on this
+    /// actor in the same turn cannot both find the slot empty.
+    private func startRefresh(_ current: StoredSession) -> Task<StoredSession, Error> {
+        let task = Task { [self] in
+            defer { self.refreshInFlight = nil }
+            let renewed = try await self.refresh(current)
+            // In memory first, and whatever the Keychain then says. A rotated refresh
+            // token that was used but not held is the one reliable way to lose the
+            // chain: the next attempt presents a token the server already superseded
+            // and every descendant dies with it. Writing it can fail — that write is
+            // the authorisation dialog `SecretVault` describes, and it can be refused
+            // or arrive when nothing can ask — and the old code treated that as a
+            // failed refresh, kept the superseded token, and replayed it. Held only in
+            // memory, the cost is a sign-in after the next quit rather than one now.
+            self.session = renewed
+            try? TokenStore.save(renewed)
+            return renewed
+        }
+        refreshInFlight = task
+        return task
+    }
+
     private func refresh(_ current: StoredSession) async throws -> StoredSession {
         struct Body: Encodable { let refreshToken: String }
         let response: SessionResponseDTO = try await APIClient.post(
             config.apiBaseURL.appending(path: "/v1/auth/refresh"),
             body: Body(refreshToken: current.refreshToken)
         )
-        return response.stored()
+        // The route does not say how the session began and the default is Google, so
+        // refreshing an emailed-code sign-in used to relabel it as one.
+        return response.stored(provider: current.provider)
     }
 
     // MARK: - OAuth

@@ -99,9 +99,12 @@ final class SyncService: ObservableObject {
     /// picks up anything this one missed.
     func syncNow() async {
         guard !inFlight else { return }
-        guard let token = await auth.accessToken() else { return }
+        // Claimed before the first await, not after it. Fetching the token suspends,
+        // and the wake and activation notifications arrive together, so the old order
+        // let both syncs through the gate the comment above promises they cannot pass.
         inFlight = true
         defer { inFlight = false }
+        guard let token = await auth.accessToken() else { return }
 
         status = .syncing
         do {
