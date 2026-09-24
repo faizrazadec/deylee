@@ -1,0 +1,21 @@
+# The build context for `docker build -f server/Dockerfile .`, run from the repository
+# root because every COPY in the Dockerfile names a server/ path.
+#
+# An allowlist, not a list of exclusions. Almost all of this repository is the Mac app —
+# Swift sources, a vendored SQLCipher, the Sparkle xcframework, and a .build/ that runs to
+# gigabytes — and the image needs none of it. Excluding the app piece by piece would send
+# whatever the next directory is to the daemon until somebody noticed; naming the four
+# paths the Dockerfile copies cannot drift that way. A new COPY needs a line here too.
+*
+!server/pyproject.toml
+!server/uv.lock
+!server/src/
+!server/certs/
+
+# Inside the allowed paths: nothing a local run leaves behind, and never configuration.
+# A container takes its environment from the platform, and an .env baked into a layer is
+# a credential shipped wherever the image goes.
+**/__pycache__/
+**/*.pyc
+**/.env
+**/.env.*
