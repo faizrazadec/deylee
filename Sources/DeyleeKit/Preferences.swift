@@ -85,6 +85,13 @@ public struct Preferences: Equatable, Sendable {
     /// decided by their screen resolution.
     public var screenCaptureRetentionDays: Int
 
+    /// Minutes a plain "Keep Awake" from the menu lasts. `0` is until turned off.
+    public var keepAwakeDefaultMinutes: Int
+    /// Hold the Mac awake but let the display sleep.
+    public var keepAwakeAllowDisplaySleep: Bool
+    /// Keep awake on switching to battery; stop on switching back to the adapter.
+    public var keepAwakeOnBattery: Bool
+
     public init(
         launchAtLogin: Bool,
         showMiniWindow: Bool,
@@ -101,7 +108,10 @@ public struct Preferences: Equatable, Sendable {
         updateCheckEnabled: Bool,
         screenCaptureEnabled: Bool = false,
         screenCaptureIntervalMinutes: Int = 10,
-        screenCaptureRetentionDays: Int = 90
+        screenCaptureRetentionDays: Int = 90,
+        keepAwakeDefaultMinutes: Int = 0,
+        keepAwakeAllowDisplaySleep: Bool = false,
+        keepAwakeOnBattery: Bool = false
     ) {
         self.launchAtLogin = launchAtLogin
         self.showMiniWindow = showMiniWindow
@@ -119,6 +129,9 @@ public struct Preferences: Equatable, Sendable {
         self.screenCaptureEnabled = screenCaptureEnabled
         self.screenCaptureIntervalMinutes = screenCaptureIntervalMinutes
         self.screenCaptureRetentionDays = screenCaptureRetentionDays
+        self.keepAwakeDefaultMinutes = keepAwakeDefaultMinutes
+        self.keepAwakeAllowDisplaySleep = keepAwakeAllowDisplaySleep
+        self.keepAwakeOnBattery = keepAwakeOnBattery
     }
 
     /// The compiled-in macOS defaults.
@@ -148,7 +161,10 @@ public struct Preferences: Equatable, Sendable {
         // somebody reads to check.
         screenCaptureEnabled: false,
         screenCaptureIntervalMinutes: 10,
-        screenCaptureRetentionDays: 90
+        screenCaptureRetentionDays: 90,
+        keepAwakeDefaultMinutes: 0,
+        keepAwakeAllowDisplaySleep: false,
+        keepAwakeOnBattery: false
     )
 
     /// Daily target in whole minutes, the form the `days.target_minutes` column stores.
@@ -184,6 +200,8 @@ public enum PreferenceLimits {
     /// drifts.
     public static let screenCaptureRetentionRange = 1...90
     public static let reminderMinuteRange = 0...59
+    /// A day at most; `0` is until turned off.
+    public static let keepAwakeDefaultMinutesRange = 0...1440
 }
 
 // MARK: - Untrusted values
@@ -249,6 +267,9 @@ public enum PreferenceKey: String, Sendable, CaseIterable {
     case screenCaptureEnabled
     case screenCaptureIntervalMinutes
     case screenCaptureRetentionDays
+    case keepAwakeDefaultMinutes
+    case keepAwakeAllowDisplaySleep
+    case keepAwakeOnBattery
 
     /// Keys the Electron file may contain that this platform has no use for. They are
     /// skipped on read and never written; see the file header for why.
@@ -406,7 +427,16 @@ extension Preferences {
                 raw["screenCaptureRetentionDays"],
                 min: PreferenceLimits.screenCaptureRetentionRange.lowerBound,
                 max: PreferenceLimits.screenCaptureRetentionRange.upperBound,
-                fallback: d.screenCaptureRetentionDays)
+                fallback: d.screenCaptureRetentionDays),
+            keepAwakeDefaultMinutes: PreferenceCoercion.integerInRange(
+                raw["keepAwakeDefaultMinutes"],
+                min: PreferenceLimits.keepAwakeDefaultMinutesRange.lowerBound,
+                max: PreferenceLimits.keepAwakeDefaultMinutesRange.upperBound,
+                fallback: d.keepAwakeDefaultMinutes),
+            keepAwakeAllowDisplaySleep: PreferenceCoercion.bool(
+                raw["keepAwakeAllowDisplaySleep"], fallback: d.keepAwakeAllowDisplaySleep),
+            keepAwakeOnBattery: PreferenceCoercion.bool(
+                raw["keepAwakeOnBattery"], fallback: d.keepAwakeOnBattery)
         )
     }
 
@@ -429,6 +459,9 @@ extension Preferences {
             "screenCaptureEnabled": .bool(screenCaptureEnabled),
             "screenCaptureIntervalMinutes": .number(Double(screenCaptureIntervalMinutes)),
             "screenCaptureRetentionDays": .number(Double(screenCaptureRetentionDays)),
+            "keepAwakeDefaultMinutes": .number(Double(keepAwakeDefaultMinutes)),
+            "keepAwakeAllowDisplaySleep": .bool(keepAwakeAllowDisplaySleep),
+            "keepAwakeOnBattery": .bool(keepAwakeOnBattery),
         ]
     }
 
@@ -496,6 +529,17 @@ extension Preferences {
             updateCheckEnabled = try Preferences.requireBool(value, key)
         case .screenCaptureEnabled:
             screenCaptureEnabled = try Preferences.requireBool(value, key)
+        case .keepAwakeAllowDisplaySleep:
+            keepAwakeAllowDisplaySleep = try Preferences.requireBool(value, key)
+        case .keepAwakeOnBattery:
+            keepAwakeOnBattery = try Preferences.requireBool(value, key)
+        case .keepAwakeDefaultMinutes:
+            keepAwakeDefaultMinutes = PreferenceCoercion.integerInRange(
+                .number(try Preferences.requireFinite(value, key)),
+                min: PreferenceLimits.keepAwakeDefaultMinutesRange.lowerBound,
+                max: PreferenceLimits.keepAwakeDefaultMinutesRange.upperBound,
+                fallback: keepAwakeDefaultMinutes
+            )
 
         case .screenCaptureIntervalMinutes:
             screenCaptureIntervalMinutes = PreferenceCoercion.integerInRange(

@@ -318,6 +318,9 @@ private func preferencesTestStore(
         flipped.screenCaptureEnabled = true
         flipped.screenCaptureIntervalMinutes = 3
         flipped.screenCaptureRetentionDays = 21
+        flipped.keepAwakeDefaultMinutes = 45
+        flipped.keepAwakeAllowDisplaySleep = true
+        flipped.keepAwakeOnBattery = true
 
         #expect(Preferences.sanitized(raw: flipped.rawValues) == flipped)
         #expect(flipped.rawValues.count == PreferenceKey.allCases.count)
