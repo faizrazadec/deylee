@@ -9,6 +9,9 @@ SQLite schema may still change, so a minor bump can carry a migration.
 replaced by the same ring and arc as the app icon, so Deylee is recognisable at a glance
 beside the other menu-bar items.
 
+**About Deylee.** The ⓘ button at the bottom of the panel, or About Deylee in the
+right-click menu, shows which version you are running and where the source lives.
+
 ## 0.4.7 — 2026-09-24 (pre-release)
 
 ### No more signing in every morning
