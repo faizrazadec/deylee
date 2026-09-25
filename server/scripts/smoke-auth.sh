@@ -187,10 +187,16 @@ fi
 echo "rotate the refresh token"
 NEXT=$(post /v1/auth/refresh "{\"refreshToken\":\"$REFRESH\"}" | field "['refreshToken']")
 [ -n "$NEXT" ] && [ "$NEXT" != "$REFRESH" ] && ok "rotated" || bad "rotation did not issue a new token"
+# Rotated twice before the replay. The reuse interval (REFRESH_TOKEN_REUSE_INTERVAL_SECONDS)
+# forgives the token just replaced, for a few seconds, while its successor is unused — so
+# replaying REFRESH straight away would be forgiven by design. Two steps back it is a
+# replay under any interval, which keeps this check independent of the server's config.
+LAST=$(post /v1/auth/refresh "{\"refreshToken\":\"$NEXT\"}" | field "['refreshToken']")
+[ -n "$LAST" ] && [ "$LAST" != "$NEXT" ] && ok "rotated again" || bad "the second rotation failed"
 STATUS=$(code /v1/auth/refresh "{\"refreshToken\":\"$REFRESH\"}")
-[ "$STATUS" = "401" ] && ok "the spent token is refused" \
+[ "$STATUS" = "401" ] && ok "a token two rotations old is refused" \
   || bad "a spent token still worked (got $STATUS)"
-STATUS=$(code /v1/auth/refresh "{\"refreshToken\":\"$NEXT\"}")
+STATUS=$(code /v1/auth/refresh "{\"refreshToken\":\"$LAST\"}")
 [ "$STATUS" = "401" ] && ok "and its successor is dead too — a replay kills the whole chain" \
   || bad "the successor survived a replay, so a thief keeps access (got $STATUS)"
 
