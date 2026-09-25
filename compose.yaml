@@ -13,9 +13,9 @@
 # password, so the API never has a credential that skips row-level security. Nothing in
 # this file is a secret, and nothing secret belongs in it.
 #
-# The project name is pinned rather than taken from the directory, so this adopts the
-# containers and the network production already has (deylee-s_deylee-v6) wherever the
-# checkout lives. Change it and compose starts a second stack beside the first.
+# The project name is pinned rather than taken from the directory, so the stack, its
+# network and the deylee_deylee-db volume are the same wherever the checkout lives.
+# Change it and compose starts a second stack beside the first, with an empty database.
 name: deylee
 
 services:
@@ -33,7 +33,6 @@ services:
     # must never be able to change what every installed copy of the app will download.
     volumes:
       - /srv/deylee-updates:/srv/updates:ro
-    networks: [deylee-v6]
     depends_on:
       db:
         condition: service_healthy
@@ -48,7 +47,6 @@ services:
     env_file: server/db.env
     volumes:
       - deylee-db:/var/lib/postgresql/data
-    networks: [deylee-v6]
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 10s
@@ -61,21 +59,13 @@ services:
     restart: unless-stopped
     env_file: server/.env
     command: tunnel --no-autoupdate run
-    networks: [deylee-v6]
     depends_on:
       api:
         condition: service_healthy
 
 # The data outlives every container. `docker compose down -v` deletes it; never pass -v.
+#
+# No networks block: compose's default network is enough. The IPv6 one existed only for
+# Supabase's AAAA-only host, and its fixed subnet collides with any second stack.
 volumes:
   deylee-db:
-
-# IPv6 is a leftover from when the database was Supabase, whose direct host is AAAA only.
-# Nothing needs it now, but changing a network's settings makes compose recreate it and
-# every container on it, so it stays until there is a reason worth that.
-networks:
-  deylee-v6:
-    enable_ipv6: true
-    ipam:
-      config:
-        - subnet: fd00:de00::/64
