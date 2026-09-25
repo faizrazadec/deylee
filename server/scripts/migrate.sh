@@ -25,7 +25,9 @@ create table if not exists deylee_migrations.applied (
 );
 SQL
 
-applied=$(run -tA -c "select version from deylee_migrations.applied")
+# </dev/null: with PSQL through `docker exec -i`, a -c call would otherwise read the
+# caller's stdin — under `ssh host 'bash -s' < script` that is the rest of the script.
+applied=$(run -tA -c "select version from deylee_migrations.applied" </dev/null)
 
 # A fresh database. The first migration was written against Supabase, which supplies
 # these: its foreign keys name auth.users, its policies call auth.uid() and are granted
