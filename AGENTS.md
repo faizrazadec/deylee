@@ -19,6 +19,21 @@ swift build                  # compile DeyleeKit and the app
 passes the framework and rpath flags. That is the environment, not the code — do not
 "fix" it in the package manifest.
 
+With the Command Line Tools and no Xcode, the macOS 27 SDK fails the `Deylee` target with
+`SwiftUIMacros.StateMacro could not be found`: SwiftUI's `@State` became a macro whose
+plugin ships only with Xcode. Build against the 26.5 SDK instead, which the tools still
+install alongside it; the tests then also need the testing macro plugin passed by hand:
+
+```sh
+export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk
+swift build
+./scripts/test.sh -Xswiftc -plugin-path \
+  -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
+./scripts/make-app.sh release
+```
+
+If that SDK is gone, install Xcode. Again the environment, not the code.
+
 Run a build against a throwaway database, never your real history:
 
 ```sh
