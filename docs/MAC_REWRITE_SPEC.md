@@ -699,7 +699,11 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
   3. separator
   4. `Open Deylee` (opens the panel), 5. `History`, 6. `Settings`
   7. separator
-  8. `Quit`
+  8. `Keep Awake` — checkmarked while on; holds a
+     `PreventUserIdleDisplaySleep` power assertion so the Mac and display stay awake.
+     Off at every launch. The tooltip gains ` · keeping awake` while it is on.
+  9. separator
+  10. `Quit`
 - `getBounds` returns null before the menu bar lays the item out (placeholder
   rect) → caller centers the panel instead of anchoring.
 

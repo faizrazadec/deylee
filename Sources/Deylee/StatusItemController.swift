@@ -23,6 +23,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// close the menu under the user's cursor.
     private var menuBuiltFor: TimerState?
     private var refreshTimer: Timer?
+    private let keepAwake = KeepAwake()
 
     init(model: AppModel) {
         self.model = model
@@ -118,7 +119,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.title = title
         // An empty title still reserves the icon-text gap unless the position changes.
         button.imagePosition = title.isEmpty ? .imageOnly : .imageLeft
-        button.toolTip = tooltip(state: state, live: live)
+        button.toolTip = tooltip(state: state, live: live) + (keepAwake.isOn ? " · keeping awake" : "")
 
         if menuBuiltFor != state { rebuildMenu(for: state) }
     }
@@ -153,6 +154,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         add("History", #selector(openHistory), enabled: true)
         add("Settings", #selector(openSettings), enabled: true)
         menu.addItem(.separator())
+        add("Keep Awake", #selector(toggleKeepAwake), enabled: true)
+        menu.items.last?.state = keepAwake.isOn ? .on : .off
+        menu.addItem(.separator())
         add("Quit", #selector(quit), enabled: true)
     }
 
@@ -170,6 +174,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func openPanel() { panel.show(below: statusItem.button?.window?.frame) }
     @objc private func openHistory() { model.openHistory() }
     @objc private func openSettings() { model.openSettings() }
+    @objc private func toggleKeepAwake() { keepAwake.toggle(); refresh() }
     @objc private func quit() { NSApp.terminate(nil) }
 
     /// Whether the panel is on screen, so a caller that steps it aside can put back

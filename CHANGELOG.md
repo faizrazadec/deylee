@@ -9,6 +9,11 @@ SQLite schema may still change, so a minor bump can carry a migration.
 replaced by the same ring and arc as the app icon, so Deylee is recognisable at a glance
 beside the other menu-bar items.
 
+**Keep your Mac awake from Deylee.** Right-click the menu-bar icon and choose Keep Awake
+to stop the Mac and its screen going to sleep, the way KeepingYouAwake does — one app
+instead of two. Choose it again to let the Mac sleep as usual. It is off each time Deylee
+starts.
+
 ## 0.4.7 — 2026-09-24 (pre-release)
 
 ### No more signing in every morning
