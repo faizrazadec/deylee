@@ -1,7 +1,7 @@
 # Deylee
 
 A local-first time tracker that lives in the macOS menu bar. Start the day, pause for a
-coffee, end the day — Deylee keeps the running total beside the clock glyph and the full
+coffee, end the day — Deylee keeps the running total beside its menu-bar icon and the full
 history in a SQLite file you own.
 
 ![The Deylee panel](docs/screenshots/panel.png)
