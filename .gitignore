@@ -17,12 +17,13 @@ deylee-backup-*.sqlite
 deylee-*_to_*.csv
 deylee-*_to_*.json
 
-# Backend secrets. The Supabase service_role key bypasses row-level security
-# entirely — it is the one credential that can read every customer's hours. It
-# belongs in a local .env and never in a commit, a client binary, or a log.
+# Backend secrets. The database's superuser bypasses row-level security entirely —
+# it is the one credential that can read every customer's hours. It belongs in a
+# local .env (or server/db.env) and never in a commit, a client binary, or a log.
 .env
 .env.*
 !.env.example
+server/db.env
 
 # Logs
 *.log

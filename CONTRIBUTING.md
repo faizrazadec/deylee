@@ -49,7 +49,7 @@ flags that fix it.
 | `Sources/DeyleeKit/` | the core: models, time maths, SQLite, repository, timer engine. No AppKit, no SwiftUI. |
 | `Sources/Deylee/` | the app: status item, panel, windows, idle and power monitors. |
 | `Tests/DeyleeKitTests/` | the core's suite, Swift Testing. |
-| `server/` | the sync API: Python, uv, Docker, with its migrations in `server/supabase/migrations/`. |
+| `server/` | the sync API: Python, uv, Docker, with its migrations in `server/migrations/`. |
 | `docs/` | [`MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) is binding on behaviour, [`DESIGN.md`](docs/DESIGN.md) on visuals, [`SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) on the wire; [`PRODUCT.md`](docs/PRODUCT.md) says what we build and refuse to, [`INTERNALS.md`](docs/INTERNALS.md) explains the reasoning. |
 
 Two constraints worth knowing before you write anything:

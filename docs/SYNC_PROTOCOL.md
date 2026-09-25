@@ -6,7 +6,7 @@ implement *this document*, not each other. Where a client and this file disagree
 file wins.
 
 Companion documents: `MAC_REWRITE_SPEC.md` for the macOS app's behaviour, and
-`supabase/migrations/` for the storage schema this protocol moves rows into.
+`server/migrations/` for the storage schema this protocol moves rows into.
 
 ## Principles
 
@@ -33,7 +33,7 @@ client, on every tick. A total on the wire is a second source of truth.
 ## Transport and authentication
 
     POST /v1/sync
-    Authorization: Bearer <Supabase access token>
+    Authorization: Bearer <access token>
     Content-Type: application/json
 
 One endpoint. Push and pull are the same round trip, because a client that has
