@@ -3,6 +3,12 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## Unreleased
+
+**The menu bar shows the Deylee icon.** The small clock that stood in for the app is
+replaced by the same ring and arc as the app icon, so Deylee is recognisable at a glance
+beside the other menu-bar items.
+
 ## 0.4.7 — 2026-09-24 (pre-release)
 
 ### No more signing in every morning

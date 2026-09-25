@@ -1,16 +1,20 @@
 import AppKit
 
-/// The menu-bar clock mark, drawn as a template image so AppKit recolours it for
-/// light, dark and highlighted menu bars. Geometry is expressed as fractions of the
-/// side so the same code renders the 16 pt item and any @2x representation.
+/// The menu-bar mark: the app icon's ring and arc, drawn as a template image so AppKit
+/// recolours it for light, dark and highlighted menu bars. A template is one colour, so
+/// the ring is drawn faint and the arc solid — alpha stands in for the icon's green.
+/// Geometry is expressed as fractions of the side, taken from `Resources/AppIcon.png`,
+/// so the same code renders the 16 pt item and any @2x representation.
 enum StatusItemGlyph {
     private enum Ratio {
-        static let ringOuterRadius: CGFloat = 0.42
-        static let ringThickness: CGFloat = 0.1
-        static let minuteHandLength: CGFloat = 0.225
-        static let hourHandLength: CGFloat = 0.17
-        static let handHalfWidth: CGFloat = 0.042
+        static let ringOuterRadius: CGFloat = 0.44
+        static let ringThickness: CGFloat = 0.15
+        static let ringAlpha: CGFloat = 0.35
     }
+
+    /// Arc end points, in degrees counter-clockwise from 3 o'clock, as on the app icon.
+    private static let arcStart: CGFloat = 57
+    private static let arcEnd: CGFloat = -36
 
     static func make(side: CGFloat = 16) -> NSImage {
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
@@ -22,42 +26,24 @@ enum StatusItemGlyph {
     }
 
     private static func draw(side: CGFloat) {
-        NSColor.black.setFill()
         let center = CGPoint(x: side / 2, y: side / 2)
+        let thickness = side * Ratio.ringThickness
+        let radius = side * Ratio.ringOuterRadius - thickness / 2
 
-        let outer = side * Ratio.ringOuterRadius
-        let inner = outer - side * Ratio.ringThickness
-        let ring = NSBezierPath(ovalIn: NSRect(
-            x: center.x - outer, y: center.y - outer, width: outer * 2, height: outer * 2
-        ))
-        ring.append(NSBezierPath(ovalIn: NSRect(
-            x: center.x - inner, y: center.y - inner, width: inner * 2, height: inner * 2
-        )))
-        ring.windingRule = .evenOdd
-        ring.fill()
+        let ring = NSBezierPath()
+        ring.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+        ring.lineWidth = thickness
+        NSColor.black.withAlphaComponent(Ratio.ringAlpha).setStroke()
+        ring.stroke()
 
-        let halfWidth = side * Ratio.handHalfWidth
-        // Minute hand points straight up, hour hand to the right — a fixed, legible
-        // pose rather than the real time, which would be unreadable at 16 pt.
-        capsule(
-            from: center,
-            to: CGPoint(x: center.x, y: center.y + side * Ratio.minuteHandLength),
-            halfWidth: halfWidth
-        ).fill()
-        capsule(
-            from: center,
-            to: CGPoint(x: center.x + side * Ratio.hourHandLength, y: center.y),
-            halfWidth: halfWidth
-        ).fill()
-    }
-
-    private static func capsule(from: CGPoint, to: CGPoint, halfWidth: CGFloat) -> NSBezierPath {
-        let rect = NSRect(
-            x: min(from.x, to.x) - halfWidth,
-            y: min(from.y, to.y) - halfWidth,
-            width: abs(to.x - from.x) + halfWidth * 2,
-            height: abs(to.y - from.y) + halfWidth * 2
+        let arc = NSBezierPath()
+        arc.appendArc(
+            withCenter: center, radius: radius,
+            startAngle: arcStart, endAngle: arcEnd, clockwise: true
         )
-        return NSBezierPath(roundedRect: rect, xRadius: halfWidth, yRadius: halfWidth)
+        arc.lineWidth = thickness
+        arc.lineCapStyle = .round
+        NSColor.black.setStroke()
+        arc.stroke()
     }
 }

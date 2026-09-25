@@ -25,7 +25,7 @@ until the server has acknowledged it.
 
 Surfaces:
 
-- **Menu-bar status item** — template clock glyph; live `H:MM` worked title while
+- **Menu-bar status item** — template logo mark; live `H:MM` worked title while
   running/paused; left-click toggles the panel; right-click shows a context menu.
 - **Panel** (320 × 436) — the primary popover UI: state, live timer, target
   progress, today's segments, prompts (crash recovery / idle / wake), footer nav.
@@ -662,9 +662,9 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
 ### 5.1 Status item (menu bar)
 
 - `NSStatusItem` with variable length. **One template image for every state**: a
-  clock glyph (ring outer radius 0.42·s, ring thickness 0.1·s, minute-hand
-  capsule straight up length 0.225·s, hour-hand capsule right length 0.17·s,
-  hand half-width 0.042·s; pure black + alpha), sized **16 × 16 points** with a
+  the app icon's mark (ring outer radius 0.44·s, thickness 0.15·s, drawn at 35%
+  alpha; a solid round-capped arc on it from 57° to −36°, counter-clockwise from
+  3 o'clock; pure black + alpha), sized **16 × 16 points** with a
   32 px @2x representation, `isTemplate = true` (AppKit recolours for
   light/dark/highlight). Set the image **once** (the Electron build re-reads it
   every tick only as an implementation artifact).
