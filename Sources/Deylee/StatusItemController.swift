@@ -23,9 +23,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// close the menu under the user's cursor.
     private var menuBuiltFor: TimerState?
     private var refreshTimer: Timer?
+    private let keepAwake: KeepAwake
 
-    init(model: AppModel) {
+    init(model: AppModel, prefs: PreferencesStore) {
         self.model = model
+        keepAwake = KeepAwake(prefs: prefs)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         panel = PanelWindow { PanelView(model: model) }
         super.init()
@@ -107,6 +109,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// Called on the tick and immediately on every snapshot.
     func refresh() {
+        keepAwake.tick()
         guard let button = statusItem.button else { return }
         let live = liveTotals(model.snapshot, now: epochNow())
         let state = model.snapshot.state
@@ -118,7 +121,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.title = title
         // An empty title still reserves the icon-text gap unless the position changes.
         button.imagePosition = title.isEmpty ? .imageOnly : .imageLeft
-        button.toolTip = tooltip(state: state, live: live)
+        button.toolTip = tooltip(state: state, live: live) + keepAwakeTooltip
 
         if menuBuiltFor != state { rebuildMenu(for: state) }
     }
@@ -131,6 +134,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .ended: return "Deylee — day ended · \(totals)"
         case .idle: return live.workedMs > 0 ? "Deylee — stopped · \(totals)" : "Deylee — not tracking"
         }
+    }
+
+    private var keepAwakeTooltip: String {
+        guard keepAwake.session.isOn else { return "" }
+        return keepAwake.session.endsAt.map { " · awake until \(formatClock($0))" } ?? " · keeping awake"
     }
 
     // MARK: - Menu
@@ -153,14 +161,47 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         add("History", #selector(openHistory), enabled: true)
         add("Settings", #selector(openSettings), enabled: true)
         menu.addItem(.separator())
+        addKeepAwakeItems()
+        menu.addItem(.separator())
         add("Quit", #selector(quit), enabled: true)
     }
 
-    private func add(_ title: String, _ action: Selector, enabled: Bool) {
+    @discardableResult
+    private func add(
+        _ title: String, _ action: Selector, enabled: Bool, to target: NSMenu? = nil
+    ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         item.isEnabled = enabled
-        menu.addItem(item)
+        (target ?? menu).addItem(item)
+        return item
+    }
+
+    /// Built fresh on every open (`showMenu` rebuilds), so the "until" time is current.
+    private func addKeepAwakeItems() {
+        let session = keepAwake.session
+        let title = session.endsAt.map { "Keep Awake — until \(formatClock($0))" } ?? "Keep Awake"
+        add(title, #selector(toggleKeepAwake), enabled: true).state = session.isOn ? .on : .off
+
+        let lengths = NSMenu()
+        for minutes in KeepAwakeSession.presetMinutes {
+            add(Self.keepAwakeLabel(minutes), #selector(keepAwakeFor(_:)), enabled: true, to: lengths)
+                .tag = minutes
+        }
+        lengths.addItem(.separator())
+        add("Custom…", #selector(keepAwakeCustom), enabled: true, to: lengths)
+        let parent = NSMenuItem(title: "Keep Awake For", action: nil, keyEquivalent: "")
+        parent.submenu = lengths
+        menu.addItem(parent)
+    }
+
+    static func keepAwakeLabel(_ minutes: Int) -> String {
+        switch minutes {
+        case 0: return "Until Turned Off"
+        case 60: return "1 Hour"
+        case let m where m % 60 == 0: return "\(m / 60) Hours"
+        default: return "\(minutes) Minutes"
+        }
     }
 
     // The action is resolved from the live state at click time, not the state the
@@ -170,6 +211,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func openPanel() { panel.show(below: statusItem.button?.window?.frame) }
     @objc private func openHistory() { model.openHistory() }
     @objc private func openSettings() { model.openSettings() }
+    @objc private func toggleKeepAwake() {
+        if keepAwake.session.isOn { keepAwake.turnOff() } else { keepAwake.turnOn() }
+        refresh()
+    }
+    @objc private func keepAwakeFor(_ sender: NSMenuItem) { keepAwake.turnOn(minutes: sender.tag); refresh() }
+
+    @objc private func keepAwakeCustom() {
+        let range = PreferenceLimits.keepAwakeDefaultMinutesRange
+        let alert = NSAlert()
+        alert.messageText = "Keep awake for how long?"
+        alert.informativeText = "In minutes, up to \(range.upperBound)."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        field.placeholderString = "Minutes"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Keep Awake")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn,
+              let minutes = Int(field.stringValue.trimmingCharacters(in: .whitespaces)),
+              minutes > 0
+        else { return }
+        keepAwake.turnOn(minutes: min(minutes, range.upperBound))
+        refresh()
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 
     /// Whether the panel is on screen, so a caller that steps it aside can put back

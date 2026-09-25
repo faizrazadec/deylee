@@ -248,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) {
         guard statusItem == nil else { return }
 
-        let statusItem = StatusItemController(model: model)
+        let statusItem = StatusItemController(model: model, prefs: prefs)
         self.statusItem = statusItem
 
         // The controller watches `showMiniWindow` itself, so toggling the preference
