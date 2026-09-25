@@ -51,8 +51,8 @@ class Config:
     database_tls: bool
     """Whether to encrypt the database connection at all.
 
-    Defaults to requiring it. A development database in a container on a private
-    network offers no TLS, and this used to be inferred from the hostname being
+    Defaults to requiring it. The compose database, like the development one, is a
+    container on a private network and offers no TLS, and this used to be inferred from the hostname being
     `localhost` — which is wrong the moment that database is a container reached by
     name, the ordinary way to run one.
     """
@@ -60,9 +60,9 @@ class Config:
     database_ca_certificate_path: str | None
     """PEM of the CA that signed the database server's certificate.
 
-    Supabase signs with its own CA rather than a publicly-trusted one, so without
-    this the connection is encrypted but the server is unauthenticated. Downloadable
-    from Settings -> Database in the dashboard.
+    Required whenever TLS is on: a hosted Postgres usually signs with its own CA
+    rather than a publicly-trusted one, and an encrypted connection to a server
+    nothing has authenticated is refused at boot.
     """
 
     resend_api_key: str

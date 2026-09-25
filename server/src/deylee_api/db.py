@@ -76,9 +76,9 @@ class StoreUnverifiableTLS(StoreError):
         super().__init__(
             "DEYLEE_DB_TLS is on but DEYLEE_DB_CA_CERT is unset, so the database "
             "connection would be encrypted to whoever answers rather than to your "
-            "database. Point it at Supabase's CA certificate — the repository ships one "
-            "at server/certs/ and the Dockerfile already sets this. For the local "
-            "development container, set DEYLEE_DB_TLS=disable instead."
+            "database. Point it at the CA that signed the database's certificate. For a "
+            "database container on the same private network — compose, or the "
+            "development one — set DEYLEE_DB_TLS=disable instead."
         )
 
 
@@ -97,8 +97,8 @@ class StoreBypassesRowLevelSecurity(StoreError):
         super().__init__(
             f"DEYLEE_DB_URL connects as '{role}', which bypasses row-level security. "
             "Every tenancy policy would be skipped and one customer's sync would read "
-            "another's hours. Point it at the restricted login (deylee_api), not "
-            "SUPABASE_DB_URL."
+            "another's hours. Point it at the restricted login (deylee_api_user), not "
+            "the owner."
         )
 
 
@@ -141,14 +141,14 @@ def pool_settings(url: str, *, tls: bool, ca_certificate_path: str | None) -> Po
     # Always encrypt, never "prefer": silently dropping to an unencrypted connection
     # would put every customer's hours on the wire in the clear.
     #
-    # Whether the server is *authenticated* as well as encrypted is a separate question,
-    # and on Supabase it needs saying out loud. Its Postgres endpoint presents a
-    # certificate signed by Supabase's own CA, not by a publicly-trusted one, so
-    # verifying against the system trust store fails — which is why psql connects (its
-    # default sslmode encrypts without verifying) while a verifying client does not.
+    # Whether the server is *authenticated* as well as encrypted is a separate question.
+    # Hosted Postgres endpoints commonly present a certificate signed by the provider's
+    # own CA, not by a publicly-trusted one, so verifying against the system trust store
+    # fails — which is why psql connects (its default sslmode encrypts without
+    # verifying) while a verifying client does not.
     #
-    # Point DEYLEE_DB_CA_CERT at the CA certificate from the Supabase dashboard and the
-    # connection is both encrypted and authenticated.
+    # Point DEYLEE_DB_CA_CERT at that CA and the connection is both encrypted and
+    # authenticated.
     #
     # There is no fall-back worth having. Encrypted-but-unverified means anything that
     # can answer on that host and port — a hijacked DNS record, a compromised path —
@@ -157,9 +157,9 @@ def pool_settings(url: str, *, tls: bool, ca_certificate_path: str | None) -> Po
     # control: one line in a log on a deploy that otherwise succeeds, guarding a failure
     # that is silent by construction.
     #
-    # DEYLEE_DB_TLS=disable is the escape hatch, and it is the honest one — the local
-    # development container, where there is no certificate and nothing to protect. The
-    # Dockerfile sets the path for every real deployment.
+    # DEYLEE_DB_TLS=disable is the escape hatch, and it is the honest one — a database
+    # container on the same host and private network, compose's or the development one,
+    # where the connection never touches a wire.
     context: ssl.SSLContext | None = None
     if tls:
         if ca_certificate_path is None:
@@ -174,12 +174,13 @@ def pool_settings(url: str, *, tls: bool, ca_certificate_path: str | None) -> Po
         # Chain and hostname are still verified against the pinned CA above — that is the
         # control, and it stays. What goes is OpenSSL's *strict* X.509 extension policy,
         # which `create_default_context` turns on by default from Python 3.13 and which
-        # Swift's NIOSSL never applied. Supabase's pooler serves a chain that does not
-        # satisfy it ("CA cert does not include key usage extension"), so leaving it on
-        # refuses every connection to the production database while a local container
-        # with TLS disabled looks perfectly healthy — which is exactly how this reached
-        # production. Relaxing the extension policy is not the same as trusting anyone:
-        # an impostor still has to present a chain signed by that pinned CA.
+        # Swift's NIOSSL never applied. Supabase's pooler, where production's database
+        # used to live, served a chain that does not satisfy it ("CA cert does not include
+        # key usage extension"), and leaving it on refused every connection to it while a
+        # local container with TLS disabled looked perfectly healthy — which is exactly
+        # how that reached production. Relaxing the extension policy is not the same as
+        # trusting anyone: an impostor still has to present a chain signed by that
+        # pinned CA.
         context.verify_flags &= ~ssl.VERIFY_X509_STRICT
 
     return PoolSettings(
@@ -334,8 +335,9 @@ class Store:
         would look wrong: the connection succeeds, the health check passes, the log says
         `listening`, and every sync then reads and tombstones every customer's rows.
 
-        The misconfiguration is one character of `.env` away, because `SUPABASE_DB_URL`
-        connects as `postgres` and sits directly above `DEYLEE_DB_URL` in the file.
+        The misconfiguration is one character of `.env` away, because
+        `DEYLEE_DB_OWNER_URL` connects as `postgres` and sits just below `DEYLEE_DB_URL`
+        in the file.
         Checked at boot rather than per request: this cannot change while the process
         runs, and a process that would serve every tenant's data to whoever asks should
         not start at all.

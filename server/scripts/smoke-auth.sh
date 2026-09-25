@@ -5,7 +5,7 @@
 #   ./scripts/smoke-auth.sh                     # against http://127.0.0.1:8080
 #   API=https://api.example.com ./scripts/smoke-auth.sh
 #
-# Requires the API to be running and .env to hold SUPABASE_DB_URL, which is used
+# Requires the API to be running and .env to hold DEYLEE_DB_OWNER_URL, which is used
 # only to create the probe rows, exercise the Google linking function directly, and
 # clean up afterwards.
 #
@@ -21,7 +21,7 @@ API=${API:-http://127.0.0.1:8080}
 # calls at one and the SQL at another would report failures that are really just
 # two different databases disagreeing.
 ENV_FILE=${ENV_FILE:-.env}
-DBURL=$(grep '^SUPABASE_DB_URL=' "$ENV_FILE" | cut -d= -f2-)
+DBURL=$(grep '^DEYLEE_DB_OWNER_URL=' "$ENV_FILE" | cut -d= -f2-)
 # Unique per run, and that is load-bearing rather than tidy. Sign-in is throttled per
 # address — ten failed attempts in five minutes — and that counter lives in the API
 # process's memory, so deleting the rows between runs does not reset it. With one fixed
@@ -33,7 +33,7 @@ EMAIL="probe-$RUN@deylee-smoke.invalid"
 PASS="a-good-password"
 FAILURES=0
 
-if [ -z "$DBURL" ]; then echo "SUPABASE_DB_URL is not set in .env" >&2; exit 1; fi
+if [ -z "$DBURL" ]; then echo "DEYLEE_DB_OWNER_URL is not set in .env" >&2; exit 1; fi
 if ! curl -s --max-time 5 "$API/health" >/dev/null; then
   echo "The API is not answering at $API" >&2
   echo "Start it with: DEYLEE_ENV_FILE=\$PWD/server/.env uv run --project server python -m deylee_api" >&2

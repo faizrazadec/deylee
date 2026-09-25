@@ -30,10 +30,7 @@ FROM python:3.14-slim
 WORKDIR /app
 
 # No apt layer. The slim image already carries ca-certificates, which is what verifies
-# Google's JWKS endpoint over HTTPS; Supabase's own root is a separate matter, because
-# it signs Postgres with a CA no public store carries.
-COPY server/certs/supabase-prod-ca-2021.crt /app/certs/supabase-prod-ca-2021.crt
-ENV DEYLEE_DB_CA_CERT=/app/certs/supabase-prod-ca-2021.crt
+# Google's JWKS endpoint over HTTPS.
 
 # Only the environment and the sources. No uv, no lockfile, no wheel cache.
 # The venv records the project as an editable install at /app/src, so both paths have

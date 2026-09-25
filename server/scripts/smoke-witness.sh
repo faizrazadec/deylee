@@ -9,12 +9,12 @@ cd "$(dirname "$0")/.."
 
 API=${API:-http://127.0.0.1:8080}
 ENV_FILE=${ENV_FILE:-.env}
-DBURL=$(grep '^SUPABASE_DB_URL=' "$ENV_FILE" | cut -d= -f2-)
+DBURL=$(grep '^DEYLEE_DB_OWNER_URL=' "$ENV_FILE" | cut -d= -f2-)
 EMAIL="witness-probe@deylee-smoke.invalid"
 PASS="a-good-password"
 FAILURES=0
 
-if [ -z "$DBURL" ]; then echo "SUPABASE_DB_URL is not set in $ENV_FILE" >&2; exit 1; fi
+if [ -z "$DBURL" ]; then echo "DEYLEE_DB_OWNER_URL is not set in $ENV_FILE" >&2; exit 1; fi
 if ! curl -s --max-time 5 "$API/health" >/dev/null; then
   echo "The API is not answering at $API" >&2; exit 1
 fi

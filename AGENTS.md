@@ -117,13 +117,14 @@ Without `DEYLEE_TEST_DB_URL` the database suites skip rather than fail, so a gre
 without it proves nothing about row-level security or the auth functions. Point it at
 the restricted login, never `postgres`, which bypasses RLS and passes everything.
 
-Migrations in `server/supabase/migrations/` follow the same rule as the app's: forwards
-only, never edit one that shipped. Changing a function's arguments means a new migration
+Migrations in `server/migrations/` follow the same rule as the app's: forwards only, never
+edit one that shipped. `server/scripts/migrate.sh` applies them and records each in
+`deylee_migrations.applied`, so an edited file reaches a fresh database and nothing else. Changing a function's arguments means a new migration
 that drops the old signature, and giving the new argument a default keeps an API that
 has not deployed yet working against it.
 
 **Two schemas have to agree:** `Sources/DeyleeKit/Migrations.swift` for the local store
-and `server/supabase/migrations/` for the server. Change a column in one and not the
+and `server/migrations/` for the server. Change a column in one and not the
 other and sync breaks in a way that is awkward to trace.
 
 The API reads `server/.env` (untracked; `server/.env.example` documents every variable).
@@ -134,17 +135,19 @@ is the wrong one:
 DEYLEE_ENV_FILE=$PWD/server/.env uv run --project server python -m deylee_api
 ```
 
-Two commands care where you stand: `supabase db push` runs from `server/`, and the image
-builds from the repository root, which is the context the Dockerfile's `COPY` lines and the
-root `.dockerignore` are written against. `compose.yaml` at the root is how production
-builds and runs the API and its tunnel (`docker compose build api`, then
-`docker compose up -d --no-deps api`). Its project name is pinned to `deylee-s` so it
-adopts the running stack; do not change it.
+The image builds from the repository root, which is the context the Dockerfile's `COPY`
+lines and the root `.dockerignore` are written against. `compose.yaml` at the root is how
+production builds and runs the API, its Postgres (`db`, data in the `deylee-db` volume)
+and its tunnel (`docker compose build api`, then `docker compose up -d --no-deps api`).
+Its project name is pinned to `deylee-s` so it adopts the running stack; do not change
+it, and never pass `-v` to `docker compose down`, which deletes the database.
+`server/scripts/nightly-db.sh` is the database's cron job: the refresh-token sweep and a
+dump.
 
 ### Production is not yours to touch
 
-**Never build, rebuild, stop, restart or redeploy the production API, or push a
-migration to the production database, unless the person you are working for asks for
+**Never build, rebuild, stop, restart or redeploy the production API or its database, or
+run a migration against the production database, unless the person you are working for asks for
 it in those words.** It serves every customer's sync and the appcast every installed
 copy of the app updates from; taking it down stops people working and stops the product
 being able to fix itself. Writing a Dockerfile is not permission to run it, and a green
