@@ -16,6 +16,9 @@ own. Settings has a new Keep Awake section: how long a plain Keep Awake lasts, w
 screen may still sleep, and an option to keep awake whenever the Mac runs on battery and
 stop when it is plugged back in. It is off each time Deylee starts.
 
+**About Deylee.** The ⓘ button at the bottom of the panel, or About Deylee in the
+right-click menu, shows which version you are running and where the source lives.
+
 ## 0.4.7 — 2026-09-24 (pre-release)
 
 ### No more signing in every morning

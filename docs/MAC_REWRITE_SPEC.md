@@ -692,6 +692,7 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
   can set it synchronously with the toggle).
 - Context menu (exact structure/labels; rebuilt **only when TimerState
   changes** — rebuilding more often would close it under the cursor):
+  0. `About Deylee` (the same About panel as the panel footer), then a separator
   1. Primary — `Pause` (RUNNING) / `Resume` (PAUSED) / `Start` (IDLE, ENDED);
      always enabled. Dispatch resolves the action from the **live** state at
      click time, not the state the menu was built for.
@@ -778,7 +779,11 @@ Header row is the drag region (irrelevant in a popover).
    - Left: `History` → opens the History window.
    - Right: `Restart to update` — only when update status is `downloaded`;
      tooltip `Version {v} is ready`; installs immediately. This is deliberately
-     the panel's only update UI. Then `Settings`.
+     the panel's only update UI. Then `Report a bug`, `About Deylee` and
+     `Settings`, as glyphs with tooltips.
+   - `About Deylee` opens AppKit's standard About panel (icon, name, version,
+     build and `NSHumanReadableCopyright` from the bundle) with credits: the
+     GitHub link and the author.
    - (A `Quit` footer button exists only in the Linux no-tray fallback — NOT
      APPLICABLE; on macOS Quit lives in the status-item menu.)
 

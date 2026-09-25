@@ -147,6 +147,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBuiltFor = state
         menu.removeAllItems()
 
+        add("About Deylee", #selector(openAbout), enabled: true)
+        menu.addItem(.separator())
+
         let primaryTitle: String
         switch state {
         case .running: primaryTitle = "Pause"
@@ -236,6 +239,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keepAwake.turnOn(minutes: min(minutes, range.upperBound))
         refresh()
     }
+    @objc private func openAbout() { AboutPanel.show() }
     @objc private func quit() { NSApp.terminate(nil) }
 
     /// Whether the panel is on screen, so a caller that steps it aside can put back

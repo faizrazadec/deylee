@@ -182,6 +182,12 @@ struct PanelView: View {
                 action: model.sendFeedback
             )
             FooterButton(
+                symbol: "info.circle",
+                label: "About Deylee",
+                hint: "About Deylee — version and source",
+                action: AboutPanel.show
+            )
+            FooterButton(
                 symbol: "gearshape",
                 label: "Settings",
                 hint: "Settings",
