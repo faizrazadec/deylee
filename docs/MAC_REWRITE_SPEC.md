@@ -699,11 +699,16 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
   3. separator
   4. `Open Deylee` (opens the panel), 5. `History`, 6. `Settings`
   7. separator
-  8. `Keep Awake` — checkmarked while on; holds a
-     `PreventUserIdleDisplaySleep` power assertion so the Mac and display stay awake.
-     Off at every launch. The tooltip gains ` · keeping awake` while it is on.
-  9. separator
-  10. `Quit`
+  8. `Keep Awake` — checkmarked while on; reads `Keep Awake — until {HH:MM}` during a
+     timed session. Off → on for `keepAwakeDefaultMinutes`; on → off.
+  9. `Keep Awake For` ▸ `5 Minutes`, `15 Minutes`, `1 Hour`, `2 Hours`, `5 Hours`,
+     `Until Turned Off`, separator, `Custom…` (alert asking for minutes, 1–1440).
+     Holds a `PreventUserIdleDisplaySleep` power assertion, or
+     `PreventUserIdleSystemSleep` when `keepAwakeAllowDisplaySleep` is on. Off at every
+     launch; a timed session ends on the first 1 s refresh past its end. The tooltip
+     gains ` · keeping awake` or ` · awake until {HH:MM}`.
+  10. separator
+  11. `Quit`
 - `getBounds` returns null before the menu bar lays the item out (placeholder
   rect) → caller centers the panel instead of anchoring.
 
@@ -1121,6 +1126,16 @@ counting."
     One field writes two preferences (`reminderHour` then `reminderMinute`,
     sequentially); incomplete mid-edit values are ignored, never half-written.
 
+**Keep Awake** — "Stop the Mac going to sleep, from the Deylee menu-bar menu."
+- **Default length** (number field, `keepAwakeDefaultMinutes`, default 0; min 0, max
+  1440, step 5, suffix "minutes") — "How long “Keep Awake” lasts when chosen from the
+  menu. 0 keeps it on until you turn it off."
+- **Allow the screen to sleep** (toggle, `keepAwakeAllowDisplaySleep`, default off) —
+  "The Mac keeps running, but the display turns off as usual."
+- **Keep awake on battery** (toggle, `keepAwakeOnBattery`, default off) — "Turns on
+  when the Mac is unplugged and off when it is plugged back in." Acts only on a switch
+  of power source, so a session changed by hand stands until the next one.
+
 **Data** — "Your database lives on this machine. Signed out, it goes nowhere; signed
 in, your hours sync to your account. Nothing else leaves unless you switch it on
 yourself — screen capture is off until you turn it on."
@@ -1339,6 +1354,9 @@ positions per-entry finite-and-rounded, malformed entries dropped individually.
 | `miniWindowPositions` | `{displayId: {x,y}}` | `{}` | Per-display mini position memory (no UI). |
 | `trayFallbackNoticeShown` | bool | `false` | Linux-only bookkeeping — NOT APPLICABLE. |
 | `updateCheckEnabled` | bool | `true` | Gates the scheduled update check (the app's only network call); manual check runs regardless. |
+| `keepAwakeDefaultMinutes` | int 0–1440 | `0` | Length of a plain `Keep Awake`; 0 is until turned off. |
+| `keepAwakeAllowDisplaySleep` | bool | `false` | Keep awake holds system sleep only, not the display. |
+| `keepAwakeOnBattery` | bool | `false` | Keep awake on switching to battery; stop on switching to the adapter. |
 
 Error surface: a preference write is the **only** operation allowed to fail
 loudly — unknown key, wrong type, or OS refusal (login item) rejects; the UI

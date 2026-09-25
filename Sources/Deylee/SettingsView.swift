@@ -451,6 +451,7 @@ struct SettingsView: View {
                 general
                 tracking
                 reminders
+                keepAwake
                 data
                 screenCapture
                 updates
@@ -724,6 +725,47 @@ struct SettingsView: View {
                 ) { hour, minute in
                     model.writeReminderTime(hour: hour, minute: minute)
                 }
+            }
+        }
+    }
+
+    // MARK: Keep awake
+
+    private var keepAwake: some View {
+        SettingsSectionCard(
+            title: "Keep Awake",
+            description: "Stop the Mac going to sleep, from the Deylee menu-bar menu."
+        ) {
+            SettingsNumberFieldRow(
+                label: "Default length",
+                description: "How long “Keep Awake” lasts when chosen from the menu. 0 keeps it on until you turn it off.",
+                value: Double(model.prefs.keepAwakeDefaultMinutes),
+                bounds: Double(PreferenceLimits.keepAwakeDefaultMinutesRange.lowerBound)
+                    ... Double(PreferenceLimits.keepAwakeDefaultMinutesRange.upperBound),
+                step: 5,
+                suffix: "minutes"
+            ) { next in
+                model.write { try $0.write(.keepAwakeDefaultMinutes, .number(next)) }
+            }
+
+            SettingsHairline()
+
+            SettingsToggleRow(
+                label: "Allow the screen to sleep",
+                description: "The Mac keeps running, but the display turns off as usual.",
+                isOn: model.prefs.keepAwakeAllowDisplaySleep
+            ) { next in
+                model.write { try $0.write(.keepAwakeAllowDisplaySleep, .bool(next)) }
+            }
+
+            SettingsHairline()
+
+            SettingsToggleRow(
+                label: "Keep awake on battery",
+                description: "Turns on when the Mac is unplugged and off when it is plugged back in.",
+                isOn: model.prefs.keepAwakeOnBattery
+            ) { next in
+                model.write { try $0.write(.keepAwakeOnBattery, .bool(next)) }
             }
         }
     }

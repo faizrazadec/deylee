@@ -10,9 +10,11 @@ replaced by the same ring and arc as the app icon, so Deylee is recognisable at 
 beside the other menu-bar items.
 
 **Keep your Mac awake from Deylee.** Right-click the menu-bar icon and choose Keep Awake
-to stop the Mac and its screen going to sleep, the way KeepingYouAwake does — one app
-instead of two. Choose it again to let the Mac sleep as usual. It is off each time Deylee
-starts.
+to stop the Mac going to sleep, the way KeepingYouAwake does — one app instead of two.
+Keep Awake For offers 5 minutes up to 5 hours, until you turn it off, or a length of your
+own. Settings has a new Keep Awake section: how long a plain Keep Awake lasts, whether the
+screen may still sleep, and an option to keep awake whenever the Mac runs on battery and
+stop when it is plugged back in. It is off each time Deylee starts.
 
 ## 0.4.7 — 2026-09-24 (pre-release)
 
