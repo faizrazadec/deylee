@@ -139,8 +139,8 @@ The image builds from the repository root, which is the context the Dockerfile's
 lines and the root `.dockerignore` are written against. `compose.yaml` at the root is how
 production builds and runs the API, its Postgres (`db`, data in the `deylee-db` volume)
 and its tunnel (`docker compose build api`, then `docker compose up -d --no-deps api`).
-Its project name is pinned to `deylee-s` so it adopts the running stack; do not change
-it, and never pass `-v` to `docker compose down`, which deletes the database.
+Its project name is pinned to `deylee` so every checkout adopts the same stack; do not
+change it, and never pass `-v` to `docker compose down`, which deletes the database.
 `server/scripts/nightly-db.sh` is the database's cron job: the refresh-token sweep and a
 dump.
 
