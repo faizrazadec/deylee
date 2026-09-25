@@ -3,7 +3,7 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
-## Unreleased
+## 0.4.7 — 2026-09-24 (pre-release)
 
 ### No more signing in every morning
 
