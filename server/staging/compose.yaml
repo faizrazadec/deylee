@@ -29,10 +29,10 @@ services:
     # A slice of its own, not a deylee-*.slice: systemd nests slices by the dashes in their
     # names, and staging must never spend production's budget.
     #
-    # CPU split 0.4 / 0.35 / 0.2 (0.95, under the slice's 1). The first stress test ran
-    # 0.3 / 0.55 / 0.1: in a burst of 500 clients at once the API and the tunnel were
-    # throttled 165 and 115 times while the database, barely busy, was throttled 47 — so
-    # this moves the database's unused share to the two that queued.
+    # CPU split 0.4 / 0.4 / 0.2 — exactly the slice's 1, never more. The first stress test
+    # ran 0.3 / 0.55 / 0.1 and the API and tunnel queued on their caps in bursts; at
+    # 0.4 / 0.35 / 0.2 the database did instead (128 throttles in a 1,000-client burst), so
+    # it gets 0.4. Production uses the same split.
     cgroup_parent: staging.slice
     cpus: 0.4
     mem_limit: 256m
@@ -48,7 +48,7 @@ services:
     volumes:
       - staging-db:/var/lib/postgresql/data
     cgroup_parent: staging.slice
-    cpus: 0.35
+    cpus: 0.4
     mem_limit: 576m
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
