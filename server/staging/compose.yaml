@@ -1,12 +1,13 @@
 # Staging: the API, its own database and its own tunnel, beside production on the same
 # host and sharing nothing with it — not a container, a network, a volume, a key or a
 # tunnel. Driven only through `deylee-staging` (the script beside this file), which fixes
-# the project name and this file's installed copy, so a branch under test cannot change
-# what staging is allowed to touch.
+# the project name and this file's installed copy, so nothing committed to the checkout can
+# change what staging is allowed to touch.
 #
-# Installed root-owned with the script; paths below resolve against the staging checkout,
-# which the script passes as the project directory. Secrets live in that checkout's
-# server/.env.staging and server/.env.staging.db, which `.env.*` keeps out of git.
+# Installed root-owned with the script; paths below resolve against the checkout it builds
+# from (production's, /opt/deylee), which the script passes as the project directory.
+# Secrets live in that checkout's server/.env.staging and server/.env.staging.db, which
+# `.env.*` keeps out of git.
 name: deylee-staging
 
 services:
