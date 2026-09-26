@@ -1,0 +1,71 @@
+# Staging: the API, its own database and its own tunnel, beside production on the same
+# host and sharing nothing with it — not a container, a network, a volume, a key or a
+# tunnel. Driven only through `deylee-staging` (the script beside this file), which fixes
+# the project name and this file's installed copy, so a branch under test cannot change
+# what staging is allowed to touch.
+#
+# Installed root-owned with the script; paths below resolve against the staging checkout,
+# which the script passes as the project directory. Secrets live in that checkout's
+# server/.env.staging and server/.env.staging.db, which `.env.*` keeps out of git.
+name: deylee-staging
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+      # The host's network reaches package indexes over IPv6 where the default bridge,
+      # IPv4 only, may not.
+      network: host
+    image: deylee-staging-api:latest
+    container_name: deylee-staging-api
+    restart: unless-stopped
+    env_file: server/.env.staging
+    # Loopback only: reached from this host for checks, and from the internet only
+    # through the staging tunnel.
+    ports:
+      - "127.0.0.1:8090:8080"
+    # A slice of its own, not a deylee-*.slice: systemd nests slices by the dashes in their
+    # names, and staging must never spend production's budget.
+    cgroup_parent: staging.slice
+    cpus: 0.3
+    mem_limit: 256m
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    container_name: deylee-staging-db
+    restart: unless-stopped
+    env_file: server/.env.staging.db
+    volumes:
+      - staging-db:/var/lib/postgresql/data
+    cgroup_parent: staging.slice
+    cpus: 0.55
+    mem_limit: 576m
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # A separate Cloudflare tunnel with its own token, for staging's own hostname. Off unless
+  # asked for (`deylee-staging up --tunnel`): two connectors on production's tunnel would
+  # split production's traffic between the two stacks.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: deylee-staging-tunnel
+    restart: unless-stopped
+    env_file: server/.env.staging
+    command: tunnel --no-autoupdate run
+    cgroup_parent: staging.slice
+    cpus: 0.1
+    mem_limit: 128m
+    profiles: ["tunnel"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  staging-db:

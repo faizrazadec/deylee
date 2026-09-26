@@ -1,0 +1,12 @@
+# Staging's budget, separate from production's deylee.slice: the staging stack together
+# can never take more than this, and never anything of production's. Deliberately not
+# named deylee-staging.slice, which systemd would nest inside deylee.slice.
+#
+#     sudo install -m 644 server/staging/staging.slice /etc/systemd/system/
+#     sudo systemctl daemon-reload
+[Unit]
+Description=Deylee staging stack
+
+[Slice]
+CPUQuota=100%
+MemoryMax=1G
