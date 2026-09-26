@@ -916,7 +916,10 @@ days.`, `An hour slip can only cover days that have ended.` or the server's own 
 footer ghost `Cancel` + primary `Create and save…` (`Creating…` while working, disabled
 while the range has a problem). It syncs, asks the server to sign
 (`SYNC_PROTOCOL.md`, *Hour slips*), then opens a save panel titled `Save hour slip` for
-`deylee-hour-slip-{from}_to_{to}.pdf`.
+`deylee-hour-slip-{from}_to_{to}.pdf`. Every ending is reported in the status banner: saved —
+`Hour slip saved to {folder} — {claimed} claimed, {witnessed} witnessed.`, and the PDF
+opens; save panel cancelled — `The hour slip was created but not saved. Create it again to
+save it.`; write failed — `The hour slip could not be saved: {reason}`.
 
 **The slip PDF** (one A4 page, fixed print colours): `Hour slip` / `Deylee`; `Name`,
 `Email` (masked, `f***@example.com`), `Period`, `Time zone`, `Issued`; a 118 pt QR code of

@@ -401,13 +401,28 @@ final class HistoryModel {
         panel.title = "Save hour slip"
         panel.nameFieldStringValue = "deylee-hour-slip-\(from)_to_\(to).pdf"
         panel.allowedContentTypes = [.pdf]
+        // Every ending says so. A slip the server signed but nobody saved is a real outcome,
+        // and silence after pressing Create read as success whether or not it was one.
+        let totals = "\(formatCompact(slip.claimedMs)) claimed, \(formatCompact(slip.witnessedMs)) witnessed"
         let complete: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self, response == .OK, let url = panel.url else { return }
+            guard let self else { return }
+            guard response == .OK, let url = panel.url else {
+                self.status = HistoryStatus(
+                    tone: .error, text: "The hour slip was created but not saved. Create it again to save it."
+                )
+                return
+            }
             do {
                 try pdf.write(to: url, options: .atomic)
-                self.status = HistoryStatus(tone: .ok, text: "Saved to \(Self.folderName(of: url))")
+                self.status = HistoryStatus(
+                    tone: .ok, text: "Hour slip saved to \(Self.folderName(of: url)) — \(totals)."
+                )
+                // Opened for a look, the way a document just made is expected to be.
+                NSWorkspace.shared.open(url)
             } catch {
-                self.status = HistoryStatus(tone: .error, text: self.describe(error))
+                self.status = HistoryStatus(
+                    tone: .error, text: "The hour slip could not be saved: \(self.describe(error))"
+                )
             }
         }
         if let window = hostWindow {
