@@ -907,19 +907,22 @@ selection to today if today is inside the new month, else the month's first day
 (selection always stays inside the visible month).
 
 **Hour slip sheet** (`HistoryModalCard` at its own 384 px — the sheet adds no width of
-its own): title `Create hour slip`; body text `A
-PDF of your claimed and witnessed hours, signed by Deylee's server. Its QR code lets anyone
-you give it to check it is genuine — the page they see shows your name, full email and
-these hours.`; `From` / `To` date fields, defaulting to the last seven ended days; inline
-error box with `The last day can't be before the first.`, `An hour slip covers at most 30
-days.`, `An hour slip can only cover days that have ended.` or the server's own sentence;
-footer ghost `Cancel` + primary `Create and save…` (`Creating…` while working, disabled
-while the range has a problem). It syncs, asks the server to sign
-(`SYNC_PROTOCOL.md`, *Hour slips*), then opens a save panel titled `Save hour slip` for
-`deylee-hour-slip-{from}_to_{to}.pdf`. Every ending is reported in the status banner: saved —
-`Hour slip saved to {folder} — {claimed} claimed, {witnessed} witnessed.`, and the PDF
-opens; save panel cancelled — `The hour slip was created but not saved. Create it again to
-save it.`; write failed — `The hour slip could not be saved: {reason}`.
+its own): title `Create hour slip`; body text `A PDF of your claimed and witnessed hours,
+signed by Deylee's server. Its QR code lets anyone you give it to check it is genuine — the
+page they see shows your name, full email and these hours.`; a full-width segmented
+control `Today` | `Yesterday` | `Last 7 days` | `Custom` (default `Last 7 days`, the last
+seven ended days); under it the chosen dates in `formatDateLong`, or for `Custom` the
+`From` / `To` date fields; inline error box with `The last day can't be before the
+first.`, `An hour slip covers at most 30 days.`, `Today hasn't ended yet. Its hours can go
+on an hour slip from 02:00 tomorrow.` (a range ending today), `An hour slip can only cover
+days that have ended.` or the server's own sentence; footer ghost `Cancel` + primary
+`Create and save…` (`Creating…` while working, disabled while the range has a problem).
+It syncs, asks the server to sign (`SYNC_PROTOCOL.md`, *Hour slips*), then opens a save
+panel titled `Save hour slip` for `deylee-hour-slip-{from}_to_{to}.pdf`. Every ending is
+reported in the status banner: saved — `Hour slip saved to {folder} — {claimed} claimed,
+{witnessed} witnessed.`, and the PDF opens; save panel cancelled — `The hour slip was
+created but not saved. Create it again to save it.`; write failed — `The hour slip could
+not be saved: {reason}`.
 
 **Signed out:** `Add segment`, editing, deleting and `Hour slip…` need an account, as
 starting the timer does. The press raises sign-in and carries on once it succeeds;

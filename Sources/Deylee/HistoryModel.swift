@@ -405,6 +405,11 @@ final class HistoryModel {
         }
     }
 
+    /// The days a preset stands for, by the trusted clock. Nil for Custom.
+    func hourSlipRange(_ preset: HourSlipPreset) -> (DateKey, DateKey)? {
+        preset.range(now: service.trustedTime(), in: zone)
+    }
+
     /// Why this range cannot go on a slip, judged by the trusted clock, or nil.
     func hourSlipProblem(from: DateKey, to: DateKey) -> String? {
         hourSlipRangeProblem(from: from, to: to, now: service.trustedTime(), in: zone)

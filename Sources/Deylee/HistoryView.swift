@@ -30,6 +30,7 @@ struct HistoryView: View {
         .sheet(item: $model.hourSlip) { target in
             HourSlipSheet(
                 target: target,
+                rangeFor: { model.hourSlipRange($0) },
                 problem: { model.hourSlipProblem(from: $0, to: $1) },
                 onCancel: { model.hourSlip = nil },
                 onCreate: { await model.createHourSlip(from: $0, to: $1) }

@@ -29,8 +29,9 @@ private func key(_ s: String) -> DateKey { DateKey(s)! }
     }
 
     @Test func aDayThatHasNotEndedIsRefused() {
+        // A range running into today says when today becomes possible.
         #expect(hourSlipRangeProblem(from: key("2026-09-18"), to: key("2026-09-20"), now: now, in: berlin)
-            == "An hour slip can only cover days that have ended.")
+            == hourSlipTodayProblem)
         // Yesterday is still open inside its two-hour grace period.
         #expect(hourSlipRangeProblem(
             from: key("2026-09-19"), to: key("2026-09-19"), now: instant(2026, 9, 20, 1, 30), in: berlin
@@ -77,5 +78,27 @@ private func key(_ s: String) -> DateKey { DateKey(s)! }
         #expect(slip.name == nil)
         #expect(slip.days.first?.witnessedApproximate == true)
         #expect(slip.claimedMs == 3_600_000)
+    }
+}
+
+@Suite struct HourSlipPresets {
+    private let now = instant(2026, 9, 20, 10)
+
+    @Test func eachPresetStandsForItsDays() {
+        #expect(HourSlipPreset.today.range(now: now, in: berlin)! == (key("2026-09-20"), key("2026-09-20")))
+        #expect(HourSlipPreset.yesterday.range(now: now, in: berlin)! == (key("2026-09-19"), key("2026-09-19")))
+        #expect(HourSlipPreset.lastSevenDays.range(now: now, in: berlin)! == (key("2026-09-13"), key("2026-09-19")))
+        #expect(HourSlipPreset.custom.range(now: now, in: berlin) == nil)
+    }
+
+    /// Today is offered, and refused with the reason and the moment it becomes possible.
+    @Test func todaySaysWhenItCanBeUsed() {
+        let (from, to) = HourSlipPreset.today.range(now: now, in: berlin)!
+        #expect(hourSlipRangeProblem(from: from, to: to, now: now, in: berlin) == hourSlipTodayProblem)
+    }
+
+    @Test func yesterdayIsAllowedOnceItsGraceHasPassed() {
+        let (from, to) = HourSlipPreset.yesterday.range(now: now, in: berlin)!
+        #expect(hourSlipRangeProblem(from: from, to: to, now: now, in: berlin) == nil)
     }
 }

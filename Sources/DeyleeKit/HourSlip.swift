@@ -43,7 +43,9 @@ public func hourSlipRangeProblem(
         return "An hour slip covers at most \(hourSlipMaxDays) days."
     }
     if !isDayLocked(to, now: now, in: zone) {
-        return "An hour slip can only cover days that have ended."
+        return to == dateKeyOf(now, in: zone)
+            ? hourSlipTodayProblem
+            : "An hour slip can only cover days that have ended."
     }
     return nil
 }
@@ -55,6 +57,38 @@ public func defaultHourSlipRange(now: EpochMs, in zone: TimeZone = .current) -> 
     let last = isDayLocked(yesterday, now: now, in: zone) ? yesterday : addDays(yesterday, -1)
     return (addDays(last, -6), last)
 }
+
+/// The quick choices in the hour slip sheet.
+///
+/// Today is offered even though a slip can only cover ended days: choosing it says why
+/// and when it becomes possible, which is more use than a missing option.
+public enum HourSlipPreset: String, CaseIterable, Sendable {
+    case today, yesterday, lastSevenDays, custom
+
+    public var label: String {
+        switch self {
+        case .today: "Today"
+        case .yesterday: "Yesterday"
+        case .lastSevenDays: "Last 7 days"
+        case .custom: "Custom"
+        }
+    }
+
+    /// The days the preset stands for, or nil for `.custom`, whose days are picked.
+    public func range(now: EpochMs, in zone: TimeZone = .current) -> (DateKey, DateKey)? {
+        let today = dateKeyOf(now, in: zone)
+        switch self {
+        case .today: return (today, today)
+        case .yesterday: return (addDays(today, -1), addDays(today, -1))
+        case .lastSevenDays: return defaultHourSlipRange(now: now, in: zone)
+        case .custom: return nil
+        }
+    }
+}
+
+/// Why today cannot go on a slip yet, in words that say when it can.
+public let hourSlipTodayProblem =
+    "Today hasn't ended yet. Its hours can go on an hour slip from 02:00 tomorrow."
 
 /// `faiz@example.com` → `f***@example.com`, for the printed slip. The check page behind
 /// the QR code shows the address in full; the paper need not.
