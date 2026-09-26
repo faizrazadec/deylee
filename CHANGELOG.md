@@ -3,6 +3,14 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## Unreleased
+
+**Hour slips — proof of your hours.** History has a new Hour slip… button. Pick up to 30
+days that have ended and Deylee makes a PDF of your claimed hours and the hours the server
+witnessed live, signed by the server, with a QR code on it. Whoever you give it to can
+scan the code to see that it is genuine and that your record still says the same — the
+page shows your name, email and those hours, so share it only with people you mean to.
+
 ## 0.6.0 — 2026-09-26 (pre-release)
 
 **Past days are final.** Two hours after midnight, a day's work and break times can no

@@ -153,8 +153,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsModel.onReviewCaptures = { CapturesWindow.open(repo: repo) }
         capture.reconcile()
 
+        // Hour slips need the API and a session, like feedback; without sync the button
+        // is simply not offered.
+        let hourSlips = syncCoordinator.flatMap { coordinator in
+            ClientConfig.fromBundle().map {
+                HourSlipService(config: $0, auth: coordinator.auth, sync: coordinator.sync)
+            }
+        }
         model.openHistoryWindow = {
-            HistoryWindow.open(repo: repo, engine: engine, prefs: prefs, trustedClock: trustedClock)
+            HistoryWindow.open(
+                repo: repo, engine: engine, prefs: prefs, trustedClock: trustedClock,
+                hourSlips: hourSlips,
+                // Asked at the press, like Start: the model's pair is set further down.
+                needsSignIn: { model.needsSignIn() },
+                presentSignIn: { model.presentSignIn($0) }
+            )
         }
         model.openSettingsWindow = { settingsWindow.show() }
 

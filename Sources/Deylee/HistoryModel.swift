@@ -73,6 +73,13 @@ struct HistoryStatus: Equatable {
 }
 
 /// What the segment modal is editing.
+/// The hour slip sheet, opened on a default range the person can change.
+struct HourSlipTarget: Identifiable {
+    let id = UUID()
+    let from: DateKey
+    let to: DateKey
+}
+
 struct HistoryEditorTarget: Identifiable {
     let id = UUID()
     let date: DateKey
@@ -122,6 +129,7 @@ final class HistoryModel {
     var pendingDelete: Segment?
     var deleteError: String?
     private(set) var exporting: HistoryExportFormat?
+    var hourSlip: HourSlipTarget?
 
     /// Set by the window so the save panel can open as a sheet rather than a free
     /// floating dialog the user can lose behind the window.
@@ -134,10 +142,15 @@ final class HistoryModel {
     @ObservationIgnored private let service: HistoryService
     @ObservationIgnored private let prefs: PreferencesStore
     @ObservationIgnored private let zone: TimeZone
+    @ObservationIgnored private let hourSlips: HourSlipService?
 
-    init(repo: Repository, service: HistoryService, prefs: PreferencesStore, in zone: TimeZone = .current) {
+    init(
+        repo: Repository, service: HistoryService, prefs: PreferencesStore,
+        in zone: TimeZone = .current, hourSlips: HourSlipService? = nil
+    ) {
         self.repo = repo
         self.service = service
+        self.hourSlips = hourSlips
         self.prefs = prefs
         self.zone = zone
         let current = prefs.getAll()
@@ -261,18 +274,40 @@ final class HistoryModel {
         service.isLocked(date)
     }
 
+    /// Whether an account is still needed, and the way to ask for one. Supplied by the app
+    /// from the same pair that gates starting the timer, because adding, changing and
+    /// removing time by hand needs an account exactly as recording it does.
+    @ObservationIgnored var needsSignIn: () -> Bool = { false }
+    @ObservationIgnored var presentSignIn: (@escaping () -> Void) -> Void = { _ in }
+
+    /// Runs `action` now, or after a successful sign-in — the press still does what it
+    /// was for, as Start does. Declining sign-in does nothing.
+    private func afterSignIn(_ action: @escaping () -> Void) {
+        guard needsSignIn() else { return action() }
+        presentSignIn { [weak self] in
+            guard let self, !self.needsSignIn() else { return }
+            action()
+        }
+    }
+
     func openCreate() {
         guard !isLocked(selected) else { return }
-        editor = HistoryEditorTarget(
-            date: selected, segment: nil, defaultStartAt: defaultStartAt
-        )
+        afterSignIn { [weak self] in
+            guard let self else { return }
+            self.editor = HistoryEditorTarget(
+                date: self.selected, segment: nil, defaultStartAt: self.defaultStartAt
+            )
+        }
     }
 
     func openEdit(_ segment: Segment) {
-        editor = HistoryEditorTarget(
-            date: selected, segment: segment, defaultStartAt: defaultStartAt,
-            isLocked: isLocked(selected)
-        )
+        afterSignIn { [weak self] in
+            guard let self else { return }
+            self.editor = HistoryEditorTarget(
+                date: self.selected, segment: segment, defaultStartAt: self.defaultStartAt,
+                isLocked: self.isLocked(self.selected)
+            )
+        }
     }
 
     /// A new segment starts where the day left off; failing that, at a plausible 09:00.
@@ -330,8 +365,10 @@ final class HistoryModel {
     }
 
     func requestDelete(_ segment: Segment) {
-        deleteError = nil
-        pendingDelete = segment
+        afterSignIn { [weak self] in
+            self?.deleteError = nil
+            self?.pendingDelete = segment
+        }
     }
 
     func confirmDelete() {
@@ -353,6 +390,92 @@ final class HistoryModel {
     private func finish(_ outcome: HistoryService.Outcome) {
         reload()
         onMutated(outcome.affectedDates)
+    }
+
+    // MARK: - Hour slips
+
+    /// Offered only when this build syncs: a slip is signed by the server.
+    var canCreateHourSlip: Bool { hourSlips != nil }
+
+    func openHourSlip() {
+        afterSignIn { [weak self] in
+            guard let self else { return }
+            let (from, to) = defaultHourSlipRange(now: self.service.trustedTime(), in: self.zone)
+            self.hourSlip = HourSlipTarget(from: from, to: to)
+        }
+    }
+
+    /// The days a preset stands for, by the trusted clock. Nil for Custom.
+    func hourSlipRange(_ preset: HourSlipPreset) -> (DateKey, DateKey)? {
+        preset.range(now: service.trustedTime(), in: zone)
+    }
+
+    /// Why this range cannot go on a slip, judged by the trusted clock, or nil.
+    func hourSlipProblem(from: DateKey, to: DateKey) -> String? {
+        hourSlipRangeProblem(
+            from: from, to: to, now: service.trustedTime(), in: zone, isEnded: isEndedDay
+        )
+    }
+
+    /// Ended by the person, with no timer running on it — what lets today onto a slip.
+    private func isEndedDay(_ date: DateKey) -> Bool {
+        guard let day = try? repo.findDay(date), day.endedAt != nil else { return false }
+        let open = (try? repo.findOpenSegment()) ?? nil
+        return open?.dayId != day.id
+    }
+
+    /// Asks the server to sign the slip, draws it and asks where to save it. Returns the
+    /// sentence to show in the sheet, or nil once the save panel has taken over.
+    func createHourSlip(from: DateKey, to: DateKey) async -> String? {
+        guard let hourSlips else { return "Hour slips need a signed-in Deylee account." }
+        if let problem = hourSlipProblem(from: from, to: to) { return problem }
+        let slip: HourSlip
+        do {
+            slip = try await hourSlips.create(from: from, to: to, in: zone)
+        } catch {
+            return String(describing: error)
+        }
+        guard let pdf = renderHourSlipPDF(slip) else { return "The hour slip could not be drawn." }
+
+        let panel = NSSavePanel()
+        panel.title = "Save hour slip"
+        panel.nameFieldStringValue = "deylee-hour-slip-\(from)_to_\(to).pdf"
+        panel.allowedContentTypes = [.pdf]
+        // Every ending says so. A slip the server signed but nobody saved is a real outcome,
+        // and silence after pressing Create read as success whether or not it was one.
+        let totals = "\(formatCompact(slip.claimedMs)) claimed, \(formatCompact(slip.witnessedMs)) witnessed"
+        let complete: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self else { return }
+            self.hourSlip = nil
+            guard response == .OK, let url = panel.url else {
+                self.status = HistoryStatus(
+                    tone: .error, text: "The hour slip was created but not saved. Create it again to save it."
+                )
+                return
+            }
+            do {
+                try pdf.write(to: url, options: .atomic)
+                self.status = HistoryStatus(
+                    tone: .ok, text: "Hour slip saved to \(Self.folderName(of: url)) — \(totals)."
+                )
+                // Opened for a look, the way a document just made is expected to be.
+                NSWorkspace.shared.open(url)
+            } catch {
+                self.status = HistoryStatus(
+                    tone: .error, text: "The hour slip could not be saved: \(self.describe(error))"
+                )
+            }
+        }
+        // On the hour slip sheet itself, which stays open until the panel is done. Closing
+        // the sheet first and attaching the panel to the History window in the same breath
+        // left AppKit mid-dismissal: it declined the second sheet without a word, so the
+        // panel never appeared, nothing was saved and nothing was said.
+        if let window = hostWindow?.attachedSheet ?? hostWindow {
+            panel.beginSheetModal(for: window) { complete($0) }
+        } else {
+            panel.begin { complete($0) }
+        }
+        return nil
     }
 
     // MARK: - Export

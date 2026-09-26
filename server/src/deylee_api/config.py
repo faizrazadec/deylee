@@ -116,6 +116,18 @@ class Config:
     nothing to serve and the route should simply not exist.
     """
 
+    hour_slip_private_key_pem: str | None = None
+    """PEM of the P-256 key hour slips are signed with, or None to issue none.
+
+    A key of its own, not the session key: an hour slip is handed to strangers on purpose,
+    and nothing learned from one should bear on a login token. Optional so a deployment
+    that has not been given one yet still boots; the route then answers 503.
+    """
+
+    public_base_url: str | None = None
+    """The address an hour slip's QR code points at, e.g. https://api.faizraza.me. None
+    falls back to the address the request arrived on."""
+
 
 class ConfigError(Exception):
     """Refusal to start. `str(e)` is the sentence the operator reads in the logs."""
@@ -226,6 +238,12 @@ def load_config(lookup: Lookup = os.environ.get) -> Config:
             if (origin := raw.strip())
         ),
         updates_directory=optional("DEYLEE_UPDATES_DIR"),
+        hour_slip_private_key_pem=(
+            _decode_base64_pem(raw, "HOUR_SLIP_SIGNING_KEY_B64")
+            if (raw := optional("HOUR_SLIP_SIGNING_KEY_B64"))
+            else None
+        ),
+        public_base_url=(optional("DEYLEE_PUBLIC_URL") or "").rstrip("/") or None,
     )
 
 

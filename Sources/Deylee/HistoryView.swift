@@ -27,6 +27,15 @@ struct HistoryView: View {
             .background(Palette.surface)
             .foregroundStyle(Palette.fg)
         }
+        .sheet(item: $model.hourSlip) { target in
+            HourSlipSheet(
+                target: target,
+                rangeFor: { model.hourSlipRange($0) },
+                problem: { model.hourSlipProblem(from: $0, to: $1) },
+                onCancel: { model.hourSlip = nil },
+                onCreate: { await model.createHourSlip(from: $0, to: $1) }
+            )
+        }
         .sheet(item: $model.editor) { target in
             HistorySegmentEditor(
                 target: target,
@@ -60,6 +69,12 @@ struct HistoryView: View {
                 accessibilityLabel: "View",
                 selection: $model.view
             )
+
+            if model.canCreateHourSlip {
+                Button("Hour slip…") { model.openHourSlip() }
+                    .buttonStyle(DeyleeButtonStyle(variant: .secondary, size: .small))
+                    .help("A signed PDF of your hours, with a QR code anyone can check")
+            }
 
             ForEach(HistoryExportFormat.allCases, id: \.self) { format in
                 Button(format.label) { model.export(format) }

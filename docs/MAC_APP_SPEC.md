@@ -899,11 +899,47 @@ mutation or invalidation bumps a revision and refetches both ranges.
 **Header** (row, border-b, raised bg): `Previous month` / `Next month` chevron
 buttons; month title 17 px medium, host-locale `{month:'long', year:'numeric'}`
 (e.g. `July 2026`); ghost `Today` button; right-aligned segmented control
-(`Calendar` | `List`) and `Export CSV` / `Export JSON` buttons (both disabled
-while an export is in flight). Navigation: prev = month of (first − 1 day); next
+(`Calendar` | `List`), an `Hour slip…` button (only when the build syncs; tooltip `A
+signed PDF of your hours, with a QR code anyone can check`) and `Export CSV` / `Export
+JSON` buttons (both disabled while an export is in flight). Navigation: prev = month of (first − 1 day); next
 = month of (last + 1 day); changing month clears the status banner and moves the
 selection to today if today is inside the new month, else the month's first day
 (selection always stays inside the visible month).
+
+**Hour slip sheet** (`HistoryModalCard` at its own 384 px — the sheet adds no width of
+its own): title `Create hour slip`; body text `A PDF of your claimed and witnessed hours,
+signed by Deylee. Its QR code lets anyone you give it to check it is genuine — the
+page they see shows your name, full email and these hours.`; a full-width segmented
+control `Today` | `Yesterday` | `Last 7 days` | `Custom` (default `Last 7 days`, the last
+seven ended days); under it the chosen dates in `formatDateLong`, or for `Custom` the
+`From` / `To` date fields; inline error box with `The last day can't be before the
+first.`, `An hour slip covers at most 30 days.`, `Today hasn't ended yet. End the day to put it
+on an hour slip.` (today, until the day is ended with no timer running), `An hour slip can only cover
+days that have ended.` or the server's own sentence; footer ghost `Cancel` + primary
+`Create and save…` (`Creating…` while working, disabled while the range has a problem).
+It syncs, asks the server to sign (`SYNC_PROTOCOL.md`, *Hour slips*), then opens a save
+panel titled `Save hour slip` for `deylee-hour-slip-{from}_to_{to}.pdf`. Every ending is
+reported in the status banner: saved — `Hour slip saved to {folder} — {claimed} claimed,
+{witnessed} witnessed.`, and the PDF opens; save panel cancelled — `The hour slip was
+created but not saved. Create it again to save it.`; write failed — `The hour slip could
+not be saved: {reason}`.
+
+**Signed out:** `Add segment`, editing, deleting and `Hour slip…` need an account, as
+starting the timer does. The press raises sign-in and carries on once it succeeds;
+declining does nothing.
+
+**The slip PDF** (one A4 page, fixed print colours, no dashes anywhere in its text):
+the Deylee app icon (40 pt) beside `Hour slip` / `Deylee`; `Name` (left out when there is none), `Email` (masked,
+`f***@example.com`), `Period` (`{first} to {last}`, or the one date), `Time zone`,
+`Issued` (`EEE d MMM y h:mm a`); a 118 pt QR code of
+the check link captioned `Scan to verify` / `Signed by Deylee. The link shows the full email
+and these hours.`; a `Day` / `Claimed` / `Witnessed` table with a `Total` row
+(`*` on approximate witnessed days); footnotes `Claimed is the work time recorded.
+Witnessed is time Deylee heard a running timer, stamped by its own clock, so it
+cannot be added afterwards.`, when needed `* Approximate: these days are old enough that
+only a daily total of witnessed time, by UTC date, is kept.`, and `Check this slip online
+at {host}`. That line and the QR code are PDF links to the slip's full check address;
+the address itself is never printed.
 
 **Status banner** (below header, only when set by export outcomes): ok tone
 (sunken/muted) or error tone (danger); text truncates with tooltip; ghost

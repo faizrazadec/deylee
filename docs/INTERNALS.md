@@ -19,7 +19,8 @@ it. A timer that stopped working on a train would be worse than one that never s
   sends the device id every 30 seconds while a timer runs, so the server can vouch the
   time was tracked live (kept raw for 30 days, as spans of time until 90, then as one
   total per day), and feedback goes only when you write some. Nothing else is
-  sent. Screen captures stay in the encrypted local store and have no upload path at
+  sent. An hour slip is the one thing the user can choose to *publish*: its QR link shows
+  their name, email and the slip's hours to whoever holds it, and only they can make one. Screen captures stay in the encrypted local store and have no upload path at
   all; grep `Sources/Deylee/SyncService.swift` for `capture` and you will find nothing.
 - **An account is required once.** Signing in, with Google or an email address and password, is needed to start
   a day. After
