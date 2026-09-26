@@ -9,7 +9,7 @@
 # the root .dockerignore to the three server/ paths the Dockerfile copies.
 #
 # The api and tunnel read server/.env, which is untracked and holds every secret — including
-# the tunnel token. The database reads server/db.env instead, which holds only its superuser
+# the tunnel token. The database reads server/env.db instead, which holds only its superuser
 # password, so the API never has a credential that skips row-level security. Nothing in
 # this file is a secret, and nothing secret belongs in it.
 #
@@ -53,7 +53,7 @@ services:
     image: postgres:17-alpine
     container_name: deylee-db
     restart: unless-stopped
-    env_file: server/db.env
+    env_file: server/env.db
     # Most of the budget. Postgres's defaults (128 MB shared_buffers) fit inside it with
     # room for the page cache, and a year of 100 users peaked at about 465 MB.
     cgroup_parent: deylee.slice
