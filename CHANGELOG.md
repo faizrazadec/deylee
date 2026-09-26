@@ -5,11 +5,16 @@ SQLite schema may still change, so a minor bump can carry a migration.
 
 ## Unreleased
 
-**Hour slips — proof of your hours.** History has a new Hour slip… button. Pick up to 30
-days that have ended and Deylee makes a PDF of your claimed hours and the hours the server
-witnessed live, signed by the server, with a QR code on it. Whoever you give it to can
-scan the code to see that it is genuine and that your record still says the same — the
-page shows your name, email and those hours, so share it only with people you mean to.
+**Hour slips: proof of your hours.** History has a new Hour slip… button. Choose
+Yesterday, the last 7 days, a range of your own of up to 30 days, or Today once you have
+ended the day, and Deylee makes a PDF of the hours you recorded and the hours it witnessed
+live, signed by Deylee, with a QR code and a link. Whoever you give it to can open either
+to see that it is genuine and that your record still says the same. The page shows your
+name, email and those hours, so share it only with people you mean to. If you reopen or
+change a day after making a slip, that slip expires, and you can make a new one.
+
+**Changing time needs an account.** Adding, editing or deleting a segment in History now
+asks you to sign in first, the same as starting the timer.
 
 ## 0.6.0 — 2026-09-26 (pre-release)
 
