@@ -23,7 +23,9 @@ final class HistoryWindow: NSObject, NSWindowDelegate {
     /// Opens the window, or brings the existing one forward.
     static func open(
         repo: Repository, engine: TimerEngine, prefs: PreferencesStore, trustedClock: TrustedClock,
-        hourSlips: HourSlipService?
+        hourSlips: HourSlipService?,
+        needsSignIn: @escaping () -> Bool = { false },
+        presentSignIn: @escaping (@escaping () -> Void) -> Void = { _ in }
     ) {
         if let current {
             // Re-read on the way forward. The window survives being sent behind
@@ -38,6 +40,8 @@ final class HistoryWindow: NSObject, NSWindowDelegate {
             repo: repo, engine: engine, prefs: prefs, trustedClock: trustedClock,
             hourSlips: hourSlips
         )
+        window.model.needsSignIn = needsSignIn
+        window.model.presentSignIn = presentSignIn
         current = window
         DockPresence.acquire()
         window.focus()

@@ -921,6 +921,10 @@ while the range has a problem). It syncs, asks the server to sign
 opens; save panel cancelled — `The hour slip was created but not saved. Create it again to
 save it.`; write failed — `The hour slip could not be saved: {reason}`.
 
+**Signed out:** `Add segment`, editing, deleting and `Hour slip…` need an account, as
+starting the timer does. The press raises sign-in and carries on once it succeeds;
+declining does nothing.
+
 **The slip PDF** (one A4 page, fixed print colours): `Hour slip` / `Deylee`; `Name`,
 `Email` (masked, `f***@example.com`), `Period`, `Time zone`, `Issued`; a 118 pt QR code of
 the check link captioned `Scan to verify` / `Signed by Deylee's server. The link shows the

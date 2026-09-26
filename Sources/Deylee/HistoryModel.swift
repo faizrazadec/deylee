@@ -274,18 +274,40 @@ final class HistoryModel {
         service.isLocked(date)
     }
 
+    /// Whether an account is still needed, and the way to ask for one. Supplied by the app
+    /// from the same pair that gates starting the timer, because adding, changing and
+    /// removing time by hand needs an account exactly as recording it does.
+    @ObservationIgnored var needsSignIn: () -> Bool = { false }
+    @ObservationIgnored var presentSignIn: (@escaping () -> Void) -> Void = { _ in }
+
+    /// Runs `action` now, or after a successful sign-in — the press still does what it
+    /// was for, as Start does. Declining sign-in does nothing.
+    private func afterSignIn(_ action: @escaping () -> Void) {
+        guard needsSignIn() else { return action() }
+        presentSignIn { [weak self] in
+            guard let self, !self.needsSignIn() else { return }
+            action()
+        }
+    }
+
     func openCreate() {
         guard !isLocked(selected) else { return }
-        editor = HistoryEditorTarget(
-            date: selected, segment: nil, defaultStartAt: defaultStartAt
-        )
+        afterSignIn { [weak self] in
+            guard let self else { return }
+            self.editor = HistoryEditorTarget(
+                date: self.selected, segment: nil, defaultStartAt: self.defaultStartAt
+            )
+        }
     }
 
     func openEdit(_ segment: Segment) {
-        editor = HistoryEditorTarget(
-            date: selected, segment: segment, defaultStartAt: defaultStartAt,
-            isLocked: isLocked(selected)
-        )
+        afterSignIn { [weak self] in
+            guard let self else { return }
+            self.editor = HistoryEditorTarget(
+                date: self.selected, segment: segment, defaultStartAt: self.defaultStartAt,
+                isLocked: self.isLocked(self.selected)
+            )
+        }
     }
 
     /// A new segment starts where the day left off; failing that, at a plausible 09:00.
@@ -343,8 +365,10 @@ final class HistoryModel {
     }
 
     func requestDelete(_ segment: Segment) {
-        deleteError = nil
-        pendingDelete = segment
+        afterSignIn { [weak self] in
+            self?.deleteError = nil
+            self?.pendingDelete = segment
+        }
     }
 
     func confirmDelete() {
@@ -374,8 +398,11 @@ final class HistoryModel {
     var canCreateHourSlip: Bool { hourSlips != nil }
 
     func openHourSlip() {
-        let (from, to) = defaultHourSlipRange(now: service.trustedTime(), in: zone)
-        hourSlip = HourSlipTarget(from: from, to: to)
+        afterSignIn { [weak self] in
+            guard let self else { return }
+            let (from, to) = defaultHourSlipRange(now: self.service.trustedTime(), in: self.zone)
+            self.hourSlip = HourSlipTarget(from: from, to: to)
+        }
     }
 
     /// Why this range cannot go on a slip, judged by the trusted clock, or nil.

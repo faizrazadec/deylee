@@ -163,7 +163,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.openHistoryWindow = {
             HistoryWindow.open(
                 repo: repo, engine: engine, prefs: prefs, trustedClock: trustedClock,
-                hourSlips: hourSlips
+                hourSlips: hourSlips,
+                // Asked at the press, like Start: the model's pair is set further down.
+                needsSignIn: { model.needsSignIn() },
+                presentSignIn: { model.presentSignIn($0) }
             )
         }
         model.openSettingsWindow = { settingsWindow.show() }
