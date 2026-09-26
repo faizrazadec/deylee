@@ -14,6 +14,8 @@ What the page shows — name, full email address and the hours — is exactly wh
 holder was handed. That is the point of it, and why only the person can create one.
 """
 
+import base64
+import hashlib
 import html
 import secrets
 import time
@@ -94,6 +96,7 @@ async def create(request: Request) -> dict:
             "SELECT email, display_name FROM public.app_users WHERE id = $1", user_id
         )
         days = await _days(connection, first, last, zone)
+        fingerprint = await _fingerprint(connection, first, last)
 
     claimed = sum(day.claimedMs for day in days)
     witnessed = sum(day.witnessedMs for day in days)
@@ -106,6 +109,8 @@ async def create(request: Request) -> dict:
             "to": last.isoformat(),
             "claimed": claimed,
             "witnessed": witnessed,
+            # What the recorded time looked like when this was signed; see _fingerprint.
+            "fp": fingerprint,
             "iat": issued_at,
             "jti": secrets.token_hex(8),
         },
@@ -155,8 +160,12 @@ async def check(request: Request, token: str) -> HTMLResponse:
             "SELECT email, display_name FROM public.app_users WHERE id = $1", user_id
         )
         days = await _days(connection, first, last, zone) if profile else []
+        fingerprint = await _fingerprint(connection, first, last) if profile else None
     if profile is None:
         return _page("This hour slip's account no longer exists", None, status=410)
+    # A slip issued before fingerprints existed has none, and is checked by its totals.
+    if "fp" in claims and claims["fp"] != fingerprint:
+        return _expired(claims, profile, first, last, zone)
     return _page("Verified Deylee hour slip", {
         "claims": claims, "profile": profile, "days": days, "first": first, "last": last,
         "zone": zone,
@@ -234,9 +243,56 @@ async def _days(connection, first: date, last: date, zone: ZoneInfo) -> list[Hou
     return days
 
 
+async def _fingerprint(connection, first: date, last: date) -> str:
+    """A digest of the recorded time a slip covers, so any change to it after signing shows.
+
+    Every segment filed on those days — id, type, start, end and whether it was deleted —
+    and each day's ended mark. Reopening a day, ending it again, adding, moving or deleting
+    time all change it; a note does not, because notes are not on the slip, and neither
+    does compaction, which touches witness beats only. 128 bits of SHA-256.
+    """
+    dates = [(first + timedelta(days=n)).isoformat() for n in range((last - first).days + 1)]
+    segments = await connection.fetch(
+        """
+        SELECT id, type, started_at, ended_at, deleted_at FROM public.segments
+         WHERE day_date = ANY($1::text[]) ORDER BY id
+        """,
+        dates,
+    )
+    days = await connection.fetch(
+        """
+        SELECT date, ended_at, deleted_at FROM public.days
+         WHERE date = ANY($1::text[]) ORDER BY date, id
+        """,
+        dates,
+    )
+    digest = hashlib.sha256()
+    for row in segments:
+        digest.update(f"s|{row['id']}|{row['type']}|{row['started_at']}|{row['ended_at']}|"
+                      f"{row['deleted_at']}\n".encode())
+    for row in days:
+        digest.update(f"d|{row['date']}|{row['ended_at']}|{row['deleted_at']}\n".encode())
+    return base64.urlsafe_b64encode(digest.digest()[:16]).decode().rstrip("=")
+
+
 def _hm(ms: int) -> str:
     minutes = ms // 60000
     return f"{minutes // 60}h {minutes % 60:02d}m"
+
+
+def _expired(claims: dict, profile, first: date, last: date, zone: ZoneInfo) -> HTMLResponse:
+    """A genuine slip whose hours were changed after it was signed: reopened, retimed,
+    added to or deleted from. Deylee no longer vouches for it, so no hours are shown."""
+    e = html.escape
+    issued = datetime.fromtimestamp(claims["iat"], UTC).strftime("%d %b %Y %H:%M UTC")
+    body = f"""<h1>This hour slip has expired</h1>
+<p class="bad">The hours it covers were changed after it was issued, so Deylee no longer
+vouches for it. Ask for a new one.</p>
+<dl><dt>Name</dt><dd>{e(profile["display_name"] or "")}</dd>
+<dt>Email</dt><dd>{e(profile["email"])}</dd>
+<dt>Period</dt><dd>{e(first.isoformat())} to {e(last.isoformat())} ({e(zone.key)})</dd>
+<dt>Issued</dt><dd>{e(issued)}</dd></dl>"""
+    return _html("This hour slip has expired", body, status=200)
 
 
 def _page(title: str, hour_slip: dict | None, status: int = 200) -> HTMLResponse:
@@ -287,6 +343,13 @@ def _page(title: str, hour_slip: dict | None, status: int = 200) -> HTMLResponse
 <table><tr><th>Day</th><th>Claimed</th><th>Witnessed</th></tr>{rows}</table>{approx}
 <p class="note">Claimed is the work time recorded. Witnessed is time the server heard a
 running timer, stamped by its own clock — it cannot be added afterwards.</p>"""
+    return _html(title, body, status)
+
+
+def _html(title: str, body: str, status: int) -> HTMLResponse:
+    """The page shell every check answer shares. Self-contained: no script, no external
+    asset, so it renders the same wherever a QR code opens it and can load nothing."""
+    e = html.escape
     return HTMLResponse(
         f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

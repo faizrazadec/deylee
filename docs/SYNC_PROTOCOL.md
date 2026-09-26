@@ -294,6 +294,11 @@ Rules:
   checks the signature (a key used only for slips) and re-derives the figures from the
   record, showing the person's name, full email and hours to whoever opens it. That page
   is the point of a slip, and only the person recorded can create one.
+- **A slip expires when its hours change.** The token also carries a fingerprint of the
+  recorded time it covers: each segment's id, type, start, end and deletion, and each day's
+  ended mark. If any of that changes after signing — a day reopened and ended again, time
+  added, moved or deleted — the page says the slip has expired and shows no hours. Notes
+  are not on a slip and do not expire it; nor does compacting witness beats.
 
 ## Idempotency
 

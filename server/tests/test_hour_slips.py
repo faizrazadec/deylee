@@ -249,3 +249,59 @@ async def test_compacting_the_beats_into_spans_changes_nothing(person: Person, o
 
     after = (await person.hour_slip(DAY, NEXT)).json()
     assert [d["witnessedMs"] for d in after["days"]] == [d["witnessedMs"] for d in before["days"]]
+
+
+# MARK: Expiry
+
+
+async def change_as_owner(owner: Store, sql: str, *args) -> None:
+    """A change to a day the slip covers, made past the day lock — standing in for a day
+    that was ended, put on a slip, then reopened and changed."""
+    async with owner.without_tenant() as connection:
+        await connection.execute("SET LOCAL session_replication_role = replica")
+        await connection.execute(sql, *args)
+
+
+async def check(person: Person, url: str) -> str:
+    page = await person.client.get(url.removeprefix("https://slips.test"))
+    assert page.status_code == 200
+    return page.text
+
+
+async def test_changing_the_time_after_signing_expires_the_slip(person: Person, owner: Store):
+    url = (await person.hour_slip(DAY, NEXT)).json()["url"]
+    await change_as_owner(
+        owner,
+        "UPDATE public.segments SET started_at = started_at + 60000 "
+        "WHERE user_id = $1 AND type = 'work' AND day_date = $2 "
+        "AND started_at = (SELECT min(started_at) FROM public.segments WHERE user_id = $1)",
+        person.user, DAY.isoformat(),
+    )
+    text = await check(person, url)
+    assert "This hour slip has expired" in text
+    assert "record still matches" not in text
+    assert "7h" not in text, "an expired slip shows no hours"
+
+
+async def test_ending_the_day_again_expires_the_slip(person: Person, owner: Store):
+    """Reopened and closed again: the hours may even be the same, but the day is not the
+    day that was signed."""
+    await change_as_owner(
+        owner, "INSERT INTO public.days (id, user_id, date, target_minutes, ended_at, seq) "
+               "VALUES ($1, $2, $3, 480, 1, nextval('public.sync_seq')) ON CONFLICT DO NOTHING",
+        uuid4(), person.user, DAY.isoformat(),
+    )
+    url = (await person.hour_slip(DAY, NEXT)).json()["url"]
+    await change_as_owner(
+        owner, "UPDATE public.days SET ended_at = 2 WHERE user_id = $1 AND date = $2",
+        person.user, DAY.isoformat(),
+    )
+    assert "This hour slip has expired" in await check(person, url)
+
+
+async def test_a_note_does_not_expire_the_slip(person: Person, owner: Store):
+    url = (await person.hour_slip(DAY, NEXT)).json()["url"]
+    await change_as_owner(
+        owner, "UPDATE public.segments SET note = 'standup' WHERE user_id = $1", person.user
+    )
+    assert "record still matches" in await check(person, url)
