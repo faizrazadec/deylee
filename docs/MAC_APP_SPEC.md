@@ -937,7 +937,9 @@ and these hours.`; a `Day` / `Claimed` / `Witnessed` table with a `Total` row
 (`*` on approximate witnessed days); footnotes `Claimed is the work time recorded.
 Witnessed is time Deylee heard a running timer, stamped by its own clock, so it
 cannot be added afterwards.`, when needed `* Approximate: these days are old enough that
-only a daily total of witnessed time, by UTC date, is kept.`, and the link itself.
+only a daily total of witnessed time, by UTC date, is kept.`, and `Check this slip online
+at {host}`. That line and the QR code are PDF links to the slip's full check address;
+the address itself is never printed.
 
 **Status banner** (below header, only when set by export outcomes): ok tone
 (sunken/muted) or error tone (danger); text truncates with tooltip; ghost

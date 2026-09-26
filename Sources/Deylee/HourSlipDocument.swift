@@ -2,6 +2,7 @@ import AppKit
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import DeyleeKit
+import PDFKit
 import SwiftUI
 
 /// The printed hour slip: one A4 page, drawn from SwiftUI straight into a PDF.
@@ -74,7 +75,7 @@ struct HourSlipDocument: View {
                     .resizable()
                     .frame(width: 118, height: 118)
             }
-            Text("Scan to verify")
+            Text(Self.qrCaption)
                 .font(.system(size: 9, weight: .medium))
             Text("Signed by Deylee. The link shows the full email and these hours.")
                 .font(.system(size: 7.5))
@@ -131,10 +132,23 @@ struct HourSlipDocument: View {
                         + "witnessed time, by UTC date, is kept."
                 )
             }
-            Text(slip.url).foregroundStyle(PrintPalette.faint).lineLimit(1).truncationMode(.middle)
+            // The host only, linked to the full address after drawing (`linkHourSlip`). The
+            // address itself is hundreds of characters; printed shortened it read as a link,
+            // and copying it gave a truncated one that fails the check.
+            Text("\(Self.checkLinePrefix) \(Self.host(of: slip.url))")
+                .foregroundStyle(PrintPalette.faint)
         }
         .font(.system(size: 8))
         .foregroundStyle(PrintPalette.muted)
+    }
+
+    /// The words `linkHourSlip` finds to place the link over.
+    static let checkLinePrefix = "Check this slip online at"
+    static let qrCaption = "Scan to verify"
+
+    static func host(of url: String) -> String {
+        guard let parts = URLComponents(string: url), let host = parts.host else { return url }
+        return parts.port.map { "\(host):\($0)" } ?? host
     }
 
     private func long(_ date: String) -> String {
@@ -180,5 +194,38 @@ func renderHourSlipPDF(_ slip: HourSlip) -> Data? {
         pdf.endPDFPage()
         pdf.closePDF()
     }
-    return data.length > 0 ? data as Data : nil
+    guard data.length > 0 else { return nil }
+    return linkHourSlip(data as Data, to: slip.url)
+}
+
+/// Makes the check line and the QR code open the slip's full address when clicked.
+///
+/// SwiftUI draws text into a PDF, not links, so they are added afterwards with PDFKit: the
+/// words are found on the page and a link laid over them, and over the code above its
+/// caption. Returns the PDF unchanged if anything cannot be found, rather than no PDF.
+func linkHourSlip(_ pdf: Data, to address: String) -> Data {
+    guard let url = URL(string: address), let document = PDFDocument(data: pdf),
+          let page = document.page(at: 0)
+    else { return pdf }
+
+    func link(_ bounds: CGRect) {
+        let annotation = PDFAnnotation(bounds: bounds, forType: .link, withProperties: nil)
+        annotation.url = url
+        annotation.border = PDFBorder()
+        annotation.border?.lineWidth = 0
+        page.addAnnotation(annotation)
+    }
+    if let line = document.findString(HourSlipDocument.checkLinePrefix, withOptions: []).first {
+        // The whole line, host included: from the start of the words to the right margin.
+        let found = line.bounds(for: page)
+        link(CGRect(x: found.minX, y: found.minY, width: page.bounds(for: .mediaBox).width - 40 - found.minX,
+                    height: found.height))
+    }
+    if let caption = document.findString(HourSlipDocument.qrCaption, withOptions: []).first {
+        // The code sits 6 pt above its caption, 118 pt square, centred on it. PDF space
+        // runs upwards, so "above" is a larger y.
+        let found = caption.bounds(for: page)
+        link(CGRect(x: found.midX - 59, y: found.maxY + 6, width: 118, height: 118))
+    }
+    return document.dataRepresentation() ?? pdf
 }
