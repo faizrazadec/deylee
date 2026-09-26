@@ -249,6 +249,9 @@ Rules:
   noise. This bounds the table's growth and turns a flood into a no-op.
 - **Silence is the offline state, not an error.** A beat that cannot be delivered
   means those minutes stay claimed. Nothing about a failed beat may reach the user.
+- **Beats are compacted as they age.** Raw for 30 days, then one span per unbroken run
+  of beats, and after 90 days one total per user per day — by UTC day, and without
+  changing what the report counts. Nothing a client sends or receives changes.
 - **The witness log is server-only.** It is never pulled, has no `code` in any
   `results`, and the API role holds no grant to its table; the sole writer is a
   `SECURITY DEFINER` function that reads the caller's identity from the transaction,
