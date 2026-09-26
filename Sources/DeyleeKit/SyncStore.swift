@@ -496,6 +496,36 @@ extension Repository {
         return refused
     }
 
+    /// Put back the server's copy of segments it refused as `locked` — edits to a day that
+    /// had already ended by the server's clock.
+    ///
+    /// Unlike `applyRemote`, the local row loses even when it is newer. That is the point:
+    /// last-write-wins would keep the edit, and on a Mac whose date was set back its
+    /// timestamp is no claim at all. Clean afterwards — not dirty, not marked refused —
+    /// because what it now holds is exactly what the server has.
+    public func restoreFromServer(_ segments: [SyncSegment]) throws {
+        guard !segments.isEmpty else { return }
+        try db.transaction {
+            for segment in segments {
+                let dayID = try localDayID(for: segment.dayDate, createdAt: segment.createdAt)
+                try db.run(
+                    """
+                    UPDATE segments
+                       SET day_id = ?, type = ?, started_at = ?, ended_at = ?, note = ?,
+                           updated_at = ?, deleted_at = ?, dirty = 0,
+                           rejected_at = NULL, rejection_code = NULL
+                     WHERE uuid = ?
+                    """,
+                    [.integer(dayID), .text(segment.type.rawValue),
+                     .integer(segment.startedAt), segment.endedAt.map { .integer($0) } ?? .null,
+                     segment.note.map { .text($0) } ?? .null,
+                     .integer(segment.updatedAt), segment.deletedAt.map { .integer($0) } ?? .null,
+                     .text(segment.uuid)]
+                )
+            }
+        }
+    }
+
     private func knowsDay(uuid: String) throws -> Bool {
         try db.queryOne("SELECT 1 FROM days WHERE uuid = ?", [.text(uuid)]) { _ in true } ?? false
     }

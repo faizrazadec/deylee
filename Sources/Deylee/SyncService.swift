@@ -31,6 +31,10 @@ private struct ChangeDTO: Codable {
 private struct SyncRequestDTO: Encodable {
     let protocolVersion: Int
     let deviceId: String
+    /// This Mac's zone, which decides on the server when its days lock. Sent every time
+    /// rather than once at sign-in, because a zone recorded once is wrong the day
+    /// somebody travels.
+    let timeZone: String
     let cursor: Int64
     let changes: [ChangeDTO]
 }
@@ -76,6 +80,7 @@ final class SyncService: ObservableObject {
     private let config: ClientConfig
     private let repo: Repository
     private let auth: AuthService
+    private let trustedClock: TrustedClock
     private let now: () -> EpochMs
     private var inFlight = false
 
@@ -83,11 +88,13 @@ final class SyncService: ObservableObject {
         config: ClientConfig,
         repo: Repository,
         auth: AuthService,
+        trustedClock: TrustedClock,
         now: @escaping () -> EpochMs = { EpochMs(Date().timeIntervalSince1970 * 1000) }
     ) {
         self.config = config
         self.repo = repo
         self.auth = auth
+        self.trustedClock = trustedClock
         self.now = now
     }
 
@@ -147,11 +154,14 @@ final class SyncService: ObservableObject {
             body: SyncRequestDTO(
                 protocolVersion: 1,
                 deviceId: state.deviceID,
+                timeZone: TimeZone.current.identifier,
                 cursor: state.cursor,
                 changes: changes
             ),
             bearer: token
         )
+        // What decides, in the History window, whether a day has ended.
+        trustedClock.anchor(serverTime: response.serverTime)
 
         // Only rows the server actually took are cleared, and only if they have not
         // been edited since — `markPushed` checks `updated_at`, so an edit made
@@ -232,6 +242,17 @@ final class SyncService: ObservableObject {
         }
 
         try repo.applyRemote(days: incomingDays, segments: incomingSegments, serverSeq: response.cursor)
+
+        // Edits to a day that had already ended by the server's clock — most likely made
+        // with this Mac's date set back. The server sent its own copy of each; put it
+        // back over the edit, which last-write-wins above would have kept. Lower-cased,
+        // because the server answers in lower case whatever case it was sent.
+        let locked = Set(
+            response.results.filter { $0.code == "locked" }.map { $0.id.lowercased() }
+        )
+        try repo.restoreFromServer(
+            incomingSegments.filter { locked.contains($0.uuid.lowercased()) }
+        )
 
         // After the rows are written and before the cursor moves. Dying anywhere in
         // here costs a repeat, never a row: an unsaved quarantine leaves the cursor

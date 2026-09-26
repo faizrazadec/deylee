@@ -57,6 +57,8 @@ struct RejectedReason: Equatable {
             "This ends before it starts, so it was not synced."
         case "stale":
             "A newer version of this exists on another device, so this was not synced."
+        case "locked":
+            "This day had already ended, so the server kept its own copy."
         default:
             "The server refused this entry (\(code)), so it is not synced."
         }
@@ -78,6 +80,8 @@ struct HistoryEditorTarget: Identifiable {
     let segment: Segment?
     /// Where a new segment's start defaults to — the day's last end, or 09:00 local.
     let defaultStartAt: EpochMs
+    /// The day has ended: only the note may change.
+    var isLocked = false
 }
 
 /// The state behind one History window.
@@ -251,7 +255,14 @@ final class HistoryModel {
 
     // MARK: - Editing
 
+    /// Whether `date` has ended, by the server's clock where one is known. Asked on every
+    /// tick of the day panel, so a day that locks while the window is open says so.
+    func isLocked(_ date: DateKey) -> Bool {
+        service.isLocked(date)
+    }
+
     func openCreate() {
+        guard !isLocked(selected) else { return }
         editor = HistoryEditorTarget(
             date: selected, segment: nil, defaultStartAt: defaultStartAt
         )
@@ -259,7 +270,8 @@ final class HistoryModel {
 
     func openEdit(_ segment: Segment) {
         editor = HistoryEditorTarget(
-            date: selected, segment: segment, defaultStartAt: defaultStartAt
+            date: selected, segment: segment, defaultStartAt: defaultStartAt,
+            isLocked: isLocked(selected)
         )
     }
 
@@ -277,7 +289,13 @@ final class HistoryModel {
     func save(_ target: HistoryEditorTarget, _ draft: HistorySegmentDraft) -> String? {
         do {
             let outcome: HistoryService.Outcome
-            if let segment = target.segment {
+            if let segment = target.segment, target.isLocked {
+                // The note alone. The time fields read HH:MM, so sending them back would
+                // round away the seconds and read as a change to a day that is final.
+                outcome = try service.updateSegment(
+                    UpdateSegmentInput(id: segment.id, note: .some(draft.note))
+                )
+            } else if let segment = target.segment {
                 outcome = try service.updateSegment(UpdateSegmentInput(
                     id: segment.id,
                     type: draft.type,

@@ -3,6 +3,14 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## Unreleased
+
+**Past days are final.** Two hours after midnight, a day's work and break times can no
+longer be changed, deleted or added to — in History the day shows Locked. Notes stay
+editable. The server decides when a day has ended, by its own clock, so changing your
+Mac's date does not reopen yesterday: an edit made that way is undone at the next sync.
+Work recorded while offline still arrives when you reconnect.
+
 ## 0.5.0 — 2026-09-26 (pre-release)
 
 **The menu bar shows the Deylee icon.** The small clock that stood in for the app is

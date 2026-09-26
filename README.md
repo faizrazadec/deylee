@@ -40,7 +40,8 @@ is what keeps the numbers right across a crash, a restart, a machine sleep or a 
 
 Only hours, and only if you are signed in. Three things are ever sent:
 
-- **Sync** — days and segments: when you started, when you stopped, work or break.
+- **Sync** — days and segments: when you started, when you stopped, work or break —
+  and your Mac's time zone, so the server knows when your day has ended.
 - **A heartbeat** while a timer is running — your device's id every 30 seconds and nothing
   else, so the server can vouch that the time was tracked live rather than typed in later.
 - **Feedback**, only when you write some — your text, the app version and the macOS

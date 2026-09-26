@@ -56,6 +56,7 @@ compromised sync server cannot mint a session for another customer.
 {
   "protocolVersion": 1,
   "deviceId": "018f3a1e-...",
+  "timeZone": "Asia/Karachi",
   "cursor": 4711,
   "changes": [
     {
@@ -81,6 +82,7 @@ compromised sync server cannot mint a session for another customer.
 |---|---|
 | `protocolVersion` | Always `1`. A server that does not recognise the value refuses the request rather than guessing. |
 | `deviceId` | Stable UUID per installation. Used for diagnostics and to let a client recognise its own echoed writes. |
+| `timeZone` | Optional. The client's IANA zone, which decides when its days lock (see *Locked days*). Sent on every sync, because a zone recorded once at sign-in is wrong the day its owner travels. Absent or unknown, the server uses the sign-in zone, then UTC. |
 | `cursor` | Highest `seq` this client has durably stored. `0` on first sync. |
 | `changes` | May be empty — an empty push is the normal way to poll. |
 
@@ -214,6 +216,7 @@ with HTTP 200, because the batch as a whole succeeded.
 | `invalid-range` | `endedAt` is not after `startedAt` |
 | `invalid-shape` | A field failed validation (bad DateKey, note too long, unknown `type`) |
 | `stale` | A newer version of this row already exists; the winner is in `changes` |
+| `locked` | The segment's day has ended by the server's clock; the server's copy is in `changes`, and the client must put it back over its own |
 
 These mirror `MutationErrorCode` in `Sources/DeyleeKit/Models.swift` so the macOS app
 can surface a server rejection through the path it already uses for local ones.
@@ -292,6 +295,30 @@ Recorded so nobody assumes otherwise:
   sync is proven.
 - **Server-side day rollups.** Totals stay derived.
 
+## Locked days
+
+A day's recorded time is final two hours after its midnight, in the client's zone, by the
+**server's** clock. From then on the server refuses — as `locked` — any change to a
+segment's `startedAt`, `endedAt`, `type` or `dayDate`, and any delete, and moving a
+segment onto a locked day. The client's own clock is never consulted, so a device whose
+date was set back cannot reopen a day.
+
+Still accepted on a locked day, because refusing them loses honest time:
+
+- **A note edit.** Words about the time, not the time.
+- **Closing or discarding an open segment.** The timer closes one when a machine slept
+  across midnight; crash recovery discards one. An open segment holds no recorded hours.
+- **A segment the server has never seen.** Work recorded offline and synced late. It is
+  kept, and marked as a late claim, so it reads as claimed rather than witnessed. An
+  *open* segment for a locked day is refused: an honest client closes and splits at
+  midnight before it syncs.
+
+A refusal carries the server's copy of the row in `changes`. Last-write-wins would keep
+the client's edit — it is the newer one, and on a clock set back its `updatedAt` means
+nothing — so the client must overwrite its row with that copy, whatever the timestamps
+say, and treat it as clean. Clients should also refuse these edits locally, judged by
+the server time of their last sync (`serverTime`), so the user is told where they type.
+
 ## Integrity, in one place
 
 The server does not trust the client, because the client runs on a machine its owner
@@ -301,8 +328,11 @@ worked:
 - **Bounds** refuse the impossible at the door — a segment over sixteen hours, a
   timestamp in the future — as ordinary per-row rejections.
 - **Marks** are ink, not walls. Editing or deleting hours that already synced, and
-  hours first filed more than two days late, each leave a row in an audit table the
-  client protocol cannot name. Edits stay allowed; they simply stop being invisible.
+  hours first filed more than two days late or onto a locked day, each leave a row in
+  an audit table the client protocol cannot name. Edits stay allowed while the day is
+  open; they simply stop being invisible.
+- **Locked days** (above) are the one wall: once a day has ended by the server's clock,
+  its recorded times are final.
 - **Witnessed time** (above) is the server's own record of a live client, which no
   after-the-fact request can fabricate.
 
