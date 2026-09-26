@@ -906,7 +906,8 @@ JSON` buttons (both disabled while an export is in flight). Navigation: prev = m
 selection to today if today is inside the new month, else the month's first day
 (selection always stays inside the visible month).
 
-**Hour slip sheet** (`HistoryModalCard`, 440 px): title `Create hour slip`; body text `A
+**Hour slip sheet** (`HistoryModalCard` at its own 384 px — the sheet adds no width of
+its own): title `Create hour slip`; body text `A
 PDF of your claimed and witnessed hours, signed by Deylee's server. Its QR code lets anyone
 you give it to check it is genuine — the page they see shows your name, full email and
 these hours.`; `From` / `To` date fields, defaulting to the last seven ended days; inline

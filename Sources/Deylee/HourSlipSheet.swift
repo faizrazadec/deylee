@@ -78,6 +78,5 @@ struct HourSlipSheet: View {
             .keyboardShortcut(.defaultAction)
             .disabled(isWorking || rangeProblem != nil)
         }
-        .frame(width: 440)
     }
 }
