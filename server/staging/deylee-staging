@@ -9,15 +9,19 @@
 #     sudo install -D -m 644 server/staging/compose.yaml /usr/local/share/deylee-staging/compose.yaml
 #     sudo install -m 644 server/staging/staging.slice /etc/systemd/system/ && sudo systemctl daemon-reload
 #
-# Root-owned is the point. The staging checkout runs whatever branch it is told to, and a
-# branch can change anything in it; if this script or the compose file came from there, a
-# branch could rename a container to production's and `up` would replace it. So only the
-# application's code comes from the branch. What runs, under which names, with which
-# volumes, is fixed here, and changing it takes sudo.
+# Root-owned is the point. Staging builds from production's checkout, /opt/deylee, which is
+# writable without sudo; if this script or the compose file came from there, a commit could
+# rename a container to production's and `up` would replace it. So only the application's
+# code comes from the checkout. What runs, under which names, with which volumes, is fixed
+# here, and changing it takes sudo.
+#
+# Sharing the checkout means staging runs whatever production's checkout holds — main. This
+# script never runs git: checking a branch out there would change production's files, so
+# testing a branch on staging needs a checkout of its own.
 #
 # Commands:
 #   init                first run: database up, migrations, the API role
-#   deploy [branch]     check out origin/<branch> (default main), rebuild, restart the API
+#   deploy              rebuild the API from the checkout, migrate, restart the API
 #   up [--tunnel]       start the stack; the staging tunnel only when asked
 #   down                stop it (the database volume is kept)
 #   restart [service]   default api
@@ -28,9 +32,11 @@
 #   reset-db            delete staging's database and rebuild it from the migrations
 set -euo pipefail
 
-CHECKOUT=${DEYLEE_STAGING_DIR:-/opt/deylee-staging}
+# Fixed, not read from the environment: the command allowed to drive staging must not be
+# able to point itself somewhere else.
+CHECKOUT=/opt/deylee
 COMPOSE=/usr/local/share/deylee-staging/compose.yaml
-PROD_ENV=/opt/deylee/server/.env
+PROD_ENV=$CHECKOUT/server/.env
 PROJECT=deylee-staging
 VOLUME=${PROJECT}_staging-db
 DB=deylee-staging-db
@@ -85,8 +91,6 @@ case "$command" in
     ;;
   deploy)
     guard_secrets
-    git fetch --quiet origin
-    git checkout --quiet --detach "origin/${1:-main}"
     git log --oneline -1
     dc build api
     migrate
