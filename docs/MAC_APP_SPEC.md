@@ -929,7 +929,7 @@ starting the timer does. The press raises sign-in and carries on once it succeed
 declining does nothing.
 
 **The slip PDF** (one A4 page, fixed print colours, no dashes anywhere in its text):
-`Hour slip` / `Deylee`; `Name` (left out when there is none), `Email` (masked,
+the Deylee app icon (40 pt) beside `Hour slip` / `Deylee`; `Name` (left out when there is none), `Email` (masked,
 `f***@example.com`), `Period` (`{first} to {last}`, or the one date), `Time zone`,
 `Issued` (`EEE d MMM y h:mm a`); a 118 pt QR code of
 the check link captioned `Scan to verify` / `Signed by Deylee's server. The link shows the

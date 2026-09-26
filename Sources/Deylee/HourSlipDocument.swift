@@ -21,9 +21,16 @@ struct HourSlipDocument: View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Hour slip").font(.system(size: 22, weight: .semibold))
-                        Text("Deylee").font(.system(size: 11)).foregroundStyle(PrintPalette.muted)
+                    HStack(spacing: 12) {
+                        // The app's own icon, so the slip carries the same mark as the app.
+                        Image(nsImage: NSApplication.shared.applicationIconImage)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 40, height: 40)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Hour slip").font(.system(size: 22, weight: .semibold))
+                            Text("Deylee").font(.system(size: 11)).foregroundStyle(PrintPalette.muted)
+                        }
                     }
                     details
                 }
