@@ -3,7 +3,7 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
-## Unreleased
+## 0.7.0 — 2026-09-26
 
 **Hour slips: proof of your hours.** History has a new Hour slip… button. Choose
 Yesterday, the last 7 days, a range of your own of up to 30 days, or Today once you have
