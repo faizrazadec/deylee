@@ -928,12 +928,14 @@ not be saved: {reason}`.
 starting the timer does. The press raises sign-in and carries on once it succeeds;
 declining does nothing.
 
-**The slip PDF** (one A4 page, fixed print colours): `Hour slip` / `Deylee`; `Name`,
-`Email` (masked, `f***@example.com`), `Period`, `Time zone`, `Issued`; a 118 pt QR code of
+**The slip PDF** (one A4 page, fixed print colours, no dashes anywhere in its text):
+`Hour slip` / `Deylee`; `Name` (left out when there is none), `Email` (masked,
+`f***@example.com`), `Period` (`{first} to {last}`, or the one date), `Time zone`,
+`Issued` (`EEE d MMM y h:mm a`); a 118 pt QR code of
 the check link captioned `Scan to verify` / `Signed by Deylee's server. The link shows the
 full email and these hours.`; a `Day` / `Claimed` / `Witnessed` table with a `Total` row
 (`*` on approximate witnessed days); footnotes `Claimed is the work time recorded.
-Witnessed is time Deylee's server heard a running timer, stamped by its own clock — it
+Witnessed is time Deylee's server heard a running timer, stamped by its own clock, so it
 cannot be added afterwards.`, when needed `* Approximate: these days are old enough that
 only a daily total of witnessed time, by UTC date, is kept.`, and the link itself.
 

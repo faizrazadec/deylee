@@ -43,9 +43,9 @@ struct HourSlipDocument: View {
 
     private var details: some View {
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 4) {
-            row("Name", slip.name ?? "—")
+            if let name = slip.name { row("Name", name) }
             row("Email", maskedEmail(slip.email))
-            row("Period", "\(long(slip.from)) – \(long(slip.to))")
+            row("Period", slip.from == slip.to ? long(slip.from) : "\(long(slip.from)) to \(long(slip.to))")
             row("Time zone", slip.timeZone)
             row("Issued", Self.issued.string(from: Date(epochMs: slip.issuedAt)))
         }
@@ -116,7 +116,7 @@ struct HourSlipDocument: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(
                 "Claimed is the work time recorded. Witnessed is time Deylee's server heard a "
-                    + "running timer, stamped by its own clock — it cannot be added afterwards."
+                    + "running timer, stamped by its own clock, so it cannot be added afterwards."
             )
             if slip.days.contains(where: \.witnessedApproximate) {
                 Text(
@@ -134,10 +134,11 @@ struct HourSlipDocument: View {
         DateKey(date).map { formatDateLong($0) } ?? date
     }
 
+    /// Spelled out like the other dates on the page. The medium date style prints
+    /// `26-Sep-2026` in some locales, and the slip carries no dashes.
     private static let issued: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
+        formatter.setLocalizedDateFormatFromTemplate("EEE d MMM y h:mm a")
         return formatter
     }()
 }
