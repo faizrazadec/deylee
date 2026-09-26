@@ -29,12 +29,14 @@ services:
     env_file: server/.env
     # Two levels, like an ECS task and its containers. deylee.slice (server/deylee.slice,
     # installed into systemd) caps the whole stack at 1 CPU and 1 GB; each service's own
-    # limits cap it inside that. As in ECS, the services' limits add up to less than the
-    # parent (0.95 CPU, 960 MB) — nothing checks that, so keep it true when changing one.
+    # limits cap it inside that. As in ECS, the services' limits never add up to more than
+    # the parent: CPU 0.4 + 0.4 + 0.2 is exactly the slice's 1, memory 960 MB of its 1 GB.
+    # Nothing checks that, so keep it true when changing one. The split matches staging's,
+    # where stress tests showed all three queue on their caps in a burst.
     # Without the slice installed, systemd creates it empty and only the per-service
     # limits apply. At 100 users the API used about 1% of a core and under 50 MB.
     cgroup_parent: deylee.slice
-    cpus: 0.3
+    cpus: 0.4
     mem_limit: 256m
     ports:
       - "8080:8080"
@@ -54,10 +56,10 @@ services:
     container_name: deylee-db
     restart: unless-stopped
     env_file: server/env.db
-    # Most of the budget. Postgres's defaults (128 MB shared_buffers) fit inside it with
+    # Most of the memory budget. Postgres's defaults (128 MB shared_buffers) fit inside it with
     # room for the page cache, and a year of 100 users peaked at about 465 MB.
     cgroup_parent: deylee.slice
-    cpus: 0.55
+    cpus: 0.4
     mem_limit: 576m
     volumes:
       - deylee-db:/var/lib/postgresql/data
@@ -74,7 +76,7 @@ services:
     env_file: server/.env
     command: tunnel --no-autoupdate run
     cgroup_parent: deylee.slice
-    cpus: 0.1
+    cpus: 0.2
     mem_limit: 128m
     depends_on:
       api:
