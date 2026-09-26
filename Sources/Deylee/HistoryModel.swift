@@ -427,7 +427,6 @@ final class HistoryModel {
             return String(describing: error)
         }
         guard let pdf = renderHourSlipPDF(slip) else { return "The hour slip could not be drawn." }
-        hourSlip = nil
 
         let panel = NSSavePanel()
         panel.title = "Save hour slip"
@@ -438,6 +437,7 @@ final class HistoryModel {
         let totals = "\(formatCompact(slip.claimedMs)) claimed, \(formatCompact(slip.witnessedMs)) witnessed"
         let complete: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self else { return }
+            self.hourSlip = nil
             guard response == .OK, let url = panel.url else {
                 self.status = HistoryStatus(
                     tone: .error, text: "The hour slip was created but not saved. Create it again to save it."
@@ -457,7 +457,11 @@ final class HistoryModel {
                 )
             }
         }
-        if let window = hostWindow {
+        // On the hour slip sheet itself, which stays open until the panel is done. Closing
+        // the sheet first and attaching the panel to the History window in the same breath
+        // left AppKit mid-dismissal: it declined the second sheet without a word, so the
+        // panel never appeared, nothing was saved and nothing was said.
+        if let window = hostWindow?.attachedSheet ?? hostWindow {
             panel.beginSheetModal(for: window) { complete($0) }
         } else {
             panel.begin { complete($0) }
