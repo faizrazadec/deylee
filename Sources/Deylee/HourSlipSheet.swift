@@ -53,7 +53,7 @@ struct HourSlipSheet: View {
             VStack(alignment: .leading, spacing: Space.x3l) {
                 Text(
                     """
-                    A PDF of your claimed and witnessed hours, signed by Deylee's server. \
+                    A PDF of your claimed and witnessed hours, signed by Deylee. \
                     Its QR code lets anyone you give it to check it is genuine — the page \
                     they see shows your name, full email and these hours.
                     """

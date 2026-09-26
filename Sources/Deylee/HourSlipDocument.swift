@@ -76,7 +76,7 @@ struct HourSlipDocument: View {
             }
             Text("Scan to verify")
                 .font(.system(size: 9, weight: .medium))
-            Text("Signed by Deylee's server. The link shows the full email and these hours.")
+            Text("Signed by Deylee. The link shows the full email and these hours.")
                 .font(.system(size: 7.5))
                 .foregroundStyle(PrintPalette.muted)
                 .multilineTextAlignment(.center)
@@ -122,7 +122,7 @@ struct HourSlipDocument: View {
     private var footnotes: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(
-                "Claimed is the work time recorded. Witnessed is time Deylee's server heard a "
+                "Claimed is the work time recorded. Witnessed is time Deylee heard a "
                     + "running timer, stamped by its own clock, so it cannot be added afterwards."
             )
             if slip.days.contains(where: \.witnessedApproximate) {

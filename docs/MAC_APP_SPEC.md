@@ -908,7 +908,7 @@ selection to today if today is inside the new month, else the month's first day
 
 **Hour slip sheet** (`HistoryModalCard` at its own 384 px — the sheet adds no width of
 its own): title `Create hour slip`; body text `A PDF of your claimed and witnessed hours,
-signed by Deylee's server. Its QR code lets anyone you give it to check it is genuine — the
+signed by Deylee. Its QR code lets anyone you give it to check it is genuine — the
 page they see shows your name, full email and these hours.`; a full-width segmented
 control `Today` | `Yesterday` | `Last 7 days` | `Custom` (default `Last 7 days`, the last
 seven ended days); under it the chosen dates in `formatDateLong`, or for `Custom` the
@@ -932,10 +932,10 @@ declining does nothing.
 the Deylee app icon (40 pt) beside `Hour slip` / `Deylee`; `Name` (left out when there is none), `Email` (masked,
 `f***@example.com`), `Period` (`{first} to {last}`, or the one date), `Time zone`,
 `Issued` (`EEE d MMM y h:mm a`); a 118 pt QR code of
-the check link captioned `Scan to verify` / `Signed by Deylee's server. The link shows the
-full email and these hours.`; a `Day` / `Claimed` / `Witnessed` table with a `Total` row
+the check link captioned `Scan to verify` / `Signed by Deylee. The link shows the full email
+and these hours.`; a `Day` / `Claimed` / `Witnessed` table with a `Total` row
 (`*` on approximate witnessed days); footnotes `Claimed is the work time recorded.
-Witnessed is time Deylee's server heard a running timer, stamped by its own clock, so it
+Witnessed is time Deylee heard a running timer, stamped by its own clock, so it
 cannot be added afterwards.`, when needed `* Approximate: these days are old enough that
 only a daily total of witnessed time, by UTC date, is kept.`, and the link itself.
 
