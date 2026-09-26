@@ -40,9 +40,10 @@ logs/
 # Claude Code. `.claude/` holds per-machine state such as tool permissions.
 .claude/
 
-# Notes about one machine or one person — a Docker socket, a missing toolchain, how
-# production is run. AGENTS.md is shared and tracked; *.local.md files sit beside it and
-# never leave the machine.
+# Agent instructions, including how production is run: one local file, never published.
+# CLAUDE.md is a symlink to AGENTS.md.
+AGENTS.md
+CLAUDE.md
 *.local.md
 
 # OS
