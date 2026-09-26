@@ -33,19 +33,21 @@ public let hourSlipMaxDays = 30
 
 /// Why `from`…`to` cannot go on a slip right now, or nil when it can.
 ///
-/// Only ended days: the last one must be locked (`DayLock.swift`), judged by the trusted
-/// clock like every other lock, so a slip's figures can never change after it is made.
+/// Only ended days, matching the server: each must be locked (`DayLock.swift`, judged by
+/// the trusted clock), or ended by the person with no timer running on it — `isEnded`
+/// answers that. An ended day can be reopened; a slip made from it then expires.
 public func hourSlipRangeProblem(
-    from: DateKey, to: DateKey, now: EpochMs, in zone: TimeZone = .current
+    from: DateKey, to: DateKey, now: EpochMs, in zone: TimeZone = .current,
+    isEnded: (DateKey) -> Bool = { _ in false }
 ) -> String? {
     if to < from { return "The last day can't be before the first." }
     if daysBetween(from: from, to: to) + 1 > hourSlipMaxDays {
         return "An hour slip covers at most \(hourSlipMaxDays) days."
     }
-    if !isDayLocked(to, now: now, in: zone) {
-        return to == dateKeyOf(now, in: zone)
-            ? hourSlipTodayProblem
-            : "An hour slip can only cover days that have ended."
+    let today = dateKeyOf(now, in: zone)
+    for day in eachDay(from: from, to: to)
+    where !isDayLocked(day, now: now, in: zone) && !isEnded(day) {
+        return day == today ? hourSlipTodayProblem : "An hour slip can only cover days that have ended."
     }
     return nil
 }
@@ -60,8 +62,7 @@ public func defaultHourSlipRange(now: EpochMs, in zone: TimeZone = .current) -> 
 
 /// The quick choices in the hour slip sheet.
 ///
-/// Today is offered even though a slip can only cover ended days: choosing it says why
-/// and when it becomes possible, which is more use than a missing option.
+/// Today works once the day has been ended; until then choosing it says what to do.
 public enum HourSlipPreset: String, CaseIterable, Sendable {
     case today, yesterday, lastSevenDays, custom
 
@@ -86,9 +87,8 @@ public enum HourSlipPreset: String, CaseIterable, Sendable {
     }
 }
 
-/// Why today cannot go on a slip yet, in words that say when it can.
-public let hourSlipTodayProblem =
-    "Today hasn't ended yet. Its hours can go on an hour slip from 02:00 tomorrow."
+/// Why today cannot go on a slip yet, in words that say what to do about it.
+public let hourSlipTodayProblem = "Today hasn't ended yet. End the day to put it on an hour slip."
 
 /// `faiz@example.com` → `f***@example.com`, for the printed slip. The check page behind
 /// the QR code shows the address in full; the paper need not.

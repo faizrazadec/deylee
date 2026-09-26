@@ -412,7 +412,16 @@ final class HistoryModel {
 
     /// Why this range cannot go on a slip, judged by the trusted clock, or nil.
     func hourSlipProblem(from: DateKey, to: DateKey) -> String? {
-        hourSlipRangeProblem(from: from, to: to, now: service.trustedTime(), in: zone)
+        hourSlipRangeProblem(
+            from: from, to: to, now: service.trustedTime(), in: zone, isEnded: isEndedDay
+        )
+    }
+
+    /// Ended by the person, with no timer running on it — what lets today onto a slip.
+    private func isEndedDay(_ date: DateKey) -> Bool {
+        guard let day = try? repo.findDay(date), day.endedAt != nil else { return false }
+        let open = (try? repo.findOpenSegment()) ?? nil
+        return open?.dayId != day.id
     }
 
     /// Asks the server to sign the slip, draws it and asks where to save it. Returns the

@@ -913,8 +913,8 @@ page they see shows your name, full email and these hours.`; a full-width segmen
 control `Today` | `Yesterday` | `Last 7 days` | `Custom` (default `Last 7 days`, the last
 seven ended days); under it the chosen dates in `formatDateLong`, or for `Custom` the
 `From` / `To` date fields; inline error box with `The last day can't be before the
-first.`, `An hour slip covers at most 30 days.`, `Today hasn't ended yet. Its hours can go
-on an hour slip from 02:00 tomorrow.` (a range ending today), `An hour slip can only cover
+first.`, `An hour slip covers at most 30 days.`, `Today hasn't ended yet. End the day to put it
+on an hour slip.` (today, until the day is ended with no timer running), `An hour slip can only cover
 days that have ended.` or the server's own sentence; footer ghost `Cancel` + primary
 `Create and save…` (`Creating…` while working, disabled while the range has a problem).
 It syncs, asks the server to sign (`SYNC_PROTOCOL.md`, *Hour slips*), then opens a save

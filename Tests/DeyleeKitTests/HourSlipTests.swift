@@ -102,3 +102,27 @@ private func key(_ s: String) -> DateKey { DateKey(s)! }
         #expect(hourSlipRangeProblem(from: from, to: to, now: now, in: berlin) == nil)
     }
 }
+
+@Suite struct HourSlipEndedToday {
+    private let now = instant(2026, 9, 20, 10)
+    private let today = key("2026-09-20")
+
+    @Test func todayIsAllowedOnceItHasBeenEnded() {
+        #expect(hourSlipRangeProblem(from: today, to: today, now: now, in: berlin,
+                                     isEnded: { $0 == key("2026-09-20") }) == nil)
+    }
+
+    @Test func todayNotYetEndedSaysToEndIt() {
+        #expect(hourSlipRangeProblem(from: today, to: today, now: now, in: berlin,
+                                     isEnded: { _ in false }) == hourSlipTodayProblem)
+    }
+
+    /// Every unlocked day in the range must be ended, not only the last one.
+    @Test func anUnendedDayInsideTheRangeIsRefused() {
+        let inGrace = instant(2026, 9, 20, 1)
+        #expect(hourSlipRangeProblem(
+            from: key("2026-09-18"), to: today, now: inGrace, in: berlin,
+            isEnded: { $0 == key("2026-09-20") }
+        ) == "An hour slip can only cover days that have ended.")
+    }
+}
