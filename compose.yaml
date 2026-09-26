@@ -27,6 +27,15 @@ services:
     container_name: deylee-api
     restart: unless-stopped
     env_file: server/.env
+    # Two levels, like an ECS task and its containers. deylee.slice (server/deylee.slice,
+    # installed into systemd) caps the whole stack at 1 CPU and 1 GB; each service's own
+    # limits cap it inside that. As in ECS, the services' limits add up to less than the
+    # parent (0.95 CPU, 960 MB) — nothing checks that, so keep it true when changing one.
+    # Without the slice installed, systemd creates it empty and only the per-service
+    # limits apply. At 100 users the API used about 1% of a core and under 50 MB.
+    cgroup_parent: deylee.slice
+    cpus: 0.3
+    mem_limit: 256m
     ports:
       - "8080:8080"
     # The signed Sparkle appcast and update archives. Read-only: the API serves them and
@@ -45,6 +54,11 @@ services:
     container_name: deylee-db
     restart: unless-stopped
     env_file: server/db.env
+    # Most of the budget. Postgres's defaults (128 MB shared_buffers) fit inside it with
+    # room for the page cache, and a year of 100 users peaked at about 465 MB.
+    cgroup_parent: deylee.slice
+    cpus: 0.55
+    mem_limit: 576m
     volumes:
       - deylee-db:/var/lib/postgresql/data
     healthcheck:
@@ -59,6 +73,9 @@ services:
     restart: unless-stopped
     env_file: server/.env
     command: tunnel --no-autoupdate run
+    cgroup_parent: deylee.slice
+    cpus: 0.1
+    mem_limit: 128m
     depends_on:
       api:
         condition: service_healthy

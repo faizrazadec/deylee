@@ -1,0 +1,13 @@
+# The parent budget for the whole compose stack: every container names this slice as its
+# cgroup_parent, so API, database and tunnel together can never exceed it, whatever their
+# own limits add up to. The ECS task-level limit, in systemd.
+#
+#     sudo cp server/deylee.slice /etc/systemd/system/ && sudo systemctl daemon-reload
+#
+# Needs Docker's systemd cgroup driver (`docker info --format '{{.CgroupDriver}}'`).
+[Unit]
+Description=Deylee sync API stack
+
+[Slice]
+CPUQuota=100%
+MemoryMax=1G
