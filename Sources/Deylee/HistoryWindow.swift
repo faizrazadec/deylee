@@ -22,7 +22,8 @@ final class HistoryWindow: NSObject, NSWindowDelegate {
 
     /// Opens the window, or brings the existing one forward.
     static func open(
-        repo: Repository, engine: TimerEngine, prefs: PreferencesStore, trustedClock: TrustedClock
+        repo: Repository, engine: TimerEngine, prefs: PreferencesStore, trustedClock: TrustedClock,
+        hourSlips: HourSlipService?
     ) {
         if let current {
             // Re-read on the way forward. The window survives being sent behind
@@ -34,7 +35,8 @@ final class HistoryWindow: NSObject, NSWindowDelegate {
             return
         }
         let window = HistoryWindow(
-            repo: repo, engine: engine, prefs: prefs, trustedClock: trustedClock
+            repo: repo, engine: engine, prefs: prefs, trustedClock: trustedClock,
+            hourSlips: hourSlips
         )
         current = window
         DockPresence.acquire()
@@ -42,11 +44,12 @@ final class HistoryWindow: NSObject, NSWindowDelegate {
     }
 
     private init(
-        repo: Repository, engine: TimerEngine, prefs: PreferencesStore, trustedClock: TrustedClock
+        repo: Repository, engine: TimerEngine, prefs: PreferencesStore, trustedClock: TrustedClock,
+        hourSlips: HourSlipService?
     ) {
         self.engine = engine
         let service = HistoryService(repo: repo, prefs: prefs, trustedNow: trustedClock.now)
-        let model = HistoryModel(repo: repo, service: service, prefs: prefs)
+        let model = HistoryModel(repo: repo, service: service, prefs: prefs, hourSlips: hourSlips)
         self.model = model
 
         window = NSWindow(

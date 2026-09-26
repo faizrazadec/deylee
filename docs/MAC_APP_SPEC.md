@@ -899,11 +899,32 @@ mutation or invalidation bumps a revision and refetches both ranges.
 **Header** (row, border-b, raised bg): `Previous month` / `Next month` chevron
 buttons; month title 17 px medium, host-locale `{month:'long', year:'numeric'}`
 (e.g. `July 2026`); ghost `Today` button; right-aligned segmented control
-(`Calendar` | `List`) and `Export CSV` / `Export JSON` buttons (both disabled
-while an export is in flight). Navigation: prev = month of (first − 1 day); next
+(`Calendar` | `List`), an `Hour slip…` button (only when the build syncs; tooltip `A
+signed PDF of your hours, with a QR code anyone can check`) and `Export CSV` / `Export
+JSON` buttons (both disabled while an export is in flight). Navigation: prev = month of (first − 1 day); next
 = month of (last + 1 day); changing month clears the status banner and moves the
 selection to today if today is inside the new month, else the month's first day
 (selection always stays inside the visible month).
+
+**Hour slip sheet** (`HistoryModalCard`, 440 px): title `Create hour slip`; body text `A
+PDF of your claimed and witnessed hours, signed by Deylee's server. Its QR code lets anyone
+you give it to check it is genuine — the page they see shows your name, full email and
+these hours.`; `From` / `To` date fields, defaulting to the last seven ended days; inline
+error box with `The last day can't be before the first.`, `An hour slip covers at most 30
+days.`, `An hour slip can only cover days that have ended.` or the server's own sentence;
+footer ghost `Cancel` + primary `Create and save…` (`Creating…` while working, disabled
+while the range has a problem). It syncs, asks the server to sign
+(`SYNC_PROTOCOL.md`, *Hour slips*), then opens a save panel titled `Save hour slip` for
+`deylee-hour-slip-{from}_to_{to}.pdf`.
+
+**The slip PDF** (one A4 page, fixed print colours): `Hour slip` / `Deylee`; `Name`,
+`Email` (masked, `f***@example.com`), `Period`, `Time zone`, `Issued`; a 118 pt QR code of
+the check link captioned `Scan to verify` / `Signed by Deylee's server. The link shows the
+full email and these hours.`; a `Day` / `Claimed` / `Witnessed` table with a `Total` row
+(`*` on approximate witnessed days); footnotes `Claimed is the work time recorded.
+Witnessed is time Deylee's server heard a running timer, stamped by its own clock — it
+cannot be added afterwards.`, when needed `* Approximate: these days are old enough that
+only a daily total of witnessed time, by UTC date, is kept.`, and the link itself.
 
 **Status banner** (below header, only when set by export outcomes): ok tone
 (sunken/muted) or error tone (danger); text truncates with tooltip; ghost

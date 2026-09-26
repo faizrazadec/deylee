@@ -57,6 +57,19 @@ enum Palette {
     }
 }
 
+/// Colours for printed and exported documents — the hour slip PDF. Fixed rather than
+/// paired with a dark variant: paper does not follow the Mac's appearance, and a slip
+/// saved in dark mode must print the same as one saved in light. No green: the accent
+/// stays reserved for the running state.
+enum PrintPalette {
+    static let paper = Color(nsColor: NSColor(hex: 0xffffff))
+    static let ink = Color(nsColor: NSColor(hex: 0x1c1c1e))
+    static let muted = Color(nsColor: NSColor(hex: 0x6b6b70))
+    static let faint = Color(nsColor: NSColor(hex: 0x98989e))
+    static let rule = Color(nsColor: NSColor(hex: 0xe0e0dc))
+    static let band = Color(nsColor: NSColor(hex: 0xf7f7f5))
+}
+
 extension NSColor {
     convenience init(hex: UInt32, alpha: Double = 1) {
         self.init(

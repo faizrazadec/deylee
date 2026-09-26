@@ -38,6 +38,12 @@ public final class HistoryService {
         self.trustedNow = trustedNow ?? now
     }
 
+    /// The time by the clock that decides whether a day has ended — the server's, where
+    /// one is known. What an hour slip's range is checked against.
+    public func trustedTime() -> EpochMs {
+        trustedNow()
+    }
+
     /// Whether `date` can still have segments added, retimed or deleted.
     public func isLocked(_ date: DateKey) -> Bool {
         isDayLocked(date, now: trustedNow(), in: zone)

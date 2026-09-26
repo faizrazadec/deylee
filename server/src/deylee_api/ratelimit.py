@@ -112,7 +112,7 @@ def caller_of(request: Request) -> str:
 
 
 class RateLimitMiddleware:
-    """Throttles the auth routes, and only those.
+    """Throttles the auth routes, sync and hour slips, and nothing else.
 
     `/v1/sync` is authenticated and cheap by comparison; the unauthenticated routes are
     where a stranger can spend the server's money. It is in the list anyway because the
@@ -140,7 +140,10 @@ class RateLimitMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         path = scope.get("path", "")
-        if scope["type"] != "http" or not (path.startswith("/v1/auth/") or path == "/v1/sync"):
+        # Hour slips too: issuing one and checking one both read a month of segments and
+        # witness beats, and the check page answers anybody holding a link.
+        metered = path.startswith(("/v1/auth/", "/slip/")) or path in ("/v1/sync", "/v1/hour-slips")
+        if scope["type"] != "http" or not metered:
             await self.app(scope, receive, send)
             return
 

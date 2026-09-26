@@ -73,6 +73,13 @@ struct HistoryStatus: Equatable {
 }
 
 /// What the segment modal is editing.
+/// The hour slip sheet, opened on a default range the person can change.
+struct HourSlipTarget: Identifiable {
+    let id = UUID()
+    let from: DateKey
+    let to: DateKey
+}
+
 struct HistoryEditorTarget: Identifiable {
     let id = UUID()
     let date: DateKey
@@ -122,6 +129,7 @@ final class HistoryModel {
     var pendingDelete: Segment?
     var deleteError: String?
     private(set) var exporting: HistoryExportFormat?
+    var hourSlip: HourSlipTarget?
 
     /// Set by the window so the save panel can open as a sheet rather than a free
     /// floating dialog the user can lose behind the window.
@@ -134,10 +142,15 @@ final class HistoryModel {
     @ObservationIgnored private let service: HistoryService
     @ObservationIgnored private let prefs: PreferencesStore
     @ObservationIgnored private let zone: TimeZone
+    @ObservationIgnored private let hourSlips: HourSlipService?
 
-    init(repo: Repository, service: HistoryService, prefs: PreferencesStore, in zone: TimeZone = .current) {
+    init(
+        repo: Repository, service: HistoryService, prefs: PreferencesStore,
+        in zone: TimeZone = .current, hourSlips: HourSlipService? = nil
+    ) {
         self.repo = repo
         self.service = service
+        self.hourSlips = hourSlips
         self.prefs = prefs
         self.zone = zone
         let current = prefs.getAll()
@@ -353,6 +366,56 @@ final class HistoryModel {
     private func finish(_ outcome: HistoryService.Outcome) {
         reload()
         onMutated(outcome.affectedDates)
+    }
+
+    // MARK: - Hour slips
+
+    /// Offered only when this build syncs: a slip is signed by the server.
+    var canCreateHourSlip: Bool { hourSlips != nil }
+
+    func openHourSlip() {
+        let (from, to) = defaultHourSlipRange(now: service.trustedTime(), in: zone)
+        hourSlip = HourSlipTarget(from: from, to: to)
+    }
+
+    /// Why this range cannot go on a slip, judged by the trusted clock, or nil.
+    func hourSlipProblem(from: DateKey, to: DateKey) -> String? {
+        hourSlipRangeProblem(from: from, to: to, now: service.trustedTime(), in: zone)
+    }
+
+    /// Asks the server to sign the slip, draws it and asks where to save it. Returns the
+    /// sentence to show in the sheet, or nil once the save panel has taken over.
+    func createHourSlip(from: DateKey, to: DateKey) async -> String? {
+        guard let hourSlips else { return "Hour slips need a signed-in Deylee account." }
+        if let problem = hourSlipProblem(from: from, to: to) { return problem }
+        let slip: HourSlip
+        do {
+            slip = try await hourSlips.create(from: from, to: to, in: zone)
+        } catch {
+            return String(describing: error)
+        }
+        guard let pdf = renderHourSlipPDF(slip) else { return "The hour slip could not be drawn." }
+        hourSlip = nil
+
+        let panel = NSSavePanel()
+        panel.title = "Save hour slip"
+        panel.nameFieldStringValue = "deylee-hour-slip-\(from)_to_\(to).pdf"
+        panel.allowedContentTypes = [.pdf]
+        let complete: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            do {
+                try pdf.write(to: url, options: .atomic)
+                self.status = HistoryStatus(tone: .ok, text: "Saved to \(Self.folderName(of: url))")
+            } catch {
+                self.status = HistoryStatus(tone: .error, text: self.describe(error))
+            }
+        }
+        if let window = hostWindow {
+            panel.beginSheetModal(for: window) { complete($0) }
+        } else {
+            panel.begin { complete($0) }
+        }
+        return nil
     }
 
     // MARK: - Export

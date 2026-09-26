@@ -263,6 +263,38 @@ Rules:
 Only `.running` beats. A paused day, a break, or an ended day goes silent within one
 interval, so witnessed time reflects work and nothing else.
 
+## Hour slips — `POST /v1/hour-slips` and `GET /slip/<token>`
+
+A signed statement of one person's claimed and witnessed hours for a run of ended days,
+which they hand to whoever needs proof — a client, an employer. Same bearer token:
+
+    POST /v1/hour-slips
+    { "from": "2026-09-01", "to": "2026-09-05", "timeZone": "Asia/Karachi" }
+
+    → 200 {
+        "url": "https://api.faizraza.me/slip/<token>",
+        "issuedAt": 1790000000000,
+        "name": "…", "email": "…",
+        "from": "2026-09-01", "to": "2026-09-05", "timeZone": "Asia/Karachi",
+        "claimedMs": 100800000, "witnessedMs": 99120000,
+        "days": [ { "date": "2026-09-01", "claimedMs": …, "witnessedMs": …,
+                    "witnessedApproximate": false }, … ]
+      }
+
+Rules:
+
+- **Only ended days.** The last date must be locked by the server's clock (see *Locked
+  days*), so a slip's figures can never change after it is issued. `400` otherwise, and
+  for more than 30 days or an unknown zone. `503` when the server has no slip key.
+- **Claimed** is the day's work segments as the server holds them — so a client syncs
+  before asking. **Witnessed** is time the server heard a running timer, split by the
+  person's own local days from `timeZone`. Days older than 90, whose beats survive only
+  as a UTC-day total, carry `witnessedApproximate: true`.
+- **Nothing is stored.** The token in `url` carries the signed totals; `GET /slip/<token>`
+  checks the signature (a key used only for slips) and re-derives the figures from the
+  record, showing the person's name, full email and hours to whoever opens it. That page
+  is the point of a slip, and only the person recorded can create one.
+
 ## Idempotency
 
 Every request must be safe to send twice. Networks drop responses, and a client that

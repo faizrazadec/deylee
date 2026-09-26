@@ -49,6 +49,12 @@ Only hours, and only if you are signed in. Three things are ever sent:
 - **Feedback**, only when you write some — your text, the app version and the macOS
   version.
 
+And one thing you can choose to publish: an **hour slip**, a PDF of your claimed and
+witnessed hours for days you pick, signed by the server. Making one sends only the dates;
+its QR code opens a page on the server that shows your name, full email address and those
+hours to whoever holds the slip. That is what it is for — proof you can hand someone — and
+nobody but you can create one.
+
 Screen captures stay in the encrypted local store and have no upload path at all — grep
 [`Sources/Deylee/SyncService.swift`](Sources/Deylee/SyncService.swift) for `capture` and
 you will find nothing.

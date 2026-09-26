@@ -25,7 +25,7 @@ from deylee_api.db import UNAVAILABLE_MESSAGE, Store, StoreTimedOut
 from deylee_api.errors import APIError, error_response
 from deylee_api.mail import Mailer
 from deylee_api.ratelimit import BodyLimitMiddleware, RateLimiter, RateLimitMiddleware
-from deylee_api.routes import auth, contact, feedback, sync, witness
+from deylee_api.routes import auth, contact, feedback, hour_slips, sync, witness
 from deylee_api.tokens import TokenService
 
 # See BodyLimitMiddleware: a conforming push of 500 changes with 2000-character notes is
@@ -213,7 +213,7 @@ def create_app(
         app.mount("/updates", _CachedStatic(directory=config.updates_directory), name="updates")
         logger.info("serving updates directory=%s", config.updates_directory)
 
-    for module in (auth, sync, witness, feedback, contact):
+    for module in (auth, sync, witness, feedback, contact, hour_slips):
         app.include_router(module.router)
 
     return app
