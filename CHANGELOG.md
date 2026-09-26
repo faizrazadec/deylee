@@ -3,7 +3,7 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
-## Unreleased
+## 0.6.0 — 2026-09-26 (pre-release)
 
 **Past days are final.** Two hours after midnight, a day's work and break times can no
 longer be changed, deleted or added to — in History the day shows Locked. Notes stay
