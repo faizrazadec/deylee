@@ -17,7 +17,8 @@ it. A timer that stopped working on a train would be worse than one that never s
   segments: when you started, when you stopped, work or break, with the Mac's time zone
   so the server knows when a day has ended. Beside it, a heartbeat
   sends the device id every 30 seconds while a timer runs, so the server can vouch the
-  time was tracked live, and feedback goes only when you write some. Nothing else is
+  time was tracked live (kept raw for 30 days, as spans of time until 90, then as one
+  total per day), and feedback goes only when you write some. Nothing else is
   sent. Screen captures stay in the encrypted local store and have no upload path at
   all; grep `Sources/Deylee/SyncService.swift` for `capture` and you will find nothing.
 - **An account is required once.** Signing in, with Google or an email address and password, is needed to start

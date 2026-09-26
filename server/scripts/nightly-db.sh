@@ -5,7 +5,9 @@
 #
 # 1. Sweeps expired refresh tokens. Supabase ran this through pg_cron; a stock Postgres
 #    has no scheduler, so it lives here (see the sweep_refresh_tokens migration).
-# 2. Dumps the whole database, custom format, keeping the newest KEEP (default 14).
+# 2. Compacts witness beats: raw for 30 days, spans to 90, daily totals after that (see
+#    the witness_compaction migration). Before the dump, so the dump is the smaller one.
+# 3. Dumps the whole database, custom format, keeping the newest KEEP (default 14).
 #
 # A dump on the same disk as the database survives a bad migration, not a dead disk.
 # Copy the directory off the machine too.
@@ -23,6 +25,16 @@ CONTAINER=${CONTAINER:-deylee-db}
 
 docker exec "$CONTAINER" psql -U postgres -d postgres -X -q -v ON_ERROR_STOP=1 \
   -c "select public.auth_sweep_expired_refresh_tokens()" >/dev/null
+
+# Never at the backup's expense: a checkout pulled before its migration is applied, or a
+# compaction that fails, logs and moves on to the dump. It runs in one transaction, so a
+# failure leaves every beat where it was.
+if compacted=$(docker exec "$CONTAINER" psql -U postgres -d postgres -X -q -t -A -F ' ' \
+  -v ON_ERROR_STOP=1 -c "select * from public.compact_witness_beats()"); then
+  echo "compacted witness beats (beats to spans, spans to days): $compacted"
+else
+  echo "witness compaction failed; backing up anyway" >&2
+fi
 
 mkdir -p "$DIR"
 out="$DIR/deylee-$(date -u +%Y%m%dT%H%M%SZ).dump"

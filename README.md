@@ -44,6 +44,8 @@ Only hours, and only if you are signed in. Three things are ever sent:
   and your Mac's time zone, so the server knows when your day has ended.
 - **A heartbeat** while a timer is running — your device's id every 30 seconds and nothing
   else, so the server can vouch that the time was tracked live rather than typed in later.
+  The server keeps each heartbeat for 30 days, then only the stretches of time they
+  covered, and after 90 days only how long you were heard each day.
 - **Feedback**, only when you write some — your text, the app version and the macOS
   version.
 
