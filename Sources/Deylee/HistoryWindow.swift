@@ -21,7 +21,9 @@ final class HistoryWindow: NSObject, NSWindowDelegate {
     private var stopWatchingPreferences: PreferencesUnsubscribe?
 
     /// Opens the window, or brings the existing one forward.
-    static func open(repo: Repository, engine: TimerEngine, prefs: PreferencesStore) {
+    static func open(
+        repo: Repository, engine: TimerEngine, prefs: PreferencesStore, trustedClock: TrustedClock
+    ) {
         if let current {
             // Re-read on the way forward. The window survives being sent behind
             // something else, and a sync running in the meantime can have pulled
@@ -31,15 +33,19 @@ final class HistoryWindow: NSObject, NSWindowDelegate {
             current.focus()
             return
         }
-        let window = HistoryWindow(repo: repo, engine: engine, prefs: prefs)
+        let window = HistoryWindow(
+            repo: repo, engine: engine, prefs: prefs, trustedClock: trustedClock
+        )
         current = window
         DockPresence.acquire()
         window.focus()
     }
 
-    private init(repo: Repository, engine: TimerEngine, prefs: PreferencesStore) {
+    private init(
+        repo: Repository, engine: TimerEngine, prefs: PreferencesStore, trustedClock: TrustedClock
+    ) {
         self.engine = engine
-        let service = HistoryService(repo: repo, prefs: prefs)
+        let service = HistoryService(repo: repo, prefs: prefs, trustedNow: trustedClock.now)
         let model = HistoryModel(repo: repo, service: service, prefs: prefs)
         self.model = model
 

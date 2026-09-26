@@ -9,6 +9,7 @@ always wants the other side's too, and splitting them doubles the latency for no
 import contextlib
 import time
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import asyncpg
 from fastapi import APIRouter, Request
@@ -85,6 +86,9 @@ class SyncChange(BaseModel):
 class SyncRequest(BaseModel):
     protocolVersion: int
     deviceId: UUID | None = None
+    #: The client's IANA zone, e.g. `Asia/Karachi`, which decides when its days lock.
+    #: Optional: a client that sends none is judged by the zone recorded at sign-in.
+    timeZone: str | None = None
     cursor: int
     changes: list[SyncChange]
 
@@ -136,6 +140,11 @@ async def sync(request: Request) -> SyncResponse:
     # writes a pull can step past a row that has not committed yet and never come back
     # for it.
     async with state.store.with_user(user_id, lock_for_write=True) as connection:
+        # Read by day_lock_at. Transaction-local, like app.user_id.
+        zone = _known_zone(body.timeZone)
+        if zone is not None:
+            await connection.execute("SELECT set_config('app.time_zone', $1, true)", zone)
+
         # A cursor past anything the server has ever issued means the client is talking
         # to a restored backup: the sequence rewound and every row it is asking for is
         # behind it. `WHERE seq > cursor` would match nothing, for ever, and the client
@@ -154,19 +163,40 @@ async def sync(request: Request) -> SyncResponse:
             for index, change in enumerate(body.changes)
         ]
         pulled = await _pull(connection, cursor=body.cursor, user_id=user_id)
+        # The server's copy of every row refused as `locked`, so the client can put back
+        # what it changed locally. Last-write-wins alone would not: the local edit is the
+        # newer one, and on a clock set back its timestamp means nothing anyway.
+        locked = [result.id for result in results if result.code == "locked"]
+        winners = await _segments_by_id(connection, locked, user_id=user_id)
 
     has_more = len(pulled) > PAGE_SIZE
     if has_more:
         pulled = pulled[:PAGE_SIZE]
+    # The cursor is taken from the page before the winners join it: they are old rows,
+    # and a cursor moved back to one would re-pull everything after it.
+    cursor = pulled[-1].row.seq if pulled else body.cursor
+    paged = {change.row.id for change in pulled}
 
     return SyncResponse(
         protocolVersion=PROTOCOL_VERSION,
-        cursor=pulled[-1].row.seq if pulled else body.cursor,
+        cursor=cursor,
         serverTime=now,
         hasMore=has_more,
         results=results,
-        changes=pulled,
+        changes=pulled + [winner for winner in winners if winner.row.id not in paged],
     )
+
+
+def _known_zone(name: str | None) -> str | None:
+    """The zone if Python knows it, else None. Postgres would refuse an unknown one too,
+    but the refusal would land inside the trigger and fail every row of the push."""
+    if not name:
+        return None
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+    return name
 
 
 async def _authenticate(request: Request) -> UUID:
@@ -279,6 +309,8 @@ def classify(error: Exception) -> tuple[str, str]:
                 # sign_in_error_code migration for what that class costs).
                 if message == "in-the-future":
                     return ("invalid-shape", "That time has not happened yet.")
+                if message == "day-locked":
+                    return ("locked", "That day has ended, so its times can no longer change.")
                 if "segments_duration_sane" in message:
                     return ("invalid-shape", "A segment cannot be longer than sixteen hours.")
                 return ("invalid-shape", "A field failed validation.")
@@ -410,6 +442,41 @@ _PULL_DAYS = """
 """
 
 
+_SEGMENTS_BY_ID = """
+    SELECT id, day_date, type, started_at, ended_at, note,
+           created_at, updated_at, deleted_at, seq
+    FROM public.segments WHERE user_id = $1 AND id = ANY($2::uuid[])
+"""
+
+
+async def _segments_by_id(
+    connection: asyncpg.Connection, ids: list[str], *, user_id: UUID
+) -> list[SyncChange]:
+    if not ids:
+        return []
+    rows = await connection.fetch(_SEGMENTS_BY_ID, user_id, [_row_uuid(i) for i in ids])
+    return [_segment_change(row) for row in rows]
+
+
+def _segment_change(row: asyncpg.Record) -> SyncChange:
+    return SyncChange(
+        table="segments",
+        op="upsert" if row["deleted_at"] is None else "delete",
+        row=SyncRow(
+            id=str(row["id"]),
+            dayDate=row["day_date"],
+            type=row["type"],
+            startedAt=row["started_at"],
+            endedAt=row["ended_at"],
+            note=row["note"],
+            createdAt=row["created_at"],
+            updatedAt=row["updated_at"],
+            deletedAt=row["deleted_at"],
+            seq=row["seq"],
+        ),
+    )
+
+
 async def _pull(connection: asyncpg.Connection, *, cursor: int, user_id: UUID) -> list[SyncChange]:
     """Everything past the cursor, from both tables, in commit order.
 
@@ -420,25 +487,7 @@ async def _pull(connection: asyncpg.Connection, *, cursor: int, user_id: UUID) -
     segments = await connection.fetch(_PULL_SEGMENTS, user_id, cursor, limit)
     days = await connection.fetch(_PULL_DAYS, user_id, cursor, limit)
 
-    out = [
-        SyncChange(
-            table="segments",
-            op="upsert" if row["deleted_at"] is None else "delete",
-            row=SyncRow(
-                id=str(row["id"]),
-                dayDate=row["day_date"],
-                type=row["type"],
-                startedAt=row["started_at"],
-                endedAt=row["ended_at"],
-                note=row["note"],
-                createdAt=row["created_at"],
-                updatedAt=row["updated_at"],
-                deletedAt=row["deleted_at"],
-                seq=row["seq"],
-            ),
-        )
-        for row in segments
-    ]
+    out = [_segment_change(row) for row in segments]
     out += [
         SyncChange(
             table="days",

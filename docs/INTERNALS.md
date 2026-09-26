@@ -1,6 +1,6 @@
 # Deylee internals
 
-Why the app is built the way it is. [`MAC_REWRITE_SPEC.md`](MAC_REWRITE_SPEC.md) is binding
+Why the app is built the way it is. [`MAC_APP_SPEC.md`](MAC_APP_SPEC.md) is binding
 on behaviour and [`DESIGN.md`](DESIGN.md) on visuals; this document is the reasoning around
 them. For installing and running the app, see the [README](../README.md).
 
@@ -14,7 +14,8 @@ network at all. Sync is a background reconciliation on top of that — never in 
 it. A timer that stopped working on a train would be worse than one that never synced.
 
 - **Only hours leave the machine — never how the work was done.** Sync sends days and
-  segments: when you started, when you stopped, work or break. Beside it, a heartbeat
+  segments: when you started, when you stopped, work or break, with the Mac's time zone
+  so the server knows when a day has ended. Beside it, a heartbeat
   sends the device id every 30 seconds while a timer runs, so the server can vouch the
   time was tracked live, and feedback goes only when you write some. Nothing else is
   sent. Screen captures stay in the encrypted local store and have no upload path at
@@ -147,7 +148,7 @@ drives ordered, transactional, idempotent migrations — and which is also the d
 guard described above.
 
 **Export** is built into the History window, to the CSV and JSON formats pinned down in
-[`MAC_REWRITE_SPEC.md`](MAC_REWRITE_SPEC.md), so a spreadsheet built on an Electron-era
+[`MAC_APP_SPEC.md`](MAC_APP_SPEC.md), so a spreadsheet built on an Electron-era
 export still reads. Any SQLite browser reads the file directly too.
 
 **Backup** exists as an API (`DataStore.backup`) built on SQLite's online backup, so

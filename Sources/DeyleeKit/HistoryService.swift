@@ -18,18 +18,29 @@ public final class HistoryService {
     private let repo: Repository
     private let prefs: PreferencesStore
     private let zone: TimeZone
-    private let clock: () -> EpochMs
+    private let clock: @MainActor () -> EpochMs
+    /// What decides whether a day has ended: the server's time where one is known, so a
+    /// date set back on this Mac does not reopen yesterday. `clock` still stamps rows —
+    /// `updated_at` is this device's own claim, and the protocol compares it as one.
+    private let trustedNow: @MainActor () -> EpochMs
 
     public init(
         repo: Repository,
         prefs: PreferencesStore,
         in zone: TimeZone = .current,
-        now: @escaping () -> EpochMs = epochNow
+        now: @escaping @MainActor () -> EpochMs = epochNow,
+        trustedNow: (@MainActor () -> EpochMs)? = nil
     ) {
         self.repo = repo
         self.prefs = prefs
         self.zone = zone
         self.clock = now
+        self.trustedNow = trustedNow ?? now
+    }
+
+    /// Whether `date` can still have segments added, retimed or deleted.
+    public func isLocked(_ date: DateKey) -> Bool {
+        isDayLocked(date, now: trustedNow(), in: zone)
     }
 
     /// What a successful mutation leaves behind.
@@ -62,6 +73,7 @@ public final class HistoryService {
         )
         let pieces = splitAtMidnight(candidate, in: zone)
         let dates = uniqueDates([date] + pieces.map(\.date))
+        try refuseIfLocked(dates)
 
         if let error = validateSegment(
             Interval(candidate), against: try segments(on: dates, now: now), in: zone
@@ -109,6 +121,8 @@ public final class HistoryService {
             endedAt: patch.endedAt ?? existing.endedAt
         )
         let mergedNote: String? = patch.note ?? existing.note
+        let changesTime = (merged.type, merged.startedAt, merged.endedAt)
+            != (existing.type, existing.startedAt, existing.endedAt)
 
         // At most one segment may be open app-wide; re-opening a closed one must not
         // create a second.
@@ -125,6 +139,8 @@ public final class HistoryService {
         let dates = uniqueDates(
             [dateKeyOf(existing.startedAt, in: zone)] + pieces.map(\.date)
         )
+        // A note is words about the time, not the time, and stays editable.
+        if changesTime { try refuseIfLocked(dates) }
 
         if let error = validateSegment(
             Interval(merged),
@@ -204,6 +220,7 @@ public final class HistoryService {
         // Stored segments always start inside the day they are filed under — the splitter
         // guarantees it — so the start instant identifies the day without a second lookup.
         let date = dateKeyOf(existing.startedAt, in: zone)
+        try refuseIfLocked([date])
         let removed = try repo.transaction { try repo.deleteSegment(id, now: now) }
         guard removed else {
             throw MutationError(code: .notFound, message: "That segment no longer exists.")
@@ -213,6 +230,12 @@ public final class HistoryService {
     }
 
     // MARK: - Internals
+
+    private func refuseIfLocked(_ dates: [DateKey]) throws {
+        if dates.contains(where: isLocked) {
+            throw MutationError(code: .locked, message: dayLockedMessage)
+        }
+    }
 
     /// Every segment already stored on the days a candidate touches.
     ///

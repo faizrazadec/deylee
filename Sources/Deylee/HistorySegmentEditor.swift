@@ -63,8 +63,16 @@ struct HistorySegmentEditor: View {
                     .font(Type.meta)
                     .foregroundStyle(Palette.fgFaint)
 
-                typeField
-                timeFields
+                if target.isLocked {
+                    notice(
+                        "This day has ended, so its times are final. Only the note can change.",
+                        fill: Palette.sunken,
+                        border: Palette.border
+                    )
+                }
+
+                typeField.disabled(target.isLocked)
+                timeFields.disabled(target.isLocked)
 
                 if case .resolved(_, _, true) = preview {
                     notice(

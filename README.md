@@ -40,7 +40,8 @@ is what keeps the numbers right across a crash, a restart, a machine sleep or a 
 
 Only hours, and only if you are signed in. Three things are ever sent:
 
-- **Sync** — days and segments: when you started, when you stopped, work or break.
+- **Sync** — days and segments: when you started, when you stopped, work or break —
+  and your Mac's time zone, so the server knows when your day has ended.
 - **A heartbeat** while a timer is running — your device's id every 30 seconds and nothing
   else, so the server can vouch that the time was tracked live rather than typed in later.
 - **Feedback**, only when you write some — your text, the app version and the macOS
@@ -129,7 +130,7 @@ the database tests need a local Postgres, which `./server/scripts/dev-db.sh` bui
 Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the layout,
 the commit convention the repository enforces, and what a reviewable pull request looks
 like. [`docs/INTERNALS.md`](docs/INTERNALS.md) explains why the app is built the way it is;
-[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) and
+[`docs/MAC_APP_SPEC.md`](docs/MAC_APP_SPEC.md) and
 [`docs/DESIGN.md`](docs/DESIGN.md) are binding on behaviour and on visuals, and
 [`docs/SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) on the wire between the app and the API.
 

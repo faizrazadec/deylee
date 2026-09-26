@@ -270,6 +270,8 @@ public enum MutationErrorCode: String, Sendable, Equatable {
     case invalidRange = "invalid-range"
     case notFound = "not-found"
     case openSegmentConflict = "open-segment-conflict"
+    /// The day has ended; see `DayLock.swift`. The server refuses with the same code.
+    case locked
     case unknown
 }
 

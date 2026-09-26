@@ -15,6 +15,9 @@ struct HistoryDayPanel: View {
     let targetMinutes: Int
     /// Why the server refused a segment, by id. Empty for the ordinary case.
     let rejected: [Int64: RejectedReason]
+    /// Asked inside the 1 s tick rather than passed as a value, so a day that locks at its
+    /// grace hour while the window is open stops offering the edits.
+    let isLocked: (DateKey) -> Bool
     let onAdd: () -> Void
     let onEdit: (Segment) -> Void
     let onDelete: (Segment) -> Void
@@ -25,10 +28,12 @@ struct HistoryDayPanel: View {
             let segments = detail?.segments ?? []
             let totals = dayTotals(segments, date, now: now)
 
+            let locked = isLocked(date)
+
             VStack(spacing: 0) {
                 header(totals: totals, now: now)
-                subHeader
-                segmentList(segments: segments, now: now)
+                subHeader(isLocked: locked)
+                segmentList(segments: segments, now: now, isLocked: locked)
             }
             .frame(width: 340)
             .background(Palette.raised)
@@ -105,24 +110,33 @@ struct HistoryDayPanel: View {
 
     // MARK: - Segments
 
-    private var subHeader: some View {
+    private func subHeader(isLocked: Bool) -> some View {
         HStack(spacing: Space.m) {
             SectionLabel(text: "Segments")
             Spacer(minLength: 0)
-            Button("Add segment", action: onAdd)
-                .buttonStyle(DeyleeButtonStyle(variant: .secondary, size: .small))
+            if isLocked {
+                Label("Locked", systemImage: "lock.fill")
+                    .font(Type.meta)
+                    .foregroundStyle(Palette.fgFaint)
+                    .help("This day has ended. Its times are final; notes can still change.")
+            } else {
+                Button("Add segment", action: onAdd)
+                    .buttonStyle(DeyleeButtonStyle(variant: .secondary, size: .small))
+            }
         }
         .padding(.horizontal, Space.x4l)
         .padding(.top, Space.x3l)
         .padding(.bottom, Space.m)
     }
 
-    private func segmentList(segments: [Segment], now: EpochMs) -> some View {
+    private func segmentList(segments: [Segment], now: EpochMs, isLocked: Bool) -> some View {
         ScrollView {
             if segments.isEmpty {
                 EmptyStateCard(
                     title: "Nothing on this day",
-                    description: "Add a segment by hand to record time the timer missed."
+                    description: isLocked
+                        ? "This day has ended, so no time can be added to it."
+                        : "Add a segment by hand to record time the timer missed."
                 )
             } else {
                 LazyVStack(spacing: Space.xs) {
@@ -131,6 +145,7 @@ struct HistoryDayPanel: View {
                             segment: segment,
                             now: now,
                             rejected: rejected[segment.id],
+                            canDelete: !isLocked,
                             onEdit: { onEdit(segment) },
                             onDelete: { onDelete(segment) }
                         )
@@ -152,6 +167,8 @@ struct HistorySegmentRow: View {
     let now: EpochMs
     /// Set when the server refused this row and will refuse it again.
     var rejected: RejectedReason?
+    /// False on a locked day: its time can no longer be removed.
+    var canDelete = true
     let onEdit: () -> Void
     let onDelete: () -> Void
 
@@ -229,10 +246,12 @@ struct HistorySegmentRow: View {
     private var actions: some View {
         HStack(spacing: Space.xxs) {
             HistoryIconButton(systemName: "pencil", label: "Edit segment", action: onEdit)
-            HistoryIconButton(
-                systemName: "trash", label: "Delete segment",
-                isDestructive: true, action: onDelete
-            )
+            if canDelete {
+                HistoryIconButton(
+                    systemName: "trash", label: "Delete segment",
+                    isDestructive: true, action: onDelete
+                )
+            }
         }
         // Kept in the layout at zero opacity, so revealing them never reflows the row —
         // and so they stay reachable by keyboard and to VoiceOver, which a conditional

@@ -206,6 +206,7 @@ struct HistoryView: View {
                 detail: model.selectedDetail,
                 targetMinutes: model.selectedTargetMinutes,
                 rejected: model.rejected,
+                isLocked: { model.isLocked($0) },
                 onAdd: { model.openCreate() },
                 onEdit: { model.openEdit($0) },
                 onDelete: { model.requestDelete($0) }

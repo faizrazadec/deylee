@@ -97,7 +97,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Optional by design: a build with no API configured simply never syncs,
         // and the app is unchanged in every other respect.
-        let coordinator = SyncCoordinator(repo: repo)
+        // One clock for the app: sync anchors it to the server's time, and the History
+        // window asks it whether a day has ended.
+        let trustedClock = TrustedClock()
+        let coordinator = SyncCoordinator(repo: repo, trustedClock: trustedClock)
         self.syncCoordinator = coordinator
         // Weak, because the model outlives nothing here but the closure is stored
         // for the coordinator's lifetime. Only `.running` beats: a break or a
@@ -150,7 +153,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsModel.onReviewCaptures = { CapturesWindow.open(repo: repo) }
         capture.reconcile()
 
-        model.openHistoryWindow = { HistoryWindow.open(repo: repo, engine: engine, prefs: prefs) }
+        model.openHistoryWindow = {
+            HistoryWindow.open(repo: repo, engine: engine, prefs: prefs, trustedClock: trustedClock)
+        }
         model.openSettingsWindow = { settingsWindow.show() }
 
         // Feedback needs the API and a session, so it only exists when sync does. With

@@ -31,7 +31,10 @@ private final class Harness {
     private let path: String
     private var clock: EpochMs
 
-    init(now: EpochMs, dailyTargetHours: Double = 8) throws {
+    /// `trustedNow` is the server's time, which decides whether a day is locked. It
+    /// defaults to `now`; tests about splitting a past day's segment set it inside that
+    /// day's grace period so the lock stays out of what they are testing.
+    init(now: EpochMs, trustedNow: EpochMs? = nil, dailyTargetHours: Double = 8) throws {
         path = NSTemporaryDirectory() + "deylee-history-\(UUID().uuidString).sqlite"
         db = try openDatabase(at: path)
         try runMigrations(db)
@@ -40,7 +43,11 @@ private final class Harness {
         prefs.set(\.dailyTargetHours, to: dailyTargetHours)
         clock = now
         var readClock: () -> EpochMs = { now }
-        service = HistoryService(repo: repo, prefs: prefs, in: berlin, now: { readClock() })
+        var serverClock: (@MainActor () -> EpochMs)?
+        if let trustedNow { serverClock = { trustedNow } }
+        service = HistoryService(
+            repo: repo, prefs: prefs, in: berlin, now: { readClock() }, trustedNow: serverClock
+        )
         readClock = { [weak self] in self?.clock ?? now }
     }
 
@@ -86,7 +93,7 @@ private final class Harness {
     }
 
     @Test func splitsAtMidnightIntoOneRowPerDay() throws {
-        let h = try Harness(now: local(2025, 8, 5, 9))
+        let h = try Harness(now: local(2025, 8, 5, 9), trustedNow: local(2025, 8, 5, 1))
         let outcome = try h.service.createSegment(
             on: key("2025-08-04"),
             CreateSegmentInput(
@@ -163,7 +170,7 @@ private final class Harness {
     }
 
     @Test func createsTheAddressedDayEvenWhenEveryPieceLandsElsewhere() throws {
-        let h = try Harness(now: local(2025, 8, 5, 9))
+        let h = try Harness(now: local(2025, 8, 5, 9), trustedNow: local(2025, 8, 5, 1))
         let outcome = try h.service.createSegment(
             on: key("2025-08-04"),
             CreateSegmentInput(
@@ -217,7 +224,7 @@ private final class Harness {
     }
 
     @Test func movingToAnotherDayRefilesTheRow() throws {
-        let h = try Harness(now: local(2025, 8, 5, 18))
+        let h = try Harness(now: local(2025, 8, 5, 18), trustedNow: local(2025, 8, 5, 1))
         let seeded = try h.seed("2025-08-04", from: local(2025, 8, 4, 9), to: local(2025, 8, 4, 12))
 
         let outcome = try h.service.updateSegment(UpdateSegmentInput(
@@ -238,7 +245,7 @@ private final class Harness {
     }
 
     @Test func stretchingPastMidnightSplitsAndKeepsTheHeadInPlace() throws {
-        let h = try Harness(now: local(2025, 8, 5, 9))
+        let h = try Harness(now: local(2025, 8, 5, 9), trustedNow: local(2025, 8, 5, 1))
         let seeded = try h.seed("2025-08-04", from: local(2025, 8, 4, 22), to: local(2025, 8, 4, 23))
 
         let outcome = try h.service.updateSegment(UpdateSegmentInput(

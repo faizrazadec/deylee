@@ -962,6 +962,12 @@ empty-state card (the calendar still renders beneath its empty state).
   segment** icon buttons (pencil/trash, 24 px, danger hover on delete); or
   empty state `Nothing on this day` / `Add a segment by hand to record time the
   timer missed.`
+- **Locked day** — two hours after the day's local midnight, by the server time of
+  the last sync (`SYNC_PROTOCOL.md`, *Locked days*): the `Add segment` button is
+  replaced by a `Locked` label (lock.fill, 11 px fg-faint, tooltip `This day has
+  ended. Its times are final; notes can still change.`); rows lose the delete
+  button; the empty state reads `Nothing on this day` / `This day has ended, so no
+  time can be added to it.`
 
 **Add/Edit segment modal**: title `Add segment` / `Edit segment`; footer ghost
 `Cancel` + primary `Add segment` / `Save changes` (disabled while saving; Enter
@@ -979,8 +985,12 @@ Rules:
   still running. Leave the end time empty to keep it open, or set one to close
   it here.` (Only the open segment may be left open; create requires an end —
   error `Enter an end time.`)
+- On a locked day, Type and the time fields are disabled under the notice `This day
+  has ended, so its times are final. Only the note can change.`, and saving sends the
+  note alone.
 - Field errors: `Enter a start time as HH:MM.` / `Enter an end time as HH:MM.`
-- Engine errors surface verbatim (see §3.6 plus): `That segment no longer
+- Engine errors surface verbatim (see §3.6 plus): `That day has ended, so its
+  times can no longer change.` (a locked day), `That segment no longer
   exists.`, `Another segment is still running.` (re-opening while another is
   open), `That segment could not be read.` / `That edit could not be read.`
   (malformed), `The day could not be read back.` Rejection fallback: `The
