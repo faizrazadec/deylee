@@ -129,7 +129,7 @@ the database tests need a local Postgres, which `./server/scripts/dev-db.sh` bui
 Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the layout,
 the commit convention the repository enforces, and what a reviewable pull request looks
 like. [`docs/INTERNALS.md`](docs/INTERNALS.md) explains why the app is built the way it is;
-[`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) and
+[`docs/MAC_APP_SPEC.md`](docs/MAC_APP_SPEC.md) and
 [`docs/DESIGN.md`](docs/DESIGN.md) are binding on behaviour and on visuals, and
 [`docs/SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) on the wire between the app and the API.
 

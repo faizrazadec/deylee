@@ -1,6 +1,6 @@
 # Deylee internals
 
-Why the app is built the way it is. [`MAC_REWRITE_SPEC.md`](MAC_REWRITE_SPEC.md) is binding
+Why the app is built the way it is. [`MAC_APP_SPEC.md`](MAC_APP_SPEC.md) is binding
 on behaviour and [`DESIGN.md`](DESIGN.md) on visuals; this document is the reasoning around
 them. For installing and running the app, see the [README](../README.md).
 
@@ -147,7 +147,7 @@ drives ordered, transactional, idempotent migrations — and which is also the d
 guard described above.
 
 **Export** is built into the History window, to the CSV and JSON formats pinned down in
-[`MAC_REWRITE_SPEC.md`](MAC_REWRITE_SPEC.md), so a spreadsheet built on an Electron-era
+[`MAC_APP_SPEC.md`](MAC_APP_SPEC.md), so a spreadsheet built on an Electron-era
 export still reads. Any SQLite browser reads the file directly too.
 
 **Backup** exists as an API (`DataStore.backup`) built on SQLite's online backup, so

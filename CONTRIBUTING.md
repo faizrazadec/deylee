@@ -50,7 +50,7 @@ flags that fix it.
 | `Sources/Deylee/` | the app: status item, panel, windows, idle and power monitors. |
 | `Tests/DeyleeKitTests/` | the core's suite, Swift Testing. |
 | `server/` | the sync API: Python, uv, Docker, with its migrations in `server/migrations/`. |
-| `docs/` | [`MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) is binding on behaviour, [`DESIGN.md`](docs/DESIGN.md) on visuals, [`SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) on the wire; [`PRODUCT.md`](docs/PRODUCT.md) says what we build and refuse to, [`INTERNALS.md`](docs/INTERNALS.md) explains the reasoning. |
+| `docs/` | [`MAC_APP_SPEC.md`](docs/MAC_APP_SPEC.md) is binding on behaviour, [`DESIGN.md`](docs/DESIGN.md) on visuals, [`SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) on the wire; [`PRODUCT.md`](docs/PRODUCT.md) says what we build and refuse to, [`INTERNALS.md`](docs/INTERNALS.md) explains the reasoning. |
 
 Two constraints worth knowing before you write anything:
 
@@ -87,7 +87,7 @@ The description becomes the changelog entry, so write it as the line a user woul
   passes with `DEYLEE_TEST_DB_URL` set — without it the database tests skip, and a green
   run proves nothing about them. A payload change updates
   [`docs/SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) in the same pull request.
-- Behaviour that contradicts [`docs/MAC_REWRITE_SPEC.md`](docs/MAC_REWRITE_SPEC.md) needs
+- Behaviour that contradicts [`docs/MAC_APP_SPEC.md`](docs/MAC_APP_SPEC.md) needs
   the spec changed in the same pull request, with the reasoning. The spec is binding; it is
   not a record of what the code happens to do.
 - [CHANGELOG.md](CHANGELOG.md) is maintained by hand, so add an entry for a user-visible

@@ -5,7 +5,7 @@ API. macOS, iOS, Windows, Linux, Android, the web app and the browser extension 
 implement *this document*, not each other. Where a client and this file disagree, the
 file wins.
 
-Companion documents: `MAC_REWRITE_SPEC.md` for the macOS app's behaviour, and
+Companion documents: `MAC_APP_SPEC.md` for the macOS app's behaviour, and
 `server/migrations/` for the storage schema this protocol moves rows into.
 
 ## Principles

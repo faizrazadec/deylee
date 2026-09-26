@@ -37,7 +37,7 @@ Sources/Deylee/        the app: status item, panel, windows, idle/power monitors
 Sources/CSQLCipher/    vendored SQLCipher amalgamation
 Tests/DeyleeKitTests/  the core's suite (Swift Testing)
 server/                the Python sync API (see "The sync API" below)
-docs/                  MAC_REWRITE_SPEC.md (binding), DESIGN.md (binding, visual),
+docs/                  MAC_APP_SPEC.md (binding), DESIGN.md (binding, visual),
                        SYNC_PROTOCOL.md (binding, wire), PRODUCT.md (what we build)
 ```
 
@@ -45,7 +45,7 @@ docs/                  MAC_REWRITE_SPEC.md (binding), DESIGN.md (binding, visual
 testable without a window and leaves an iOS companion possible. Anything with a
 lifetime — `NSStatusItem`, panels, monitors, the login item — lives in `Deylee`.
 
-Both `docs/MAC_REWRITE_SPEC.md` and `docs/DESIGN.md` are binding. User-visible strings
+Both `docs/MAC_APP_SPEC.md` and `docs/DESIGN.md` are binding. User-visible strings
 and window dimensions quoted there are exact; reproduce them verbatim rather than
 improving them.
 

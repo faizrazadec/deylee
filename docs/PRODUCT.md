@@ -1,7 +1,7 @@
 # Deylee — what this product is
 
 The binding statement of what Deylee is, who buys it, and what we will not build.
-`MAC_REWRITE_SPEC.md` says how the app behaves and
+`MAC_APP_SPEC.md` says how the app behaves and
 `SYNC_PROTOCOL.md` says how clients talk to the server; this file says **why either
 of them is shaped that way**. Where a feature request conflicts with this document,
 this document wins until it is deliberately amended.
@@ -107,8 +107,8 @@ four in the same commit:
 
 | Where | What it says |
 |---|---|
-| `MAC_REWRITE_SPEC.md` §1 | the binding non-goal, and the exhaustive list of network requests |
-| `MAC_REWRITE_SPEC.md` §5.5 | the Data section's user-facing copy |
+| `MAC_APP_SPEC.md` §1 | the binding non-goal, and the exhaustive list of network requests |
+| `MAC_APP_SPEC.md` §5.5 | the Data section's user-facing copy |
 | `Sources/Deylee/SettingsView.swift` | the string a user actually reads |
 | the website's `privacy.html` | the version read by people who cannot open this repo |
 
