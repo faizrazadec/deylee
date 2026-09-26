@@ -19,11 +19,11 @@ deylee-*_to_*.json
 
 # Backend secrets. The database's superuser bypasses row-level security entirely —
 # it is the one credential that can read every customer's hours. It belongs in a
-# local .env (or server/db.env) and never in a commit, a client binary, or a log.
+# local .env (or server/env.db) and never in a commit, a client binary, or a log.
 .env
 .env.*
 !.env.example
-server/db.env
+server/env.db
 
 # Logs
 *.log
