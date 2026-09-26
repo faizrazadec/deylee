@@ -305,3 +305,46 @@ async def test_a_note_does_not_expire_the_slip(person: Person, owner: Store):
         owner, "UPDATE public.segments SET note = 'standup' WHERE user_id = $1", person.user
     )
     assert "record still matches" in await check(person, url)
+
+
+# MARK: Today, once ended
+
+
+async def file_today(store: Store, person: Person, *, ended: bool, running: bool) -> date:
+    """Work on today in Berlin: one closed hour, optionally a timer still running, and the
+    day ended or not — through the restricted role, as the app's sync would."""
+    today = datetime.now(BERLIN).date()
+    start = local_ms(today, 0, 1)
+    async with store.with_user(person.user) as connection:
+        await connection.execute(
+            "INSERT INTO public.days (id, user_id, date, target_minutes, ended_at) "
+            "VALUES ($1, $2, $3, 480, $4)",
+            uuid4(), person.user, today.isoformat(), start + 3 * 60 * MIN if ended else None,
+        )
+        await connection.execute(
+            "INSERT INTO public.segments (id, user_id, day_date, type, started_at, ended_at, "
+            "created_at, updated_at) VALUES ($1, $2, $3, 'work', $4, $5, $4, $5)",
+            uuid4(), person.user, today.isoformat(), start, start + 60 * MIN,
+        )
+        if running:
+            await connection.execute(
+                "INSERT INTO public.segments (id, user_id, day_date, type, started_at, "
+                "created_at, updated_at) VALUES ($1, $2, $3, 'work', $4, $4, $4)",
+                uuid4(), person.user, today.isoformat(), start + 2 * 60 * MIN,
+            )
+    return today
+
+
+async def test_today_can_go_on_a_slip_once_it_is_ended(store: Store, person: Person):
+    today = await file_today(store, person, ended=True, running=False)
+    response = await person.hour_slip(today, today)
+    assert response.status_code == 200, response.text
+    assert response.json()["claimedMs"] == 60 * MIN
+
+
+async def test_today_with_a_timer_running_is_refused_even_if_marked_ended(
+    store: Store, person: Person
+):
+    today = await file_today(store, person, ended=True, running=True)
+    response = await person.hour_slip(today, today)
+    assert response.status_code == 400

@@ -7,8 +7,9 @@ hour slip is a token signed with a key used for nothing else; its QR code links 
 Nothing is stored. PRODUCT.md §6 refuses stored totals, and an hour slip does not need one:
 the token carries the totals the server signed, and the check page re-derives them from
 the segments and witness beats underneath, so it says both "the server issued this" and
-"the record still says so". Only ended days can go on an hour_slip, because a locked day's
-times cannot change — so an hour slip checks the same way for as long as the account exists.
+"the record still says so". Only ended days can go on an hour slip: days past their lock,
+whose times cannot change, and days the person ended themselves. An ended day can still be
+reopened, and a slip made from it then expires (see _fingerprint).
 
 What the page shows — name, full email address and the hours — is exactly what its
 holder was handed. That is the point of it, and why only the person can create one.
@@ -86,10 +87,22 @@ async def create(request: Request) -> dict:
 
     async with state.store.with_user(user_id) as connection:
         await connection.execute("SELECT set_config('app.time_zone', $1, true)", zone.key)
-        # Only days the server considers over: their times are final, so the hour slip
-        # checks the same way for ever. The latest date decides for all of them.
-        if not await connection.fetchval(
-            "SELECT public.epoch_ms() >= public.day_lock_at($1, $2)", user_id, last.isoformat()
+        # Only days that are over: past their lock by the server's clock, or ended by the
+        # person with no timer still running on them. An ended day can be reopened, and a
+        # slip made from it then expires rather than vouching for hours that changed.
+        if await connection.fetchval(
+            """
+            SELECT count(*) FROM generate_series($2::date, $3::date, interval '1 day') AS g(d)
+             WHERE public.epoch_ms() < public.day_lock_at($1, g.d::date::text)
+               AND NOT (
+                 EXISTS (SELECT 1 FROM public.days y
+                          WHERE y.user_id = $1 AND y.date = g.d::date::text
+                            AND y.deleted_at IS NULL AND y.ended_at IS NOT NULL)
+                 AND NOT EXISTS (SELECT 1 FROM public.segments s
+                                  WHERE s.user_id = $1 AND s.day_date = g.d::date::text
+                                    AND s.deleted_at IS NULL AND s.ended_at IS NULL))
+            """,
+            user_id, first, last,
         ):
             raise APIError(400, "An hour slip can only cover days that have ended.")
         profile = await connection.fetchrow(

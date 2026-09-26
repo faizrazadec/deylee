@@ -283,9 +283,10 @@ which they hand to whoever needs proof — a client, an employer. Same bearer to
 
 Rules:
 
-- **Only ended days.** The last date must be locked by the server's clock (see *Locked
-  days*), so a slip's figures can never change after it is issued. `400` otherwise, and
-  for more than 30 days or an unknown zone. `503` when the server has no slip key.
+- **Only ended days.** Each date must be past its lock by the server's clock (see *Locked
+  days*), or ended by the person with no segment still open on it — so today can go on a
+  slip once the day is ended. `400` otherwise, and for more than 30 days or an unknown zone.
+  `503` when the server has no slip key.
 - **Claimed** is the day's work segments as the server holds them — so a client syncs
   before asking. **Witnessed** is time the server heard a running timer, split by the
   person's own local days from `timeZone`. Days older than 90, whose beats survive only
