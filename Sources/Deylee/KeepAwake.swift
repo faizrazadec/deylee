@@ -48,7 +48,9 @@ final class KeepAwake {
 
     private func apply() {
         applyLidGuard()
+        // Awake with the lid closed means working in the background, not lighting a screen.
         let allowDisplaySleep = prefs.value(\.keepAwakeAllowDisplaySleep)
+            || prefs.value(\.keepAwakeLidClosed)
         if let id = assertion, !session.isOn || allowDisplaySleep != assertionAllowsDisplaySleep {
             IOPMAssertionRelease(id)
             assertion = nil

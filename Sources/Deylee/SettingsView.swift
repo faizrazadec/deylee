@@ -775,7 +775,7 @@ struct SettingsView: View {
 
             SettingsToggleRow(
                 label: "Stay awake with the lid closed",
-                description: "Turning this on starts Keep Awake. Asks for your administrator password each time Keep Awake starts; sleep comes back when it ends, even if Deylee quits.",
+                description: "Turning this on starts Keep Awake. The Mac keeps working and the screen turns off as usual. Asks for your administrator password each time Keep Awake starts; sleep comes back when it ends, even if Deylee quits.",
                 isOn: model.prefs.keepAwakeLidClosed
             ) { next in
                 model.write { try $0.write(.keepAwakeLidClosed, .bool(next)) }
