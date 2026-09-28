@@ -218,6 +218,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if keepAwake.session.isOn { keepAwake.turnOff() } else { keepAwake.turnOn() }
         refresh()
     }
+    /// A session for the default length, unless one is already running.
+    func startKeepAwake() {
+        guard !keepAwake.session.isOn else { return }
+        keepAwake.turnOn()
+        refresh()
+    }
     @objc private func keepAwakeFor(_ sender: NSMenuItem) { keepAwake.turnOn(minutes: sender.tag); refresh() }
 
     @objc private func keepAwakeCustom() {

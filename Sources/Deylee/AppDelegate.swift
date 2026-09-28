@@ -268,6 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let statusItem = StatusItemController(model: model, prefs: prefs)
         self.statusItem = statusItem
+        settingsModel?.onLidClosedEnabled = { [weak statusItem] in statusItem?.startKeepAwake() }
 
         // The controller watches `showMiniWindow` itself, so toggling the preference
         // creates or destroys the window live with no further wiring.

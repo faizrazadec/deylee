@@ -1187,8 +1187,10 @@ counting."
   when the Mac is unplugged and off when it is plugged back in." Acts only on a switch
   of power source, so a session changed by hand stands until the next one.
 - **Stay awake with the lid closed** (toggle, `keepAwakeLidClosed`, default off):
-  "Asks for your administrator password each time Keep Awake starts. Sleep comes back
-  when it ends, even if Deylee quits." A power assertion cannot survive the lid closing,
+  "Turning this on starts Keep Awake. Asks for your administrator password each time
+  Keep Awake starts; sleep comes back when it ends, even if Deylee quits." Switching it
+  on starts a session for `keepAwakeDefaultMinutes` unless one is running, so the prompt
+  comes while the person is looking at the switch. A power assertion cannot survive the lid closing,
   so a session with this on runs `pmset -a disablesleep 1` once, as root, through the
   system password dialog ("Deylee wants to keep your Mac awake with the lid closed.").
   The same command starts a root watchdog that runs `pmset -a disablesleep 0` as soon
