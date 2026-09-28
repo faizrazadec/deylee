@@ -3,6 +3,11 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
+## Unreleased
+
+- Opening Settings no longer puts a blinking cursor in the Daily target box. Nothing is
+  selected until you click a field or press Tab.
+
 ## 0.7.0 — 2026-09-26
 
 **Hour slips: proof of your hours.** History has a new Hour slip… button. Choose
