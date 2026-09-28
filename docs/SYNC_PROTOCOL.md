@@ -301,6 +301,43 @@ Rules:
   added, moved or deleted — the page says the slip has expired and shows no hours. Notes
   are not on a slip and do not expire it; nor does compacting witness beats.
 
+## Settings: `POST /v1/settings`
+
+A person's preferences, one set per account, so a new install or a wiped one gets them
+back. Same bearer token, and like `/v1/sync` one round trip both writes and reads:
+
+    POST /v1/settings
+    { "settings": { "theme": "dark", "idleThresholdMinutes": 15 }, "updatedAt": 1790000000000 }
+
+    POST /v1/settings
+    { }                                          // read only
+
+    → 200 { "settings": { … } | null, "updatedAt": 1790000000000 | null, "serverTime": … }
+
+Rules:
+
+- **The answer is always the stored winner.** A strictly newer `updatedAt` replaces the
+  set; an equal or older one changes nothing, so a replay is safe and a client that lost
+  learns what won in the same request. `updatedAt` is the client's claim, refused (`400`)
+  more than five minutes ahead of the server, the same bound a segment gets.
+- **The whole set, not one key.** A client sends every preference it syncs, under the key
+  names in `MAC_APP_SPEC.md` §7. Values are booleans, finite numbers or strings of at most
+  64 characters, and at most 64 keys; anything else is `400`. `settings` and `updatedAt`
+  travel together or not at all.
+- **The server does not interpret the set.** A client reading it clamps every key exactly
+  as it would a value from its own store, applies only the keys it syncs, and keeps its
+  own value for any key it does not know.
+- **Never synced:** `screenCaptureEnabled`, `screenCaptureIntervalMinutes`,
+  `screenCaptureRetentionDays`, `launchAtLogin`, and `settingsSyncEnabled` itself. Screen
+  capture is the recorded person's own switch on the machine being recorded (`PRODUCT.md`
+  §3), so no row on a server may be able to turn it on; a client ignores these keys if it
+  receives them. Launch at login belongs to one machine.
+- **Offline is the normal case.** A change lands in the local store first and is marked
+  unsent; the next successful sync sends it. A failed settings request never fails the
+  rest of a sync, and nothing about it reaches the user beyond the sync status.
+- **Reset is a write.** Resetting settings sends the defaults with a new `updatedAt`, so
+  every device takes them the way it takes any other change. There is no delete.
+
 ## Idempotency
 
 Every request must be safe to send twice. Networks drop responses, and a client that
