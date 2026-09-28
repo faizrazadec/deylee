@@ -362,7 +362,7 @@ struct EndDayConfirmView: View {
                         .fontWeight(.medium)
                         .monospacedDigit()
                         .foregroundStyle(Palette.fg)
-                    + Text(" of work. You can still start again afterwards — the day simply reopens.")
+                    + Text(" of work. You can still start again afterwards, and the day simply reopens.")
             )
             .lineSpacing(Space.xs)
             .fixedSize(horizontal: false, vertical: true)

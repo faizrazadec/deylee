@@ -407,7 +407,7 @@ final class AuthService: NSObject, ObservableObject {
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost:
-                return "You appear to be offline — could not connect to Deylee."
+                return "You appear to be offline, so Deylee could not connect."
             case .cannotConnectToHost, .cannotFindHost, .timedOut:
                 return "Could not connect to Deylee. It may be down, or you may be offline."
             default:

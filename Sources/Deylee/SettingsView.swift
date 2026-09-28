@@ -66,7 +66,7 @@ final class SettingsModel {
     /// ID it validates the archive's EdDSA signature instead, so an ad-hoc signed
     /// release updates itself perfectly well and the old sentence was simply wrong.
     static let noFeedReason =
-        "This build has no update feed — check the Releases page."
+        "This build has no update feed. Check the Releases page."
 
     private static let releasesURLString = "https://github.com/faizrazadec/deylee-ios/releases"
 
@@ -363,7 +363,7 @@ final class SettingsModel {
     var versionDescription: String? {
         canAutoUpdate
             ? nil
-            : "This build can’t install updates or check for them, so Deylee won’t tell you when a new version exists — look on the Releases page."
+            : "This build can’t install updates or check for them, so Deylee won’t tell you when a new version exists. Look on the Releases page."
     }
 
     /// The section header makes the same claim as the toggle and has to fall the same
@@ -589,7 +589,7 @@ struct SettingsView: View {
 
             SettingsToggleRow(
                 label: "Pause when the screen locks",
-                description: "Off by default — a lock during a call or a screensaver is not always a break.",
+                description: "Off by default, because a lock during a call or a screensaver is not always a break.",
                 isOn: model.prefs.autoPauseOnLock
             ) { next in
                 model.write { try $0.write(.autoPauseOnLock, .bool(next)) }
@@ -617,7 +617,7 @@ struct SettingsView: View {
         ) {
             SettingsToggleRow(
                 label: "Capture my screen while the timer runs",
-                description: "An image every few minutes while you are working — never on a break, "
+                description: "An image every few minutes while you are working: never on a break, "
                     + "never while paused, never while the timer is stopped. Turning this on asks "
                     + "macOS for permission and takes one image straight away, so you can see "
                     + "exactly what gets stored.",
@@ -1473,7 +1473,7 @@ struct SettingsUpdateLine: View {
         case .downloaded(let version):
             return "Version \(version) is ready"
         case .manual(let version):
-            return "Version \(version) is available — this build can’t install it for you"
+            return "Version \(version) is available, but this build can’t install it for you"
         case .unsupported(let reason):
             return reason
         case .failed:

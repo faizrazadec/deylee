@@ -355,7 +355,7 @@ def _page(title: str, hour_slip: dict | None, status: int = 200) -> HTMLResponse
 <dt>Witnessed live</dt><dd>{_hm(claims["witnessed"])}</dd></dl>
 <table><tr><th>Day</th><th>Claimed</th><th>Witnessed</th></tr>{rows}</table>{approx}
 <p class="note">Claimed is the work time recorded. Witnessed is time the server heard a
-running timer, stamped by its own clock — it cannot be added afterwards.</p>"""
+running timer, stamped by its own clock, so it cannot be added afterwards.</p>"""
     return _html(title, body, status)
 
 

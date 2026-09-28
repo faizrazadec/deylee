@@ -18,6 +18,8 @@ SQLite schema may still change, so a minor bump can carry a migration.
   a new Settings Sync section to turn this off, sync straight away, or reset every synced
   setting to its default on all your Macs without touching your hours. Screen capture
   settings and launch at login always stay on the Mac they were set on.
+- Wording across the app, and on the page an hour slip opens, reads more plainly: sentences
+  no longer break off with a dash.
 - Opening Settings no longer puts a blinking cursor in the Daily target box. Nothing is
   selected until you click a field or press Tab.
 
