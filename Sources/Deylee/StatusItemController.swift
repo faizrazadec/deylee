@@ -196,6 +196,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let parent = NSMenuItem(title: "Keep Awake For", action: nil, keyEquivalent: "")
         parent.submenu = lengths
         menu.addItem(parent)
+        add("Turn Screen Off", #selector(turnScreenOff), enabled: true)
     }
 
     static func keepAwakeLabel(_ minutes: Int) -> String {
@@ -244,6 +245,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         else { return }
         keepAwake.turnOn(minutes: min(minutes, range.upperBound))
         refresh()
+    }
+    /// Sleeps the display now and nothing else; any Keep Awake keeps the Mac working.
+    /// No password: `pmset displaysleepnow` is open to every user.
+    @objc private func turnScreenOff() {
+        try? Process.run(URL(fileURLWithPath: "/usr/bin/pmset"), arguments: ["displaysleepnow"])
     }
     @objc private func openAbout() { AboutPanel.show() }
     @objc private func quit() { NSApp.terminate(nil) }

@@ -708,8 +708,11 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
      `PreventUserIdleSystemSleep` when `keepAwakeAllowDisplaySleep` is on. Off at every
      launch; a timed session ends on the first 1 s refresh past its end. The tooltip
      gains ` · keeping awake` or ` · awake until {HH:MM}`.
-  10. separator
-  11. `Quit`
+  10. `Turn Screen Off`: always enabled; runs `pmset displaysleepnow`, which sleeps the
+     display at once (and locks the screen if the Mac asks for a password on wake) while
+     the system, and any Keep Awake, carries on.
+  11. separator
+  12. `Quit`
 - `getBounds` returns null before the menu bar lays the item out (placeholder
   rect) → caller centers the panel instead of anchoring.
 
