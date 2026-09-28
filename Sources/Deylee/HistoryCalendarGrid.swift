@@ -163,6 +163,6 @@ private struct HistoryDayCell: View {
 
     private var label: String {
         let worked = isTracked ? "\(formatCompact(workedMs)) worked" : "nothing tracked"
-        return "\(formatDateLong(date)) — \(worked)\(isMet ? ", target met" : "")"
+        return "\(formatDateLong(date)): \(worked)\(isMet ? ", target met" : "")"
     }
 }

@@ -54,7 +54,7 @@ struct HourSlipSheet: View {
                 Text(
                     """
                     A PDF of your claimed and witnessed hours, signed by Deylee. \
-                    Its QR code lets anyone you give it to check it is genuine — the page \
+                    Its QR code lets anyone you give it to check it is genuine. The page \
                     they see shows your name, full email and these hours.
                     """
                 )

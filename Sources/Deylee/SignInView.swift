@@ -187,7 +187,7 @@ struct SignInView: View {
                 .font(Type.small)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            Text("Tracking works offline — signing in only syncs the log.")
+            Text("Tracking works offline. Signing in only syncs the log.")
                 .font(Type.meta)
                 .foregroundStyle(Palette.fgFaint)
                 .multilineTextAlignment(.center)

@@ -168,7 +168,7 @@ struct PanelView: View {
             FooterButton(
                 symbol: "clock.arrow.circlepath",
                 label: "History",
-                hint: "History — every day you have recorded",
+                hint: "History: every day you have recorded",
                 action: model.openHistory
             )
             Spacer()
@@ -178,13 +178,13 @@ struct PanelView: View {
             FooterButton(
                 symbol: "ladybug",
                 label: "Report a bug",
-                hint: "Report a bug — opens a draft in your mail app",
+                hint: "Report a bug: opens a draft in your mail app",
                 action: model.sendFeedback
             )
             FooterButton(
                 symbol: "info.circle",
                 label: "About Deylee",
-                hint: "About Deylee — version and source",
+                hint: "About Deylee: version and source",
                 action: AboutPanel.show
             )
             FooterButton(

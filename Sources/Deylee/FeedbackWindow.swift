@@ -73,7 +73,7 @@ struct FeedbackView: View {
 
             // Said before sending rather than after, because a person deciding what to
             // write should know what travels with it.
-            Text("Sent with your Deylee version and macOS version. Nothing else — no logs, no screenshots.")
+            Text("Sent with your Deylee version and macOS version. Nothing else: no logs, no screenshots.")
                 .font(Type.meta)
                 .foregroundStyle(Palette.fgFaint)
                 .fixedSize(horizontal: false, vertical: true)
