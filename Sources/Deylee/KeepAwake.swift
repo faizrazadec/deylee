@@ -119,8 +119,10 @@ final class LidSleepGuard {
         let script = Self.appleScript(
             pid: ProcessInfo.processInfo.processIdentifier, flag: Self.flag.path
         )
+        NSLog("[deylee] lid closed: asking for the administrator password")
         Task.detached {
-            let engaged = Self.runAppleScript(script)
+            let (engaged, detail) = Self.runAppleScript(script)
+            NSLog("[deylee] lid closed: %@", engaged ? "sleep disabled" : "not disabled: \(detail)")
             await MainActor.run {
                 if !engaged { self.release() }
                 done(engaged)
@@ -156,19 +158,22 @@ final class LidSleepGuard {
     }
 
     /// Off the main thread: the password dialog stays up for as long as the person
-    /// takes, and the menu bar must keep working meanwhile. Cancelling exits non-zero.
-    nonisolated private static func runAppleScript(_ script: String) -> Bool {
+    /// takes, and the menu bar must keep working meanwhile. Cancelling exits non-zero,
+    /// and what osascript said is returned so a refusal can be told from a cancel.
+    nonisolated private static func runAppleScript(_ script: String) -> (Bool, String) {
         let process = Process()
+        let errors = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", script]
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        process.standardError = errors
         do {
             try process.run()
         } catch {
-            return false
+            return (false, "\(error)")
         }
+        let said = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         process.waitUntilExit()
-        return process.terminationStatus == 0
+        return (process.terminationStatus == 0, said.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }
