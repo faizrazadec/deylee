@@ -5,6 +5,13 @@ SQLite schema may still change, so a minor bump can carry a migration.
 
 ## Unreleased
 
+- **Keep Awake can now keep the Mac awake with the lid closed.** Turn on Stay awake with
+  the lid closed in Settings, under Keep Awake, and Keep Awake starts straight away. macOS
+  asks for your administrator password when a Keep Awake session starts, and the Mac sleeps normally again as soon as the
+  session ends, even if Deylee quits or crashes. The screen still turns off as usual, so
+  the Mac keeps working in the background. It is off unless you turn it on.
+- The menu-bar menu has a new **Turn Screen Off** item, which switches the display off at
+  once while the Mac, and any Keep Awake, keeps running.
 - Opening Settings no longer puts a blinking cursor in the Daily target box. Nothing is
   selected until you click a field or press Tab.
 

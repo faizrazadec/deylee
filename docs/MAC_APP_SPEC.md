@@ -708,8 +708,11 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
      `PreventUserIdleSystemSleep` when `keepAwakeAllowDisplaySleep` is on. Off at every
      launch; a timed session ends on the first 1 s refresh past its end. The tooltip
      gains ` · keeping awake` or ` · awake until {HH:MM}`.
-  10. separator
-  11. `Quit`
+  10. `Turn Screen Off`: always enabled; runs `pmset displaysleepnow`, which sleeps the
+     display at once (and locks the screen if the Mac asks for a password on wake) while
+     the system, and any Keep Awake, carries on.
+  11. separator
+  12. `Quit`
 - `getBounds` returns null before the menu bar lays the item out (placeholder
   rect) → caller centers the panel instead of anchoring.
 
@@ -1186,6 +1189,20 @@ counting."
 - **Keep awake on battery** (toggle, `keepAwakeOnBattery`, default off) — "Turns on
   when the Mac is unplugged and off when it is plugged back in." Acts only on a switch
   of power source, so a session changed by hand stands until the next one.
+- **Stay awake with the lid closed** (toggle, `keepAwakeLidClosed`, default off):
+  "Turning this on starts Keep Awake. The Mac keeps working and the screen turns off as
+  usual. Asks for your administrator password each time Keep Awake starts; sleep comes
+  back when it ends, even if Deylee quits." While it is on, the session holds
+  `PreventUserIdleSystemSleep` whatever `keepAwakeAllowDisplaySleep` says. Switching it
+  on starts a session for `keepAwakeDefaultMinutes` unless one is running, so the prompt
+  comes while the person is looking at the switch. A power assertion cannot survive the lid closing,
+  so a session with this on runs `pmset -a disablesleep 1` once, as root, through the
+  system password dialog ("Deylee wants to keep your Mac awake with the lid closed.").
+  The same command starts a root watchdog that runs `pmset -a disablesleep 0` as soon
+  as the Deylee process exits or its flag file in the user's temporary folder is gone;
+  ending the session deletes the file, so turning it off never asks for a password and
+  a crash cannot leave the Mac unable to sleep. A cancelled dialog is not asked again
+  until the next session.
 
 **Data** — "Your database lives on this machine. Signed out, it goes nowhere; signed
 in, your hours sync to your account. Nothing else leaves unless you switch it on
@@ -1408,6 +1425,7 @@ positions per-entry finite-and-rounded, malformed entries dropped individually.
 | `keepAwakeDefaultMinutes` | int 0–1440 | `0` | Length of a plain `Keep Awake`; 0 is until turned off. |
 | `keepAwakeAllowDisplaySleep` | bool | `false` | Keep awake holds system sleep only, not the display. |
 | `keepAwakeOnBattery` | bool | `false` | Keep awake on switching to battery; stop on switching to the adapter. |
+| `keepAwakeLidClosed` | bool | `false` | While a keep awake session runs, `pmset disablesleep` as root so closing the lid does not sleep the Mac, and the display may sleep. |
 
 Error surface: a preference write is the **only** operation allowed to fail
 loudly — unknown key, wrong type, or OS refusal (login item) rejects; the UI

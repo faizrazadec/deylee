@@ -114,6 +114,9 @@ final class SettingsModel {
     @ObservationIgnored var onCaptureEnabled: (() -> Void)?
     /// Opens the window that shows the images themselves.
     @ObservationIgnored var onReviewCaptures: (() -> Void)?
+    /// Runs when "Stay awake with the lid closed" is switched on, so the Mac stays awake
+    /// from that moment rather than from the next Keep Awake someone remembers to start.
+    @ObservationIgnored var onLidClosedEnabled: (() -> Void)?
 
     func refreshCaptureFootprint() {
         let footprint = readCaptureFootprint?() ?? (count: 0, bytes: 0)
@@ -766,6 +769,17 @@ struct SettingsView: View {
                 isOn: model.prefs.keepAwakeOnBattery
             ) { next in
                 model.write { try $0.write(.keepAwakeOnBattery, .bool(next)) }
+            }
+
+            SettingsHairline()
+
+            SettingsToggleRow(
+                label: "Stay awake with the lid closed",
+                description: "Turning this on starts Keep Awake. The Mac keeps working and the screen turns off as usual. Asks for your administrator password each time Keep Awake starts; sleep comes back when it ends, even if Deylee quits.",
+                isOn: model.prefs.keepAwakeLidClosed
+            ) { next in
+                model.write { try $0.write(.keepAwakeLidClosed, .bool(next)) }
+                if next { model.onLidClosedEnabled?() }
             }
         }
     }
