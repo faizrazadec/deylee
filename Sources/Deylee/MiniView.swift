@@ -72,7 +72,7 @@ struct MiniView: View {
         let label = StateBadge.label(for: model.snapshot.state)
         let worked = formatCompact(live.workedMs)
         let breakTime = formatCompact(live.breakMs)
-        return "\(label) · \(worked) worked · \(breakTime) break — double-click to open Deylee"
+        return "\(label) · \(worked) worked · \(breakTime) break. Double-click to open Deylee."
     }
 }
 

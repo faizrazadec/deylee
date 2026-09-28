@@ -675,10 +675,10 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
   hiding it.
 - **Tooltip** (always), with `totals = "${formatHM(workedMs)} worked · ${formatHM(breakMs)} break"`
   (` · ` U+00B7, `—` em dash):
-  - RUNNING → `Deylee — ${totals}`
-  - PAUSED → `Deylee — paused · ${totals}`
-  - ENDED → `Deylee — day ended · ${totals}`
-  - IDLE, workedMs > 0 → `Deylee — stopped · ${totals}`; IDLE, 0 → `Deylee — not tracking`
+  - RUNNING → `Deylee · ${totals}`
+  - PAUSED → `Deylee · paused · ${totals}`
+  - ENDED → `Deylee · day ended · ${totals}`
+  - IDLE, workedMs > 0 → `Deylee · stopped · ${totals}`; IDLE, 0 → `Deylee · not tracking`
 - Refresh: title/tooltip re-applied every **1 s** and immediately on every timer
   snapshot; totals via `liveTotals(snapshot, now)`.
 - **Left click** → toggle the panel anchored to the item's bounds. **Right click
@@ -700,7 +700,7 @@ never quits — quit only via tray menu Quit or the panel/system quit path.
   3. separator
   4. `Open Deylee` (opens the panel), 5. `History`, 6. `Settings`
   7. separator
-  8. `Keep Awake` — checkmarked while on; reads `Keep Awake — until {HH:MM}` during a
+  8. `Keep Awake` — checkmarked while on; reads `Keep Awake until {HH:MM}` during a
      timed session. Off → on for `keepAwakeDefaultMinutes`; on → off.
   9. `Keep Awake For` ▸ `5 Minutes`, `15 Minutes`, `1 Hour`, `2 Hours`, `5 Hours`,
      `Until Turned Off`, separator, `Custom…` (alert asking for minutes, 1–1440).
@@ -798,7 +798,7 @@ reminder notice (§4.6).
 
 **End-day confirmation modal**: title `End the day?`; body: `This closes
 whatever is running and finalises {formatCompact(workedMs)} of work. You can
-still start again afterwards — the day simply reopens.` (worked value medium
+still start again afterwards, and the day simply reopens.` (worked value medium
 tabular `fg`). Footer: ghost `Cancel` + danger `End day`. Dismissible (Escape /
 backdrop). A queued prompt suppresses it and force-clears the pending confirm.
 
@@ -881,7 +881,7 @@ outside the rounded card is fully transparent. Row contents, left to right:
 anywhere except the button opens the panel** (the button stops double-click
 propagation so a fast pause/resume tap doesn't also open it). Whole-card tooltip
 (exact template):
-`{Label} · {formatCompact(workedMs)} worked · {formatCompact(breakMs)} break — double-click to open Deylee`.
+`{Label} · {formatCompact(workedMs)} worked · {formatCompact(breakMs)} break. Double-click to open Deylee.`
 No context menu, no edge snapping, no keyboard shortcuts.
 
 ### 5.4 History window
@@ -922,7 +922,7 @@ days that have ended.` or the server's own sentence; footer ghost `Cancel` + pri
 `Create and save…` (`Creating…` while working, disabled while the range has a problem).
 It syncs, asks the server to sign (`SYNC_PROTOCOL.md`, *Hour slips*), then opens a save
 panel titled `Save hour slip` for `deylee-hour-slip-{from}_to_{to}.pdf`. Every ending is
-reported in the status banner: saved — `Hour slip saved to {folder} — {claimed} claimed,
+reported in the status banner: saved — `Hour slip saved to {folder}: {claimed} claimed,
 {witnessed} witnessed.`, and the PDF opens; save panel cancelled — `The hour slip was
 created but not saved. Create it again to save it.`; write failed — `The hour slip could
 not be saved: {reason}`.
@@ -1123,12 +1123,33 @@ verbatim, or `{n} changes were refused`. The provider is named because somebody
 with both a Google and a password route needs to know which one this session came
 from.
 
-A **second row appears only while sync is actually failing** — title `Sync paused —
-offline` when the reason mentions offline/connect, else `Sync paused`; detail
+A **second row appears only while sync is actually failing** — title `Sync paused
+(offline)` when the reason mentions offline/connect, else `Sync paused`; detail
 `Tracking continues; will catch up`; warning tone; action `Retry`. It is a separate
 row deliberately: "your account" and "sync is behind" are different facts, and
 burying the second inside the first is how people miss it. When sync is healthy the
 row is absent rather than present-and-empty.
+
+**Settings Sync**, directly under Account and only in a build with an API configured:
+"Your preferences, kept in your account so another Mac or a reinstall starts with them."
+The wire rules are `SYNC_PROTOCOL.md`, "Settings".
+
+- **Sync settings** (toggle, `settingsSyncEnabled`, default on, never synced itself):
+  "Screen capture and launch at login always stay on this Mac." Turning it on syncs at once.
+- **Settings in your account** (row, dimmed while sync is off): "Changes made offline are
+  sent when you are back online. Reset puts every synced setting back to its default,
+  here and on your other Macs. Your hours are not touched." Buttons `Sync now` (runs a
+  full sync; disabled signed out or mid-sync) and `Reset…`, which asks first: title
+  `Reset synced settings?`, text "Every synced setting goes back to its default on this
+  Mac and, at the next sync, on your other Macs. Your hours and your screen capture
+  settings are not changed.", buttons `Reset` and `Cancel`. A reset is a write of the
+  defaults with a new time, sent even when nothing changed here, and works offline.
+
+Every change to a synced key is stamped with the time and marked unsent, in the
+`preferencesSync` key of the same `UserDefaults` as the preferences, so the two can only
+vanish together: an install with neither takes the account's set outright. Settings
+chosen before this existed are sent as time 0, so they fill an empty account but never
+overwrite one. A failed settings request is logged and never changes the sync status.
 
 **General** — "How Deylee starts up and how it looks."
 1. **Launch at login** (toggle, `launchAtLogin`, default off) — "Starts Deylee in
@@ -1168,8 +1189,8 @@ counting."
    — "The gap is held until you are back, then you choose whether it was a
    break."
 9. **Pause when the screen locks** (toggle, `autoPauseOnLock`, default off) —
-   "Off by default — a lock during a call or a screensaver is not always a
-   break."
+   "Off by default, because a lock during a call or a screensaver is not
+   always a break."
 
 **Reminders** — "One nudge a day, and only while the timer is still running."
 10. **Remind me to stop** (toggle, `reminderEnabled`, default off) — "Fires at
@@ -1205,8 +1226,8 @@ counting."
   until the next session.
 
 **Data** — "Your database lives on this machine. Signed out, it goes nowhere; signed
-in, your hours sync to your account. Nothing else leaves unless you switch it on
-yourself — screen capture is off until you turn it on."
+in, your hours and your settings sync to your account. Nothing else leaves unless you
+switch it on yourself: screen capture is off until you turn it on."
 
 (This copy has now been wrong twice, which is why it is written down here. It was
 *"Everything Deylee records stays on this machine. Nothing is ever uploaded"* until
@@ -1253,7 +1274,7 @@ project's public releases page."
     | available | `Version {v} is available` | `Download` (capable) / link `Open Releases` |
     | downloading | `Downloading… {p}%` | — |
     | downloaded | `Version {v} is ready` | `Restart to update` |
-    | manual | `Version {v} is available — this build can't install it for you` | link `Open Releases` |
+    | manual | `Version {v} is available, but this build can't install it for you` | link `Open Releases` |
     | unsupported | the reason string | link `Open Releases` |
     | error | `Couldn't check for updates` (detail in tooltip) | `Try again` |
 
@@ -1261,7 +1282,7 @@ project's public releases page."
     will try again later.`; download before check → `There is nothing to
     download yet — check for updates first.`; dev build → `Updates are only
     checked in an installed build.`; missing feed → `This build has no update
-    feed — check the Releases page.`; generic → first line truncated to 200
+    feed. Check the Releases page.`; generic → first line truncated to 200
     chars + `…`; empty → `The update check failed.`; couldn't even start →
     `The update check could not be started.`
 
@@ -1426,6 +1447,7 @@ positions per-entry finite-and-rounded, malformed entries dropped individually.
 | `keepAwakeAllowDisplaySleep` | bool | `false` | Keep awake holds system sleep only, not the display. |
 | `keepAwakeOnBattery` | bool | `false` | Keep awake on switching to battery; stop on switching to the adapter. |
 | `keepAwakeLidClosed` | bool | `false` | While a keep awake session runs, `pmset disablesleep` as root so closing the lid does not sleep the Mac, and the display may sleep. |
+| `settingsSyncEnabled` | bool | `true` | Gates the settings exchange at the end of each sync. Never synced. |
 
 Error surface: a preference write is the **only** operation allowed to fail
 loudly — unknown key, wrong type, or OS refusal (login item) rejects; the UI

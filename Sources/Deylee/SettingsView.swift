@@ -66,7 +66,7 @@ final class SettingsModel {
     /// ID it validates the archive's EdDSA signature instead, so an ad-hoc signed
     /// release updates itself perfectly well and the old sentence was simply wrong.
     static let noFeedReason =
-        "This build has no update feed — check the Releases page."
+        "This build has no update feed. Check the Releases page."
 
     private static let releasesURLString = "https://github.com/faizrazadec/deylee-ios/releases"
 
@@ -363,7 +363,7 @@ final class SettingsModel {
     var versionDescription: String? {
         canAutoUpdate
             ? nil
-            : "This build can’t install updates or check for them, so Deylee won’t tell you when a new version exists — look on the Releases page."
+            : "This build can’t install updates or check for them, so Deylee won’t tell you when a new version exists. Look on the Releases page."
     }
 
     /// The section header makes the same claim as the toggle and has to fall the same
@@ -450,6 +450,7 @@ struct SettingsView: View {
                         sync: sync.sync,
                         presentSignIn: { sync.presentSignIn?() }
                     )
+                    SettingsSyncSection(model: model, auth: sync.auth, sync: sync.sync)
                 }
                 general
                 tracking
@@ -588,7 +589,7 @@ struct SettingsView: View {
 
             SettingsToggleRow(
                 label: "Pause when the screen locks",
-                description: "Off by default — a lock during a call or a screensaver is not always a break.",
+                description: "Off by default, because a lock during a call or a screensaver is not always a break.",
                 isOn: model.prefs.autoPauseOnLock
             ) { next in
                 model.write { try $0.write(.autoPauseOnLock, .bool(next)) }
@@ -616,7 +617,7 @@ struct SettingsView: View {
         ) {
             SettingsToggleRow(
                 label: "Capture my screen while the timer runs",
-                description: "An image every few minutes while you are working — never on a break, "
+                description: "An image every few minutes while you are working: never on a break, "
                     + "never while paused, never while the timer is stopped. Turning this on asks "
                     + "macOS for permission and takes one image straight away, so you can see "
                     + "exactly what gets stored.",
@@ -795,8 +796,8 @@ struct SettingsView: View {
             // contradicts the software is worse than none: this is the screen where
             // somebody checks, and the sentence has to survive being checked.
             description: "Your database lives on this machine. Signed out, it goes nowhere; "
-                + "signed in, your hours sync to your account. Nothing else leaves unless "
-                + "you switch it on yourself — screen capture is off until you turn it on."
+                + "signed in, your hours and your settings sync to your account. Nothing else "
+                + "leaves unless you switch it on yourself: screen capture is off until you turn it on."
         ) {
             dataFolderBlock
             SettingsHairline()
@@ -929,6 +930,61 @@ private struct SettingsSavedNote: View {
         .accessibilityElement(children: .combine)
         // Polite: the user is looking at the control they just changed, not at this.
         .accessibilityAddTraits(.updatesFrequently)
+    }
+}
+
+// MARK: - Settings sync
+
+/// Whether preferences travel with the account, and the two things a person may want to
+/// do about it by hand. Its own view so it follows the sign-in state as it changes.
+private struct SettingsSyncSection: View {
+    let model: SettingsModel
+    @ObservedObject var auth: AuthService
+    @ObservedObject var sync: SyncService
+
+    var body: some View {
+        SettingsSectionCard(
+            title: "Settings Sync",
+            description: "Your preferences, kept in your account so another Mac or a reinstall starts with them."
+        ) {
+            SettingsToggleRow(
+                label: "Sync settings",
+                description: "Screen capture and launch at login always stay on this Mac.",
+                isOn: model.prefs.settingsSyncEnabled
+            ) { next in
+                model.write { try $0.write(.settingsSyncEnabled, .bool(next)) }
+                if next { Task { await sync.syncNow() } }
+            }
+
+            SettingsHairline()
+
+            SettingsRow(
+                label: "Settings in your account",
+                description: "Changes made offline are sent when you are back online. Reset puts every synced setting back to its default, here and on your other Macs. Your hours are not touched.",
+                isEnabled: model.prefs.settingsSyncEnabled
+            ) {
+                HStack(spacing: Space.m) {
+                    Button("Sync now") { Task { await sync.syncNow() } }
+                        .disabled(!auth.isSignedIn || sync.status == .syncing)
+                    Button("Reset…") { confirmReset() }
+                }
+                .buttonStyle(DeyleeButtonStyle(variant: .secondary, size: .small))
+                .disabled(!model.prefs.settingsSyncEnabled)
+            }
+        }
+    }
+
+    private func confirmReset() {
+        let alert = NSAlert()
+        alert.messageText = "Reset synced settings?"
+        alert.informativeText = "Every synced setting goes back to its default on this Mac and, "
+            + "at the next sync, on your other Macs. Your hours and your screen capture "
+            + "settings are not changed."
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        sync.settings.resetToDefaults()
+        Task { await sync.syncNow() }
     }
 }
 
@@ -1417,7 +1473,7 @@ struct SettingsUpdateLine: View {
         case .downloaded(let version):
             return "Version \(version) is ready"
         case .manual(let version):
-            return "Version \(version) is available — this build can’t install it for you"
+            return "Version \(version) is available, but this build can’t install it for you"
         case .unsupported(let reason):
             return reason
         case .failed:

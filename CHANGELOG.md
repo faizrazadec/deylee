@@ -12,6 +12,14 @@ SQLite schema may still change, so a minor bump can carry a migration.
   the Mac keeps working in the background. It is off unless you turn it on.
 - The menu-bar menu has a new **Turn Screen Off** item, which switches the display off at
   once while the Mac, and any Keep Awake, keeps running.
+- **Your settings now follow your account.** Signed in, Deylee keeps your preferences in
+  your account, so a new Mac, a reinstall or a lost preferences file starts with the
+  settings you chose. Changes made offline are sent when you are back online. Settings has
+  a new Settings Sync section to turn this off, sync straight away, or reset every synced
+  setting to its default on all your Macs without touching your hours. Screen capture
+  settings and launch at login always stay on the Mac they were set on.
+- Wording across the app, and on the page an hour slip opens, reads more plainly: sentences
+  no longer break off with a dash.
 - Opening Settings no longer puts a blinking cursor in the Daily target box. Nothing is
   selected until you click a field or press Tab.
 

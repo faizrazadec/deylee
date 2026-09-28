@@ -117,7 +117,7 @@ struct AccountSection: View {
                 initial: nil,
                 title: reason.localizedCaseInsensitiveContains("offline")
                     || reason.localizedCaseInsensitiveContains("connect")
-                    ? "Sync paused — offline" : "Sync paused",
+                    ? "Sync paused (offline)" : "Sync paused",
                 detail: "Tracking continues; will catch up",
                 action: "Retry",
                 tone: .warning,

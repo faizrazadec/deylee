@@ -38,7 +38,7 @@ is what keeps the numbers right across a crash, a restart, a machine sleep or a 
 
 ## Does my data leave my Mac?
 
-Only hours, and only if you are signed in. Three things are ever sent:
+Only hours and your settings, and only if you are signed in. Four things are ever sent:
 
 - **Sync** — days and segments: when you started, when you stopped, work or break —
   and your Mac's time zone, so the server knows when your day has ended.
@@ -46,6 +46,9 @@ Only hours, and only if you are signed in. Three things are ever sent:
   else, so the server can vouch that the time was tracked live rather than typed in later.
   The server keeps each heartbeat for 30 days, then only the stretches of time they
   covered, and after 90 days only how long you were heard each day.
+- **Your settings**, unless you turn off Sync settings: preferences such as the theme,
+  the daily target and Keep Awake, so another Mac or a reinstall starts with them. Screen
+  capture settings and launch at login are never sent.
 - **Feedback**, only when you write some — your text, the app version and the macOS
   version.
 

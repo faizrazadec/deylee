@@ -47,12 +47,15 @@ final class SyncCoordinator {
     /// witnessed with headroom for a slow request.
     private static let beatInterval: TimeInterval = 30
 
-    init?(repo: Repository, trustedClock: TrustedClock) {
+    init?(repo: Repository, trustedClock: TrustedClock, prefs: PreferencesStore) {
         // A build with no API configured is a valid build — the app is local-first
         // and sync is optional — so this returns nil rather than trapping.
         guard let config = ClientConfig.fromBundle() else { return nil }
         auth = AuthService(config: config, repo: repo)
-        sync = SyncService(config: config, repo: repo, auth: auth, trustedClock: trustedClock)
+        sync = SyncService(
+            config: config, repo: repo, auth: auth, trustedClock: trustedClock,
+            prefs: prefs, settings: SettingsSyncTracker(store: prefs)
+        )
         heartbeat = HeartbeatService(config: config, repo: repo, auth: auth)
     }
 

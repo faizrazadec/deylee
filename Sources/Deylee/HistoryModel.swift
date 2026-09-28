@@ -456,7 +456,7 @@ final class HistoryModel {
             do {
                 try pdf.write(to: url, options: .atomic)
                 self.status = HistoryStatus(
-                    tone: .ok, text: "Hour slip saved to \(Self.folderName(of: url)) — \(totals)."
+                    tone: .ok, text: "Hour slip saved to \(Self.folderName(of: url)): \(totals)."
                 )
                 // Opened for a look, the way a document just made is expected to be.
                 NSWorkspace.shared.open(url)

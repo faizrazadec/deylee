@@ -129,10 +129,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func tooltip(state: TimerState, live: LiveTotals) -> String {
         let totals = "\(formatHM(live.workedMs)) worked · \(formatHM(live.breakMs)) break"
         switch state {
-        case .running: return "Deylee — \(totals)"
-        case .paused: return "Deylee — paused · \(totals)"
-        case .ended: return "Deylee — day ended · \(totals)"
-        case .idle: return live.workedMs > 0 ? "Deylee — stopped · \(totals)" : "Deylee — not tracking"
+        case .running: return "Deylee · \(totals)"
+        case .paused: return "Deylee · paused · \(totals)"
+        case .ended: return "Deylee · day ended · \(totals)"
+        case .idle: return live.workedMs > 0 ? "Deylee · stopped · \(totals)" : "Deylee · not tracking"
         }
     }
 
@@ -183,7 +183,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// Built fresh on every open (`showMenu` rebuilds), so the "until" time is current.
     private func addKeepAwakeItems() {
         let session = keepAwake.session
-        let title = session.endsAt.map { "Keep Awake — until \(formatClock($0))" } ?? "Keep Awake"
+        let title = session.endsAt.map { "Keep Awake until \(formatClock($0))" } ?? "Keep Awake"
         add(title, #selector(toggleKeepAwake), enabled: true).state = session.isOn ? .on : .off
 
         let lengths = NSMenu()

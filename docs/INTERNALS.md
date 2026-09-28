@@ -13,13 +13,14 @@ SQLite on your disk first and the UI reads only from there, so the app tracks wi
 network at all. Sync is a background reconciliation on top of that — never in front of
 it. A timer that stopped working on a train would be worse than one that never synced.
 
-- **Only hours leave the machine — never how the work was done.** Sync sends days and
+- **Only hours and preferences leave the machine, never how the work was done.** Sync sends days and
   segments: when you started, when you stopped, work or break, with the Mac's time zone
   so the server knows when a day has ended. Beside it, a heartbeat
   sends the device id every 30 seconds while a timer runs, so the server can vouch the
   time was tracked live (kept raw for 30 days, as spans of time until 90, then as one
-  total per day), and feedback goes only when you write some. Nothing else is
-  sent. An hour slip is the one thing the user can choose to *publish*: its QR link shows
+  total per day), and feedback goes only when you write some. Unless the user turns
+  it off, the preference set syncs to their account as well, never with the screen
+  capture settings or launch at login in it. Nothing else is sent. An hour slip is the one thing the user can choose to *publish*: its QR link shows
   their name, email and the slip's hours to whoever holds it, and only they can make one. Screen captures stay in the encrypted local store and have no upload path at
   all; grep `Sources/Deylee/SyncService.swift` for `capture` and you will find nothing.
 - **An account is required once.** Signing in, with Google or an email address and password, is needed to start
