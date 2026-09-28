@@ -3,7 +3,7 @@
 Entries follow [Semantic Versioning](https://semver.org). While Deylee is pre-1.0 the
 SQLite schema may still change, so a minor bump can carry a migration.
 
-## Unreleased
+## 0.8.0 — 2026-09-28
 
 - **Keep Awake can now keep the Mac awake with the lid closed.** Turn on Stay awake with
   the lid closed in Settings, under Keep Awake, and Keep Awake starts straight away. macOS
