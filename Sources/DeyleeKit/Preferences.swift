@@ -95,6 +95,9 @@ public struct Preferences: Equatable, Sendable {
     /// administrator's password each time a session starts, so it is never a default.
     public var keepAwakeLidClosed: Bool
 
+    /// Keep the synced preferences in the signed-in account. Stays on this Mac.
+    public var settingsSyncEnabled: Bool
+
     public init(
         launchAtLogin: Bool,
         showMiniWindow: Bool,
@@ -115,7 +118,8 @@ public struct Preferences: Equatable, Sendable {
         keepAwakeDefaultMinutes: Int = 0,
         keepAwakeAllowDisplaySleep: Bool = false,
         keepAwakeOnBattery: Bool = false,
-        keepAwakeLidClosed: Bool = false
+        keepAwakeLidClosed: Bool = false,
+        settingsSyncEnabled: Bool = true
     ) {
         self.launchAtLogin = launchAtLogin
         self.showMiniWindow = showMiniWindow
@@ -137,6 +141,7 @@ public struct Preferences: Equatable, Sendable {
         self.keepAwakeAllowDisplaySleep = keepAwakeAllowDisplaySleep
         self.keepAwakeOnBattery = keepAwakeOnBattery
         self.keepAwakeLidClosed = keepAwakeLidClosed
+        self.settingsSyncEnabled = settingsSyncEnabled
     }
 
     /// The compiled-in macOS defaults.
@@ -170,7 +175,8 @@ public struct Preferences: Equatable, Sendable {
         keepAwakeDefaultMinutes: 0,
         keepAwakeAllowDisplaySleep: false,
         keepAwakeOnBattery: false,
-        keepAwakeLidClosed: false
+        keepAwakeLidClosed: false,
+        settingsSyncEnabled: true
     )
 
     /// Daily target in whole minutes, the form the `days.target_minutes` column stores.
@@ -277,6 +283,7 @@ public enum PreferenceKey: String, Sendable, CaseIterable {
     case keepAwakeAllowDisplaySleep
     case keepAwakeOnBattery
     case keepAwakeLidClosed
+    case settingsSyncEnabled
 
     /// Keys the Electron file may contain that this platform has no use for. They are
     /// skipped on read and never written; see the file header for why.
@@ -445,7 +452,9 @@ extension Preferences {
             keepAwakeOnBattery: PreferenceCoercion.bool(
                 raw["keepAwakeOnBattery"], fallback: d.keepAwakeOnBattery),
             keepAwakeLidClosed: PreferenceCoercion.bool(
-                raw["keepAwakeLidClosed"], fallback: d.keepAwakeLidClosed)
+                raw["keepAwakeLidClosed"], fallback: d.keepAwakeLidClosed),
+            settingsSyncEnabled: PreferenceCoercion.bool(
+                raw["settingsSyncEnabled"], fallback: d.settingsSyncEnabled)
         )
     }
 
@@ -472,6 +481,7 @@ extension Preferences {
             "keepAwakeAllowDisplaySleep": .bool(keepAwakeAllowDisplaySleep),
             "keepAwakeOnBattery": .bool(keepAwakeOnBattery),
             "keepAwakeLidClosed": .bool(keepAwakeLidClosed),
+            "settingsSyncEnabled": .bool(settingsSyncEnabled),
         ]
     }
 
@@ -545,6 +555,8 @@ extension Preferences {
             keepAwakeOnBattery = try Preferences.requireBool(value, key)
         case .keepAwakeLidClosed:
             keepAwakeLidClosed = try Preferences.requireBool(value, key)
+        case .settingsSyncEnabled:
+            settingsSyncEnabled = try Preferences.requireBool(value, key)
         case .keepAwakeDefaultMinutes:
             keepAwakeDefaultMinutes = PreferenceCoercion.integerInRange(
                 .number(try Preferences.requireFinite(value, key)),

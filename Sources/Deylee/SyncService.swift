@@ -55,6 +55,17 @@ private struct SyncResponseDTO: Decodable {
     let changes: [ChangeDTO]
 }
 
+/// `POST /v1/settings`. Both fields absent is a read.
+private struct SettingsRequestDTO: Encodable {
+    let settings: [String: PreferenceValue]?
+    let updatedAt: EpochMs?
+}
+
+private struct SettingsResponseDTO: Decodable {
+    let settings: [String: PreferenceValue]?
+    let updatedAt: EpochMs?
+}
+
 // MARK: - Service
 
 /// Reconciles this device with the server.
@@ -81,6 +92,8 @@ final class SyncService: ObservableObject {
     private let repo: Repository
     private let auth: AuthService
     private let trustedClock: TrustedClock
+    private let prefs: PreferencesStore
+    let settings: SettingsSyncTracker
     private let now: () -> EpochMs
     private var inFlight = false
 
@@ -89,12 +102,16 @@ final class SyncService: ObservableObject {
         repo: Repository,
         auth: AuthService,
         trustedClock: TrustedClock,
+        prefs: PreferencesStore,
+        settings: SettingsSyncTracker,
         now: @escaping () -> EpochMs = { EpochMs(Date().timeIntervalSince1970 * 1000) }
     ) {
         self.config = config
         self.repo = repo
         self.auth = auth
         self.trustedClock = trustedClock
+        self.prefs = prefs
+        self.settings = settings
         self.now = now
     }
 
@@ -125,6 +142,7 @@ final class SyncService: ObservableObject {
                 rejections.append(contentsOf: refused)
                 if !more { break }
             }
+            await exchangeSettings(token: token)
             status = rejections.isEmpty ? .succeeded(at: now()) : .rejected(rejections)
         } catch let failure as APIClient.HTTPFailure where failure.needsFullResync {
             // The client is ahead of the server — it is talking to a restored
@@ -269,6 +287,24 @@ final class SyncService: ObservableObject {
             .filter { $0.status != "applied" }
             .map { $0.message ?? $0.code ?? "rejected" }
         return (response.hasMore, refused)
+    }
+
+    /// Sends the settings changed here, if any, and takes the account's set when it is
+    /// newer. Kept out of the status on purpose: an API that has not deployed the
+    /// endpoint yet, or a set it refuses, must not make every sync read as paused.
+    private func exchangeSettings(token: String) async {
+        guard prefs.value(\.settingsSyncEnabled) else { return }
+        let pending = settings.pending()
+        do {
+            let response: SettingsResponseDTO = try await APIClient.post(
+                config.apiBaseURL.appending(path: "/v1/settings"),
+                body: SettingsRequestDTO(settings: pending?.settings, updatedAt: pending?.updatedAt),
+                bearer: token
+            )
+            settings.receive(settings: response.settings, updatedAt: response.updatedAt)
+        } catch {
+            NSLog("[deylee] settings sync: \(error)")
+        }
     }
 
     // MARK: Encoding

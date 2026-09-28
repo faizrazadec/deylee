@@ -1130,6 +1130,27 @@ row deliberately: "your account" and "sync is behind" are different facts, and
 burying the second inside the first is how people miss it. When sync is healthy the
 row is absent rather than present-and-empty.
 
+**Settings Sync**, directly under Account and only in a build with an API configured:
+"Your preferences, kept in your account so another Mac or a reinstall starts with them."
+The wire rules are `SYNC_PROTOCOL.md`, "Settings".
+
+- **Sync settings** (toggle, `settingsSyncEnabled`, default on, never synced itself):
+  "Screen capture and launch at login always stay on this Mac." Turning it on syncs at once.
+- **Settings in your account** (row, dimmed while sync is off): "Changes made offline are
+  sent when you are back online. Reset puts every synced setting back to its default,
+  here and on your other Macs. Your hours are not touched." Buttons `Sync now` (runs a
+  full sync; disabled signed out or mid-sync) and `Reset…`, which asks first: title
+  `Reset synced settings?`, text "Every synced setting goes back to its default on this
+  Mac and, at the next sync, on your other Macs. Your hours and your screen capture
+  settings are not changed.", buttons `Reset` and `Cancel`. A reset is a write of the
+  defaults with a new time, sent even when nothing changed here, and works offline.
+
+Every change to a synced key is stamped with the time and marked unsent, in the
+`preferencesSync` key of the same `UserDefaults` as the preferences, so the two can only
+vanish together: an install with neither takes the account's set outright. Settings
+chosen before this existed are sent as time 0, so they fill an empty account but never
+overwrite one. A failed settings request is logged and never changes the sync status.
+
 **General** — "How Deylee starts up and how it looks."
 1. **Launch at login** (toggle, `launchAtLogin`, default off) — "Starts Deylee in
    the background when you sign in." Semantics: OS registration
@@ -1205,8 +1226,8 @@ counting."
   until the next session.
 
 **Data** — "Your database lives on this machine. Signed out, it goes nowhere; signed
-in, your hours sync to your account. Nothing else leaves unless you switch it on
-yourself — screen capture is off until you turn it on."
+in, your hours and your settings sync to your account. Nothing else leaves unless you
+switch it on yourself: screen capture is off until you turn it on."
 
 (This copy has now been wrong twice, which is why it is written down here. It was
 *"Everything Deylee records stays on this machine. Nothing is ever uploaded"* until
@@ -1426,6 +1447,7 @@ positions per-entry finite-and-rounded, malformed entries dropped individually.
 | `keepAwakeAllowDisplaySleep` | bool | `false` | Keep awake holds system sleep only, not the display. |
 | `keepAwakeOnBattery` | bool | `false` | Keep awake on switching to battery; stop on switching to the adapter. |
 | `keepAwakeLidClosed` | bool | `false` | While a keep awake session runs, `pmset disablesleep` as root so closing the lid does not sleep the Mac, and the display may sleep. |
+| `settingsSyncEnabled` | bool | `true` | Gates the settings exchange at the end of each sync. Never synced. |
 
 Error surface: a preference write is the **only** operation allowed to fail
 loudly — unknown key, wrong type, or OS refusal (login item) rejects; the UI
