@@ -767,6 +767,16 @@ struct SettingsView: View {
             ) { next in
                 model.write { try $0.write(.keepAwakeOnBattery, .bool(next)) }
             }
+
+            SettingsHairline()
+
+            SettingsToggleRow(
+                label: "Stay awake with the lid closed",
+                description: "Asks for your administrator password each time Keep Awake starts. Sleep comes back when it ends, even if Deylee quits.",
+                isOn: model.prefs.keepAwakeLidClosed
+            ) { next in
+                model.write { try $0.write(.keepAwakeLidClosed, .bool(next)) }
+            }
         }
     }
 

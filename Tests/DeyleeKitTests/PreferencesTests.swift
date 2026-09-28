@@ -321,6 +321,7 @@ private func preferencesTestStore(
         flipped.keepAwakeDefaultMinutes = 45
         flipped.keepAwakeAllowDisplaySleep = true
         flipped.keepAwakeOnBattery = true
+        flipped.keepAwakeLidClosed = true
 
         #expect(Preferences.sanitized(raw: flipped.rawValues) == flipped)
         #expect(flipped.rawValues.count == PreferenceKey.allCases.count)
