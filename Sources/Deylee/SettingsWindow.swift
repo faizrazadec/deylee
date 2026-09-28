@@ -62,6 +62,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         DockPresence.acquire()
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        // AppKit hands a new key window's first responder to its first key view, and
+        // the sizing above has already built the fields, so the daily-target box would
+        // open with a caret nobody asked for. Nothing is focused until a click or Tab.
+        window.makeFirstResponder(nil)
     }
 
     /// Whether the window is on screen, so a caller can put back exactly what it
